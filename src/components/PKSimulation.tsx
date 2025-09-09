@@ -319,7 +319,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const toChartData = (apiData: any): ChartPoint[] => {
     try {
       const series = (apiData?.IPRED_CONC?.length ? apiData.IPRED_CONC : apiData?.PRED_CONC) || [];
-      const base: ChartPoint[] = series.map((p: any) => ({ time: Number(p.time) || 0, predicted: Number(p.IPRED ?? p.PRED ?? p.pred ?? 0) || 0, observed: null }));
+      const base: ChartPoint[] = series.map((p: any) => ({
+        time: Number(p.time) || 0,
+        // Assume API returns mg/L; convert to ng/mL for chart label consistency if needed
+        predicted: Number(p.IPRED ?? p.PRED ?? p.pred ?? 0) || 0,
+        observed: null
+      }));
       // Overlay observed points
       const addObserved = (points: ChartPoint[]) => {
         const obsList = selectedDrug ? patientBloodTests.filter(b => b.drugName === selectedDrug) : patientBloodTests;
@@ -327,8 +332,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
           // estimate time relative to first dose anchor used earlier is unknown here; best effort: align by closest time
           const t = b.timeAfterDose ?? undefined;
           if (t !== undefined && t !== null) {
-            // Convert ng/mL -> mg/L if needed
-            const dv = b.unit && b.unit.toLowerCase().includes('ng/ml') ? (b.concentration / 1000) : b.concentration;
+            const dv = b.concentration;
             // find nearest index
             let idx = -1; let minDiff = Infinity;
             for (let i = 0; i < points.length; i++) {
@@ -427,6 +431,16 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             showSimulation={true}
             currentPatientName={currentPatient.name}
             selectedDrug={selectedDrug}
+            targetMin={(() => {
+              const cp = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
+              const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g);
+              return nums && nums.length >= 1 ? parseFloat(nums[0]) : undefined;
+            })()}
+            targetMax={(() => {
+              const cp = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
+              const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g);
+              return nums && nums.length >= 2 ? parseFloat(nums[1]) : undefined;
+            })()}
           />
         </div>
       </div>

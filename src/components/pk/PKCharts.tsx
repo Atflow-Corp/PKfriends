@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from "recharts";
 
 interface SimulationDataPoint {
   time: number;
@@ -12,13 +12,17 @@ interface PKChartsProps {
   showSimulation: boolean;
   currentPatientName?: string;
   selectedDrug?: string;
+  targetMin?: number | null;
+  targetMax?: number | null;
 }
 
 const PKCharts = ({
   simulationData,
   showSimulation,
   currentPatientName,
-  selectedDrug
+  selectedDrug,
+  targetMin,
+  targetMax
 }: PKChartsProps) => {
   return (
     <Card>
@@ -53,6 +57,9 @@ const PKCharts = ({
                   ]}
                   labelFormatter={(value) => `Time: ${value} hours`}
                 />
+                {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
+                  <ReferenceArea y1={targetMin} y2={targetMax} fill="#93c5fd" fillOpacity={0.25} ifOverflow="extendDomain" />
+                )}
                 <Line 
                   type="monotone" 
                   dataKey="predicted" 

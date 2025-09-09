@@ -159,39 +159,7 @@ const DrugAdministrationStep = ({
               }
             }}
           />
-          {/* Persisted administrations list for current patient */}
-          {patientDrugAdministrations.length > 0 && (
-            <div className="mt-6">
-              <div className="text-sm font-semibold mb-2">저장된 투약 기록</div>
-              <div className="rounded-md border overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted">
-                      <th className="text-left px-3 py-2">날짜</th>
-                      <th className="text-left px-3 py-2">시간</th>
-                      <th className="text-left px-3 py-2">경로</th>
-                      <th className="text-left px-3 py-2">용량</th>
-                      <th className="text-left px-3 py-2">주입시간(분)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {patientDrugAdministrations
-                      .slice()
-                      .sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time))
-                      .map((d)=> (
-                        <tr key={d.id} className="border-t">
-                          <td className="px-3 py-2">{d.date}</td>
-                          <td className="px-3 py-2">{d.time}</td>
-                          <td className="px-3 py-2">{d.route}</td>
-                          <td className="px-3 py-2">{d.dose} {d.unit}</td>
-                          <td className="px-3 py-2">{d.isIVInfusion ? (d.infusionTime ?? '-') : '-'}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          
           <div className="flex justify-between mt-6">
             <Button variant="outline" type="button" onClick={onPrev} className="flex items-center gap-2 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200">
               <ArrowLeft className="h-4 w-4" />
