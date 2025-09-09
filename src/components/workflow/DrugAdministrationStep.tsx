@@ -119,6 +119,7 @@ const DrugAdministrationStep = ({
             tdmDrug={tdmDrug}
             onComplete={onNext}
             onTableGenerated={() => setTableReady(true)}
+            initialAdministrations={patientDrugAdministrations}
             onSaveRecords={(records) => {
               if (selectedPatient && tdmDrug) {
                 const others = drugAdministrations.filter(d => d.patientId !== selectedPatient.id);
@@ -136,6 +137,25 @@ const DrugAdministrationStep = ({
                   administrationTime: undefined
                 }));
                 setDrugAdministrations([...others, ...newOnes]);
+              }
+            }}
+            onRecordsChange={(records) => {
+              if (selectedPatient && tdmDrug) {
+                const others = drugAdministrations.filter(d => d.patientId !== selectedPatient.id);
+                const mapped = records.map((row, idx) => ({
+                  id: `${Date.now()}_${idx}`,
+                  patientId: selectedPatient.id,
+                  drugName: tdmDrug.drugName,
+                  route: row.route,
+                  date: row.timeStr.split(" ")[0],
+                  time: row.timeStr.split(" ")[1],
+                  dose: Number(row.amount.split(" ")[0]),
+                  unit: row.amount.split(" ")[1] || "mg",
+                  isIVInfusion: row.route === "정맥",
+                  infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
+                  administrationTime: undefined
+                }));
+                setDrugAdministrations([...others, ...mapped]);
               }
             }}
           />

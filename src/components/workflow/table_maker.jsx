@@ -37,6 +37,54 @@ function TablePage(props) {
     };
   }, []);
 
+  // Load initial administrations from parent and render as table
+  useEffect(() => {
+    const admins = props.initialAdministrations || [];
+    if (!admins || admins.length === 0) return;
+    try {
+      const titleRow = {
+        id: "title",
+        round: "회차",
+        time: "투약 시간",
+        amount: "투약용량",
+        route: "투약경로",
+        injectionTime: "주입시간",
+        isTitle: true
+      };
+      const rows = admins.map((adm, idx) => {
+        const timeStr = `${adm.date} ${adm.time}`;
+        const dt = new Date(`${adm.date}T${adm.time}`);
+        return {
+          id: String(adm.id || `${Date.now()}_${idx}`),
+          conditionId: null,
+          doseIndex: idx + 1,
+          totalDoses: admins.length,
+          time: dt,
+          timeStr,
+          amount: `${adm.dose} ${adm.unit || 'mg'}`,
+          route: adm.route,
+          injectionTime: adm.isIVInfusion ? (adm.infusionTime ?? '-') : '-',
+          isTitle: false
+        };
+      }).sort((a,b) => a.time - b.time);
+      rows.forEach((row, i) => { row.round = `${i + 1} 회차`; });
+      setTableData([titleRow, ...rows]);
+      setIsTableGenerated(true);
+    } catch {}
+  }, [props.initialAdministrations]);
+
+  // Propagate table changes to parent for persistence
+  useEffect(() => {
+    if (!props.onRecordsChange) return;
+    const records = tableData.filter(r => !r.isTitle).map(r => ({
+      timeStr: r.timeStr,
+      amount: r.amount,
+      route: r.route,
+      injectionTime: r.injectionTime
+    }));
+    props.onRecordsChange(records);
+  }, [tableData]);
+
   // 투약 경로 옵션
   const routeOptions = ["경구", "정맥", "피하", "수액"];
   
@@ -663,6 +711,17 @@ function TablePage(props) {
                     </div>
                   </div>
                 ))}
+                {/* Existing persisted rows summary */}
+                {tableData.filter(r => !r.isTitle).length > 0 && (
+                  <div style={{ fontSize: "13px", color: "#6c757d" }}>
+                    {tableData.filter(r => !r.isTitle).map((row, idx) => (
+                      <div key={row.id} style={{ borderBottom: "1px dashed #eee", padding: "6px 0" }}>
+                        <span style={{ fontWeight: "bold", color: "#10b981", marginRight: 8 }}>저장 {idx + 1}:</span>
+                        {`${row.timeStr}, ${row.amount}, ${row.route}${row.route === '정맥' && row.injectionTime && row.injectionTime !== '-' ? ` (${row.injectionTime}분)` : ''}`}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
