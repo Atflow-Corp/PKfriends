@@ -45,7 +45,6 @@ const DrugAdministrationStep = ({
     infusionTime: undefined
   });
   const [tableReady, setTableReady] = useState(false);
-  const [tdmResult, setTdmResult] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
 
   // 약물명은 상단에 텍스트로만 표시, 선택 불가
@@ -87,13 +86,8 @@ const DrugAdministrationStep = ({
   const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient?.id);
 
   useEffect(() => {
-    if (!selectedPatient) { setTdmResult(null); return; }
-    try {
-      const raw = window.localStorage.getItem(`tdmfriends:tdmResult:${selectedPatient.id}`);
-      if (raw) setTdmResult(JSON.parse(raw));
-      else setTdmResult(null);
-    } catch { setTdmResult(null); }
-  }, [selectedPatient?.id]);
+    // no-op for now
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -126,31 +120,58 @@ const DrugAdministrationStep = ({
             onComplete={onNext}
             onTableGenerated={() => setTableReady(true)}
             onSaveRecords={(records) => {
-              // records를 DrugAdministration 타입으로 변환하여 onAddDrugAdministration으로 추가
               if (selectedPatient && tdmDrug) {
-                // 기존 투약 기록을 모두 삭제 (같은 환자의 기존 기록)
-                const filteredAdministrations = drugAdministrations.filter(d => d.patientId !== selectedPatient.id);
-                
-                // 새로운 레코드들을 개별적으로 추가
-                records.forEach((row, idx) => {
-                  const newDrugAdministration = {
-                    id: `${Date.now()}_${idx}`,
-                    patientId: selectedPatient.id,
-                    drugName: tdmDrug.drugName,
-                    route: row.route,
-                    date: row.timeStr.split(" ")[0],
-                    time: row.timeStr.split(" ")[1],
-                    dose: Number(row.amount.split(" ")[0]),
-                    unit: row.amount.split(" ")[1] || "mg",
-                    isIVInfusion: row.route === "정맥",
-                    infusionTime: row.injectionTime && row.injectionTime !== "-" ? Number(row.injectionTime) : undefined,
-                    administrationTime: undefined
-                  };
-                  onAddDrugAdministration(newDrugAdministration);
-                });
+                const others = drugAdministrations.filter(d => d.patientId !== selectedPatient.id);
+                const newOnes = records.map((row, idx) => ({
+                  id: `${Date.now()}_${idx}`,
+                  patientId: selectedPatient.id,
+                  drugName: tdmDrug.drugName,
+                  route: row.route,
+                  date: row.timeStr.split(" ")[0],
+                  time: row.timeStr.split(" ")[1],
+                  dose: Number(row.amount.split(" ")[0]),
+                  unit: row.amount.split(" ")[1] || "mg",
+                  isIVInfusion: row.route === "정맥",
+                  infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
+                  administrationTime: undefined
+                }));
+                setDrugAdministrations([...others, ...newOnes]);
               }
             }}
           />
+          {/* Persisted administrations list for current patient */}
+          {patientDrugAdministrations.length > 0 && (
+            <div className="mt-6">
+              <div className="text-sm font-semibold mb-2">저장된 투약 기록</div>
+              <div className="rounded-md border overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted">
+                      <th className="text-left px-3 py-2">날짜</th>
+                      <th className="text-left px-3 py-2">시간</th>
+                      <th className="text-left px-3 py-2">경로</th>
+                      <th className="text-left px-3 py-2">용량</th>
+                      <th className="text-left px-3 py-2">주입시간(분)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {patientDrugAdministrations
+                      .slice()
+                      .sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time))
+                      .map((d)=> (
+                        <tr key={d.id} className="border-t">
+                          <td className="px-3 py-2">{d.date}</td>
+                          <td className="px-3 py-2">{d.time}</td>
+                          <td className="px-3 py-2">{d.route}</td>
+                          <td className="px-3 py-2">{d.dose} {d.unit}</td>
+                          <td className="px-3 py-2">{d.isIVInfusion ? (d.infusionTime ?? '-') : '-'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between mt-6">
             <Button variant="outline" type="button" onClick={onPrev} className="flex items-center gap-2 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-200">
               <ArrowLeft className="h-4 w-4" />
@@ -170,13 +191,13 @@ const DrugAdministrationStep = ({
                     selectedDrugName: tdmDrug?.drugName,
                   });
                   if (body) {
-                    const data = await runTdmAndPersist({ body, patientId: selectedPatient.id });
-                    setTdmResult(data);
+                    await runTdmAndPersist({ body, patientId: selectedPatient.id });
                   }
                 } catch (e) {
                   console.error(e);
                 } finally {
                   setLoading(false);
+                  onNext();
                 }
               }}
               disabled={loading}
@@ -186,24 +207,7 @@ const DrugAdministrationStep = ({
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
-          {tdmResult && (
-            <div className="mt-6">
-              <div className="rounded-lg border p-4 bg-slate-50 dark:bg-slate-800">
-                <div className="font-semibold mb-2">TDM API 요약 지표</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                  <div>AUC_before: {tdmResult.AUC_before ?? '-'}</div>
-                  <div>CMAX_before: {tdmResult.CMAX_before ?? '-'}</div>
-                  <div>CTROUGH_before: {tdmResult.CTROUGH_before ?? '-'}</div>
-                  <div>AUC_after: {tdmResult.AUC_after ?? '-'}</div>
-                  <div>CMAX_after: {tdmResult.CMAX_after ?? '-'}</div>
-                  <div>CTROUGH_after: {tdmResult.CTROUGH_after ?? '-'}</div>
-                </div>
-                <div className="flex justify-end mt-4">
-                  <Button onClick={onNext} className="w-[200px]">다음 단계</Button>
-                </div>
-              </div>
-            </div>
-          )}
+          
         </CardContent>
       </Card>
     </div>

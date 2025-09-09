@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { Activity, ArrowLeft, CheckCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import PKSimulation from "../PKSimulation";
 
 interface SimulationStepProps {
@@ -21,6 +22,14 @@ const SimulationStep = ({
   drugAdministrations,
   onPrev
 }: SimulationStepProps) => {
+  const [tdmResult, setTdmResult] = useState<any | null>(null);
+  useEffect(() => {
+    if (!selectedPatient) { setTdmResult(null); return; }
+    try {
+      const raw = window.localStorage.getItem(`tdmfriends:tdmResult:${selectedPatient.id}`);
+      if (raw) setTdmResult(JSON.parse(raw)); else setTdmResult(null);
+    } catch { setTdmResult(null); }
+  }, [selectedPatient?.id]);
   if (!selectedPatient) {
     return (
       <Card>
@@ -52,6 +61,19 @@ const SimulationStep = ({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {tdmResult && (
+            <div className="mb-6 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4">
+              <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-200">최근 TDM 결과 요약</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div>AUC_before: {tdmResult.AUC_before ?? '-'}</div>
+                <div>CMAX_before: {tdmResult.CMAX_before ?? '-'}</div>
+                <div>CTROUGH_before: {tdmResult.CTROUGH_before ?? '-'}</div>
+                <div>AUC_after: {tdmResult.AUC_after ?? '-'}</div>
+                <div>CMAX_after: {tdmResult.CMAX_after ?? '-'}</div>
+                <div>CTROUGH_after: {tdmResult.CTROUGH_after ?? '-'}</div>
+              </div>
+            </div>
+          )}
           {/* PK Simulation Component */}
           <PKSimulation
             patients={patients}
