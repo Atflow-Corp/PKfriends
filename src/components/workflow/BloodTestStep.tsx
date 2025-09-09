@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +53,25 @@ const BloodTestStep = ({
     renalReplacement: ""
   });
   const [renalInfoList, setRenalInfoList] = useState<RenalInfo[]>([]);
+
+  // Persist renal info list per patient in localStorage
+  useEffect(() => {
+    if (!selectedPatient) return;
+    try {
+      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as RenalInfo[];
+        setRenalInfoList(parsed);
+      }
+    } catch {}
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!selectedPatient) return;
+    try {
+      window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}`, JSON.stringify(renalInfoList));
+    } catch {}
+  }, [selectedPatient?.id, renalInfoList]);
 
   // 혈중 약물 농도 입력 상태
   const [formData, setFormData] = useState({

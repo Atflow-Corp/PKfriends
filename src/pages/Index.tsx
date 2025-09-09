@@ -82,6 +82,7 @@ const Index = ({ onLogout }: IndexProps) => {
   const [drugAdministrations, setDrugAdministrations] = useState<DrugAdministration[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isDark, setIsDark] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -121,35 +122,47 @@ const Index = ({ onLogout }: IndexProps) => {
       const found = revivePatients.find(p => p.id === savedSelectedPatientId) || null;
       setSelectedPatient(found);
     }
+    setHydrated(true);
   }, []);
 
   // Persist data when state changes
   useEffect(() => {
+    if (!hydrated) return;
     storage.setJSON(STORAGE_KEYS.patients, patients);
-  }, [patients]);
+  }, [hydrated, patients]);
   useEffect(() => {
+    if (!hydrated) return;
     storage.setJSON(STORAGE_KEYS.prescriptions, prescriptions);
-  }, [prescriptions]);
+  }, [hydrated, prescriptions]);
   useEffect(() => {
+    if (!hydrated) return;
     storage.setJSON(STORAGE_KEYS.bloodTests, bloodTests);
-  }, [bloodTests]);
+  }, [hydrated, bloodTests]);
   useEffect(() => {
+    if (!hydrated) return;
     storage.setJSON(STORAGE_KEYS.drugAdministrations, drugAdministrations);
-  }, [drugAdministrations]);
+  }, [hydrated, drugAdministrations]);
   useEffect(() => {
+    if (!hydrated) return;
     if (selectedPatient?.id) {
       storage.setJSON(STORAGE_KEYS.selectedPatientId, selectedPatient.id);
     } else {
       storage.remove(STORAGE_KEYS.selectedPatientId);
     }
-  }, [selectedPatient]);
+  }, [hydrated, selectedPatient]);
 
   const addPatient = (patient: Patient) => {
     setPatients([...patients, patient]);
   };
 
-  const addPrescription = (prescription: Prescription) => {
-    setPrescriptions([...prescriptions, prescription]);
+  const addPrescription = (prescription?: Prescription, updatedPrescriptions?: Prescription[]) => {
+    if (updatedPrescriptions) {
+      setPrescriptions(prescription ? [...updatedPrescriptions, prescription] : updatedPrescriptions);
+      return;
+    }
+    if (prescription) {
+      setPrescriptions([...prescriptions, prescription]);
+    }
   };
 
   const addBloodTest = (bloodTest: BloodTest) => {
