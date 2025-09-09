@@ -8,6 +8,7 @@ import dayjs from "dayjs";
 import { ArrowLeft, ArrowRight, History, CheckCircle } from "lucide-react";
 import TablePage from "./table_maker.jsx";
 import "./table_maker.css";
+import { buildTdmRequestBody, runTdmAndPersist } from "@/lib/tdm";
 
 interface DrugAdministrationStepProps {
   patients: Patient[];
@@ -144,7 +145,29 @@ const DrugAdministrationStep = ({
               <ArrowLeft className="h-4 w-4" />
               Lab
             </Button>
-            <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black dark:bg-blue-700 text-white font-bold text-lg py-3 px-6 justify-center dark:hover:bg-blue-800">
+            <Button
+              onClick={async () => {
+                if (!selectedPatient) { onNext(); return; }
+                try {
+                  const body = buildTdmRequestBody({
+                    patients,
+                    prescriptions,
+                    bloodTests: [],
+                    drugAdministrations,
+                    selectedPatientId: selectedPatient.id,
+                    selectedDrugName: tdmDrug?.drugName,
+                  });
+                  if (body) {
+                    await runTdmAndPersist({ body, patientId: selectedPatient.id });
+                  }
+                } catch (e) {
+                  console.error(e);
+                } finally {
+                  onNext();
+                }
+              }}
+              className="flex items-center gap-2 w-[300px] bg-black dark:bg-blue-700 text-white font-bold text-lg py-3 px-6 justify-center dark:hover:bg-blue-800"
+            >
               TDM Simulation
               <ArrowRight className="h-4 w-4" />
             </Button>

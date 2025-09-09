@@ -397,30 +397,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   return (
     <div className="space-y-6">
-      {/* TDM API Actions */}
-      <div className="flex gap-2 justify-end">
-        <button
-          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded"
-          onClick={callTdmApi}
-          disabled={!selectedPatientId}
-        >
-          TDM API 실행 및 저장
-        </button>
-        {tdmResult && (
-          <button
-            className="px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded"
-            onClick={() => {
-              const key = `tdmfriends:tdmResult:${selectedPatientId}`;
-              const raw = window.localStorage.getItem(key);
-              if (raw) {
-                try { setTdmResult(JSON.parse(raw)); } catch {}
-              }
-            }}
-          >
-            저장된 결과 불러오기
-          </button>
-        )}
-      </div>
+      {/* Buttons removed per requirement */}
 
       {/* PK Parameter 섹션 */}
       <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-2">
