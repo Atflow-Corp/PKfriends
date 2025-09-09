@@ -379,6 +379,19 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     }
   };
 
+  const getTargetBand = (): { min?: number; max?: number } => {
+    if (tdmResult) {
+      const min = typeof tdmResult.CTROUGH_after === 'number' ? tdmResult.CTROUGH_after : undefined;
+      const max = typeof tdmResult.CMAX_after === 'number' ? tdmResult.CMAX_after : undefined;
+      if (min !== undefined || max !== undefined) return { min, max };
+    }
+    const cp = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
+    const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g) || [];
+    const min = nums[0] ? parseFloat(nums[0]) : undefined;
+    const max = nums[1] ? parseFloat(nums[1]) : undefined;
+    return { min, max };
+  };
+
   // PDF 저장 함수
   const handleDownloadPDF = async () => {
     if (!simulationRef.current) return;
@@ -431,16 +444,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             showSimulation={true}
             currentPatientName={currentPatient.name}
             selectedDrug={selectedDrug}
-            targetMin={(() => {
-              const cp = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
-              const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g);
-              return nums && nums.length >= 1 ? parseFloat(nums[0]) : undefined;
-            })()}
-            targetMax={(() => {
-              const cp = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
-              const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g);
-              return nums && nums.length >= 2 ? parseFloat(nums[1]) : undefined;
-            })()}
+            targetMin={getTargetBand().min}
+            targetMax={getTargetBand().max}
           />
         </div>
       </div>
