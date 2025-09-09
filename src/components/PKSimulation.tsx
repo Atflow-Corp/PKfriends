@@ -111,45 +111,109 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     setShowSimulation(true);
   };
 
+  // Helpers
+  const getSelectedRenalInfo = () => {
+    try {
+      if (!selectedPatientId) return null;
+      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatientId}`);
+      if (!raw) return null;
+      const list = JSON.parse(raw) as Array<{ id: string; creatinine: string; date: string; formula: string; result: string; dialysis: string; renalReplacement: string; isSelected: boolean }>;
+      const chosen = list.find(item => item.isSelected) || list[list.length - 1];
+      return chosen || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const computeCRCL = (weightKg: number, ageYears: number, sex01: number) => {
+    const renal = getSelectedRenalInfo();
+    if (renal) {
+      const parsedResult = parseFloat((renal.result || '').toString().replace(/[^0-9.\-]/g, ''));
+      if (!Number.isNaN(parsedResult) && parsedResult > 0) {
+        return parsedResult; // assume mL/min
+      }
+      const scrMgDl = parseFloat((renal.creatinine || '').toString());
+      if (!Number.isNaN(scrMgDl) && scrMgDl > 0) {
+        // Cockcroft-Gault
+        const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
+        return sex01 === 0 ? base * 0.85 : base;
+      }
+    }
+    return 90; // fallback if data unavailable
+  };
+
+  const parseTargetValue = (target?: string, value?: string) => {
+    // returns { auc?: number, trough?: number }
+    if (!value) return {} as { auc?: number; trough?: number };
+    const nums = (value.match(/\d+\.?\d*/g) || []).map(v => parseFloat(v));
+    if (nums.length === 0) return {} as { auc?: number; trough?: number };
+    const mid = nums.length === 1 ? nums[0] : (nums[0] + nums[1]) / 2;
+    if (target && target.toLowerCase().includes('auc')) {
+      return { auc: mid };
+    }
+    if (target && target.toLowerCase().includes('trough')) {
+      return { trough: mid };
+    }
+    return {} as { auc?: number; trough?: number };
+  };
+
+  const toDate = (d: string, t: string) => new Date(`${d}T${t}`);
+
+  const hoursDiff = (later: Date, earlier: Date) => (later.getTime() - earlier.getTime()) / 36e5;
+
+  const computeTauFromAdministrations = (events: DrugAdministration[]) => {
+    if (events.length < 2) return undefined;
+    const sorted = [...events].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime());
+    const last = sorted[sorted.length - 1];
+    const prev = sorted[sorted.length - 2];
+    const tauHours = hoursDiff(toDate(last.date, last.time), toDate(prev.date, prev.time));
+    return tauHours > 0 ? tauHours : undefined;
+  };
+
   // TDM API integration
   const buildTdmRequestBody = () => {
     const currentPatient = patients.find(p => p.id === selectedPatientId);
     const tdmPrescription = prescriptions.find(p => p.patientId === selectedPatientId);
     if (!currentPatient || !tdmPrescription) return null;
 
-    // Infer some defaults; map from available data
+    // Map from available data
     const weight = currentPatient.weight;
     const age = currentPatient.age;
     const sex = currentPatient.gender === "male" ? 1 : 0;
-    const crcl = 90; // no explicit CRCL entry in model; could be derived later
-    const tau = 12; // default dosing interval hours
-    const amount = Number(simulationParams.dose || 0) || 100; // mg
+    const crcl = computeCRCL(weight, age, sex);
+
+    const patientDoses = (drugAdministrations || []).filter(d => d.patientId === selectedPatientId);
+    const tau = computeTauFromAdministrations(patientDoses) ?? undefined;
+    const lastDose = patientDoses.length > 0 ? [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime())[patientDoses.length - 1] : undefined;
+    const amount = lastDose ? lastDose.dose : (Number(simulationParams.dose || 0) || undefined);
     const toxi = 1;
-    const aucTarget = 400; // default example
-    const cTroughTarget = 10; // default example
+    const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(tdmPrescription.tdmTarget, tdmPrescription.tdmTargetValue);
 
     const dataset = [] as any[];
-    // Build at least one dosing and one observation event based on drugAdministrations and bloodTests
-    const patientDose = (drugAdministrations || []).find(d => d.patientId === selectedPatientId);
-    if (patientDose) {
-      const rate = patientDose.isIVInfusion && patientDose.infusionTime
-        ? (patientDose.dose / (patientDose.infusionTime / 60))
-        : 0;
-      dataset.push({
-        ID: selectedPatientId,
-        TIME: 0.0,
-        DV: null,
-        AMT: patientDose.dose,
-        RATE: rate,
-        CMT: 1,
-        WT: weight,
-        SEX: sex,
-        AGE: age,
-        CRCL: crcl,
-        TOXI: toxi,
-        EVID: 1
-      });
-    } else {
+    // Build dosing events relative to first dose time
+    const sortedDoses = [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime());
+    const anchorDoseTime = sortedDoses.length > 0 ? toDate(sortedDoses[0].date, sortedDoses[0].time) : undefined;
+    if (sortedDoses.length > 0 && anchorDoseTime) {
+      for (const d of sortedDoses) {
+        const t = hoursDiff(toDate(d.date, d.time), anchorDoseTime);
+        const rate = d.isIVInfusion && d.infusionTime ? (d.dose / (d.infusionTime / 60)) : 0;
+        dataset.push({
+          ID: selectedPatientId,
+          TIME: Math.max(0, t),
+          DV: null,
+          AMT: d.dose,
+          RATE: rate,
+          CMT: 1,
+          WT: weight,
+          SEX: sex,
+          AGE: age,
+          CRCL: crcl,
+          TOXI: toxi,
+          EVID: 1
+        });
+      }
+    } else if (amount !== undefined) {
+      // single immediate dose if no history exists
       dataset.push({
         ID: selectedPatientId,
         TIME: 0.0,
@@ -166,26 +230,34 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       });
     }
 
-    const blood = patientBloodTests[0];
-    if (blood) {
-      dataset.push({
-        ID: selectedPatientId,
-        TIME: 2.0,
-        DV: blood.concentration,
-        AMT: 0,
-        RATE: 0,
-        CMT: 1,
-        WT: weight,
-        SEX: sex,
-        AGE: age,
-        CRCL: crcl,
-        TOXI: toxi,
-        EVID: 0
-      });
+    // Observation events
+    const anchor = anchorDoseTime || (sortedDoses.length > 0 ? toDate(sortedDoses[0].date, sortedDoses[0].time) : new Date());
+    const relatedTests = selectedDrug ? patientBloodTests.filter(b => b.drugName === selectedDrug) : patientBloodTests;
+    if (relatedTests.length > 0) {
+      for (const b of relatedTests) {
+        const t = hoursDiff(b.testDate, anchor);
+        // Convert ng/mL -> mg/L if needed
+        const dvMgPerL = b.unit && b.unit.toLowerCase().includes('ng/ml') ? (b.concentration / 1000) : b.concentration;
+        dataset.push({
+          ID: selectedPatientId,
+          TIME: t,
+          DV: dvMgPerL,
+          AMT: 0,
+          RATE: 0,
+          CMT: 1,
+          WT: weight,
+          SEX: sex,
+          AGE: age,
+          CRCL: crcl,
+          TOXI: toxi,
+          EVID: 0
+        });
+      }
     } else {
+      // Add one observation point without DV at tau or 2h if tau unavailable
       dataset.push({
         ID: selectedPatientId,
-        TIME: 2.0,
+        TIME: tau ?? 2.0,
         DV: null,
         AMT: 0,
         RATE: 0,
@@ -200,15 +272,15 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     }
 
     return {
-      input_tau: tau,
-      input_amount: amount,
+      input_tau: tau ?? 12,
+      input_amount: amount ?? 100,
       input_WT: weight,
       input_CRCL: crcl,
       input_AGE: age,
       input_SEX: sex,
       input_TOXI: toxi,
-      input_AUC: aucTarget,
-      input_CTROUGH: cTroughTarget,
+      input_AUC: aucTarget ?? undefined,
+      input_CTROUGH: cTroughTarget ?? undefined,
       dataset
     };
   };
