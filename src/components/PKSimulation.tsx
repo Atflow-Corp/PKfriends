@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Patient, Prescription, BloodTest } from "@/pages/Index";
+import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import PKParameterCard from "./pk/PKParameterCard";
 import PKControlPanel from "./pk/PKControlPanel";
 import PKCharts from "./pk/PKCharts";
@@ -14,9 +14,10 @@ interface PKSimulationProps {
   prescriptions: Prescription[];
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
+  drugAdministrations?: DrugAdministration[];
 }
 
-const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: PKSimulationProps) => {
+const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [] }: PKSimulationProps) => {
   const [selectedPatientId, setSelectedPatientId] = useState(selectedPatient?.id || "");
   const [selectedDrug, setSelectedDrug] = useState("");
   const [simulationParams, setSimulationParams] = useState({
@@ -31,6 +32,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
   const [doseUnit, setDoseUnit] = useState("mg");
   const [intervalAdjust, setIntervalAdjust] = useState("");
   const [tab, setTab] = useState("current");
+  const [tdmResult, setTdmResult] = useState<any | null>(null);
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = selectedPatientId 
@@ -109,6 +111,131 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
     setShowSimulation(true);
   };
 
+  // TDM API integration
+  const buildTdmRequestBody = () => {
+    const currentPatient = patients.find(p => p.id === selectedPatientId);
+    const tdmPrescription = prescriptions.find(p => p.patientId === selectedPatientId);
+    if (!currentPatient || !tdmPrescription) return null;
+
+    // Infer some defaults; map from available data
+    const weight = currentPatient.weight;
+    const age = currentPatient.age;
+    const sex = currentPatient.gender === "male" ? 1 : 0;
+    const crcl = 90; // no explicit CRCL entry in model; could be derived later
+    const tau = 12; // default dosing interval hours
+    const amount = Number(simulationParams.dose || 0) || 100; // mg
+    const toxi = 1;
+    const aucTarget = 400; // default example
+    const cTroughTarget = 10; // default example
+
+    const dataset = [] as any[];
+    // Build at least one dosing and one observation event based on drugAdministrations and bloodTests
+    const patientDose = (drugAdministrations || []).find(d => d.patientId === selectedPatientId);
+    if (patientDose) {
+      const rate = patientDose.isIVInfusion && patientDose.infusionTime
+        ? (patientDose.dose / (patientDose.infusionTime / 60))
+        : 0;
+      dataset.push({
+        ID: selectedPatientId,
+        TIME: 0.0,
+        DV: null,
+        AMT: patientDose.dose,
+        RATE: rate,
+        CMT: 1,
+        WT: weight,
+        SEX: sex,
+        AGE: age,
+        CRCL: crcl,
+        TOXI: toxi,
+        EVID: 1
+      });
+    } else {
+      dataset.push({
+        ID: selectedPatientId,
+        TIME: 0.0,
+        DV: null,
+        AMT: amount,
+        RATE: 0,
+        CMT: 1,
+        WT: weight,
+        SEX: sex,
+        AGE: age,
+        CRCL: crcl,
+        TOXI: toxi,
+        EVID: 1
+      });
+    }
+
+    const blood = patientBloodTests[0];
+    if (blood) {
+      dataset.push({
+        ID: selectedPatientId,
+        TIME: 2.0,
+        DV: blood.concentration,
+        AMT: 0,
+        RATE: 0,
+        CMT: 1,
+        WT: weight,
+        SEX: sex,
+        AGE: age,
+        CRCL: crcl,
+        TOXI: toxi,
+        EVID: 0
+      });
+    } else {
+      dataset.push({
+        ID: selectedPatientId,
+        TIME: 2.0,
+        DV: null,
+        AMT: 0,
+        RATE: 0,
+        CMT: 1,
+        WT: weight,
+        SEX: sex,
+        AGE: age,
+        CRCL: crcl,
+        TOXI: toxi,
+        EVID: 0
+      });
+    }
+
+    return {
+      input_tau: tau,
+      input_amount: amount,
+      input_WT: weight,
+      input_CRCL: crcl,
+      input_AGE: age,
+      input_SEX: sex,
+      input_TOXI: toxi,
+      input_AUC: aucTarget,
+      input_CTROUGH: cTroughTarget,
+      dataset
+    };
+  };
+
+  const callTdmApi = async () => {
+    const body = buildTdmRequestBody();
+    if (!body) return;
+    try {
+      const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) {
+        throw new Error(`TDM API error: ${response.status}`);
+      }
+      const data = await response.json();
+      setTdmResult(data);
+      try {
+        const key = `tdmfriends:tdmResult:${selectedPatientId}`;
+        window.localStorage.setItem(key, JSON.stringify(data));
+      } catch {}
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // PDF 저장 함수
   const handleDownloadPDF = async () => {
     if (!simulationRef.current) return;
@@ -131,11 +258,50 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
 
   return (
     <div className="space-y-6">
+      {/* TDM API Actions */}
+      <div className="flex gap-2 justify-end">
+        <button
+          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded"
+          onClick={callTdmApi}
+          disabled={!selectedPatientId}
+        >
+          TDM API 실행 및 저장
+        </button>
+        {tdmResult && (
+          <button
+            className="px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded"
+            onClick={() => {
+              const key = `tdmfriends:tdmResult:${selectedPatientId}`;
+              const raw = window.localStorage.getItem(key);
+              if (raw) {
+                try { setTdmResult(JSON.parse(raw)); } catch {}
+              }
+            }}
+          >
+            저장된 결과 불러오기
+          </button>
+        )}
+      </div>
+
       {/* PK Parameter 섹션 */}
       <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-2">
         <div className="font-bold mb-1">PK Parameter</div>
         <pre className="text-sm whitespace-pre-line text-slate-700 dark:text-slate-200">{pkParameterText}</pre>
       </div>
+
+      {tdmResult && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4">
+          <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-200">최근 TDM 결과 (로컬 저장)</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div>AUC_before: {tdmResult.AUC_before ?? '-'}</div>
+            <div>CMAX_before: {tdmResult.CMAX_before ?? '-'}</div>
+            <div>CTROUGH_before: {tdmResult.CTROUGH_before ?? '-'}</div>
+            <div>AUC_after: {tdmResult.AUC_after ?? '-'}</div>
+            <div>CMAX_after: {tdmResult.CMAX_after ?? '-'}</div>
+            <div>CTROUGH_after: {tdmResult.CTROUGH_after ?? '-'}</div>
+          </div>
+        </div>
+      )}
 
       {/* PK Simulation 그래프 (가로 전체) */}
       <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow flex flex-col items-center">
@@ -166,7 +332,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                selectedDrugTests={[]}
                 simulationData={simulationData}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
@@ -202,7 +367,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                selectedDrugTests={[]}
                 simulationData={generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
@@ -227,7 +391,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                selectedDrugTests={[]}
                 simulationData={generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}

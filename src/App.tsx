@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,11 +16,20 @@ function App() {
 
   const handleLogin = () => {
     setIsAuthenticated(true);
+    try { window.localStorage.setItem('tdmfriends:isAuthenticated', 'true'); } catch {}
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    try { window.localStorage.removeItem('tdmfriends:isAuthenticated'); } catch {}
   };
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('tdmfriends:isAuthenticated');
+      if (saved === 'true') setIsAuthenticated(true);
+    } catch {}
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

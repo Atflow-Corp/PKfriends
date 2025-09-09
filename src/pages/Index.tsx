@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 export interface Patient {
   id: string;
@@ -90,6 +91,58 @@ const Index = ({ onLogout }: IndexProps) => {
       root.classList.remove("dark");
     }
   }, [isDark]);
+
+  // Load persisted data on mount
+  useEffect(() => {
+    const savedPatients = storage.getJSON<Patient[]>(STORAGE_KEYS.patients, [] as Patient[]);
+    const revivePatients = (savedPatients || []).map((p: any) => ({ ...p, createdAt: p.createdAt ? new Date(p.createdAt) : new Date() }));
+    setPatients(revivePatients);
+
+    const savedPrescriptions = storage.getJSON<Prescription[]>(STORAGE_KEYS.prescriptions, [] as Prescription[]);
+    const revivePrescriptions = (savedPrescriptions || []).map((pr: any) => ({
+      ...pr,
+      startDate: pr.startDate ? new Date(pr.startDate) : new Date(),
+      endDate: pr.endDate ? new Date(pr.endDate) : undefined
+    }));
+    setPrescriptions(revivePrescriptions);
+
+    const savedBloodTests = storage.getJSON<BloodTest[]>(STORAGE_KEYS.bloodTests, [] as BloodTest[]);
+    const reviveBloodTests = (savedBloodTests || []).map((bt: any) => ({
+      ...bt,
+      testDate: bt.testDate ? new Date(bt.testDate) : new Date()
+    }));
+    setBloodTests(reviveBloodTests);
+
+    const savedDrugAdministrations = storage.getJSON<DrugAdministration[]>(STORAGE_KEYS.drugAdministrations, [] as DrugAdministration[]);
+    setDrugAdministrations(savedDrugAdministrations || []);
+
+    const savedSelectedPatientId = storage.getJSON<string | null>(STORAGE_KEYS.selectedPatientId, null);
+    if (savedSelectedPatientId) {
+      const found = revivePatients.find(p => p.id === savedSelectedPatientId) || null;
+      setSelectedPatient(found);
+    }
+  }, []);
+
+  // Persist data when state changes
+  useEffect(() => {
+    storage.setJSON(STORAGE_KEYS.patients, patients);
+  }, [patients]);
+  useEffect(() => {
+    storage.setJSON(STORAGE_KEYS.prescriptions, prescriptions);
+  }, [prescriptions]);
+  useEffect(() => {
+    storage.setJSON(STORAGE_KEYS.bloodTests, bloodTests);
+  }, [bloodTests]);
+  useEffect(() => {
+    storage.setJSON(STORAGE_KEYS.drugAdministrations, drugAdministrations);
+  }, [drugAdministrations]);
+  useEffect(() => {
+    if (selectedPatient?.id) {
+      storage.setJSON(STORAGE_KEYS.selectedPatientId, selectedPatient.id);
+    } else {
+      storage.remove(STORAGE_KEYS.selectedPatientId);
+    }
+  }, [selectedPatient]);
 
   const addPatient = (patient: Patient) => {
     setPatients([...patients, patient]);

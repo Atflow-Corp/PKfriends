@@ -202,6 +202,7 @@ const StepWorkflow = ({
             prescriptions={prescriptions}
             bloodTests={bloodTests}
             selectedPatient={selectedPatient}
+            drugAdministrations={drugAdministrations}
             onPrev={handlePrevStep}
           />
         )}
