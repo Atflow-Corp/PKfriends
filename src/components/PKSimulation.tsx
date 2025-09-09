@@ -17,6 +17,8 @@ interface PKSimulationProps {
   drugAdministrations?: DrugAdministration[];
 }
 
+type ChartPoint = { time: number; predicted: number; observed: number | null };
+
 const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [] }: PKSimulationProps) => {
   const [selectedPatientId, setSelectedPatientId] = useState(selectedPatient?.id || "");
   const [selectedDrug, setSelectedDrug] = useState("");
@@ -33,6 +35,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [intervalAdjust, setIntervalAdjust] = useState("");
   const [tab, setTab] = useState("current");
   const [tdmResult, setTdmResult] = useState<any | null>(null);
+  const [tdmChartData, setTdmChartData] = useState<ChartPoint[]>([]);
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = selectedPatientId 
@@ -129,14 +132,37 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     const renal = getSelectedRenalInfo();
     if (renal) {
       const parsedResult = parseFloat((renal.result || '').toString().replace(/[^0-9.\-]/g, ''));
+      // If result field already has a numeric value, prefer it
       if (!Number.isNaN(parsedResult) && parsedResult > 0) {
         return parsedResult; // assume mL/min
       }
       const scrMgDl = parseFloat((renal.creatinine || '').toString());
+      const isFemale = sex01 === 0;
+      const heightCm = currentPatient?.height ?? 0;
+      const bsa = heightCm > 0 && weightKg > 0 ? Math.sqrt((weightKg * heightCm) / 3600) : 1.73; // Mosteller
+
       if (!Number.isNaN(scrMgDl) && scrMgDl > 0) {
-        // Cockcroft-Gault
+        if (renal.formula === 'cockcroft-gault') {
+          const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
+          return isFemale ? base * 0.85 : base;
+        }
+        if (renal.formula === 'mdrd') {
+          // MDRD (IDMS-traceable, race ignored)
+          const eGFR = 175 * Math.pow(scrMgDl, -1.154) * Math.pow(ageYears, -0.203) * (isFemale ? 0.742 : 1);
+          return eGFR * (bsa / 1.73);
+        }
+        if (renal.formula === 'ckd-epi') {
+          // CKD-EPI 2009 (race ignored)
+          const k = isFemale ? 0.7 : 0.9;
+          const a = isFemale ? -0.329 : -0.411;
+          const minScrK = Math.min(scrMgDl / k, 1);
+          const maxScrK = Math.max(scrMgDl / k, 1);
+          const eGFR = 141 * Math.pow(minScrK, a) * Math.pow(maxScrK, -1.209) * Math.pow(0.993, ageYears) * (isFemale ? 1.018 : 1);
+          return eGFR * (bsa / 1.73);
+        }
+        // Fallback to Cockcroft-Gault if unknown formula label
         const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-        return sex01 === 0 ? base * 0.85 : base;
+        return isFemale ? base * 0.85 : base;
       }
     }
     return 90; // fallback if data unavailable
@@ -171,7 +197,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   };
 
   // TDM API integration
-  const buildTdmRequestBody = () => {
+  const buildTdmRequestBody = (overrides?: { amount?: number; tau?: number }) => {
     const currentPatient = patients.find(p => p.id === selectedPatientId);
     const tdmPrescription = prescriptions.find(p => p.patientId === selectedPatientId);
     if (!currentPatient || !tdmPrescription) return null;
@@ -183,9 +209,14 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     const crcl = computeCRCL(weight, age, sex);
 
     const patientDoses = (drugAdministrations || []).filter(d => d.patientId === selectedPatientId);
-    const tau = computeTauFromAdministrations(patientDoses) ?? undefined;
+    const uiTau = parseFloat((simulationParams.halfLife || '').toString());
+    const tau = overrides?.tau ?? (Number.isFinite(uiTau) && uiTau > 0 ? uiTau : computeTauFromAdministrations(patientDoses) ?? undefined);
     const lastDose = patientDoses.length > 0 ? [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime())[patientDoses.length - 1] : undefined;
-    const amount = lastDose ? lastDose.dose : (Number(simulationParams.dose || 0) || undefined);
+    const parseDose = (val: any) => {
+      const num = parseFloat((val ?? '').toString().replace(/[^0-9.\-]/g, ''));
+      return Number.isFinite(num) && num > 0 ? num : undefined;
+    };
+    const amount = overrides?.amount ?? (lastDose ? lastDose.dose : parseDose(simulationParams.dose));
     const toxi = 1;
     const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(tdmPrescription.tdmTarget, tdmPrescription.tdmTargetValue);
 
@@ -257,7 +288,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       // Add one observation point without DV at tau or 2h if tau unavailable
       dataset.push({
         ID: selectedPatientId,
-        TIME: tau ?? 2.0,
+        TIME: (tau ?? 2.0),
         DV: null,
         AMT: 0,
         RATE: 0,
@@ -272,8 +303,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     }
 
     return {
-      input_tau: tau ?? 12,
-      input_amount: amount ?? 100,
+      input_tau: (tau ?? 12),
+      input_amount: (amount ?? 100),
       input_WT: weight,
       input_CRCL: crcl,
       input_AGE: age,
@@ -285,8 +316,42 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     };
   };
 
-  const callTdmApi = async () => {
-    const body = buildTdmRequestBody();
+  const toChartData = (apiData: any): ChartPoint[] => {
+    try {
+      const series = (apiData?.IPRED_CONC?.length ? apiData.IPRED_CONC : apiData?.PRED_CONC) || [];
+      const base: ChartPoint[] = series.map((p: any) => ({ time: Number(p.time) || 0, predicted: Number(p.IPRED ?? p.PRED ?? p.pred ?? 0) || 0, observed: null }));
+      // Overlay observed points
+      const addObserved = (points: ChartPoint[]) => {
+        const obsList = selectedDrug ? patientBloodTests.filter(b => b.drugName === selectedDrug) : patientBloodTests;
+        for (const b of obsList) {
+          // estimate time relative to first dose anchor used earlier is unknown here; best effort: align by closest time
+          const t = b.timeAfterDose ?? undefined;
+          if (t !== undefined && t !== null) {
+            // Convert ng/mL -> mg/L if needed
+            const dv = b.unit && b.unit.toLowerCase().includes('ng/ml') ? (b.concentration / 1000) : b.concentration;
+            // find nearest index
+            let idx = -1; let minDiff = Infinity;
+            for (let i = 0; i < points.length; i++) {
+              const d = Math.abs(points[i].time - t);
+              if (d < minDiff) { minDiff = d; idx = i; }
+            }
+            if (idx >= 0) {
+              points[idx] = { ...points[idx], observed: dv };
+            } else {
+              points.push({ time: t, predicted: 0, observed: dv });
+            }
+          }
+        }
+        return points.sort((a, b) => a.time - b.time);
+      };
+      return addObserved(base);
+    } catch {
+      return [];
+    }
+  };
+
+  const callTdmApi = async (overrides?: { amount?: number; tau?: number }) => {
+    const body = buildTdmRequestBody(overrides);
     if (!body) return;
     try {
       const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
@@ -299,6 +364,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       }
       const data = await response.json();
       setTdmResult(data);
+      setTdmChartData(toChartData(data));
+      setShowSimulation(true);
       try {
         const key = `tdmfriends:tdmResult:${selectedPatientId}`;
         window.localStorage.setItem(key, JSON.stringify(data));
@@ -379,7 +446,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow flex flex-col items-center">
         <div className="w-full max-w-5xl">
           <PKCharts
-            simulationData={simulationData}
+            simulationData={tdmChartData.length > 0 ? tdmChartData : simulationData}
             showSimulation={true}
             currentPatientName={currentPatient.name}
             selectedDrug={selectedDrug}
@@ -435,11 +502,18 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                 <option value="mg">mg</option>
                 <option value="정">정</option>
               </select>
-              <button className="ml-2 px-3 py-1 bg-blue-600 text-white rounded" onClick={() => setSimulationParams({ ...simulationParams, dose: doseAdjust || simulationParams.dose })}>그래프 출력</button>
+              <button
+                className="ml-2 px-3 py-1 bg-blue-600 text-white rounded"
+                onClick={() => {
+                  const parsedDose = parseFloat((doseAdjust || simulationParams.dose).toString().replace(/[^0-9.\-]/g, ''));
+                  setSimulationParams({ ...simulationParams, dose: doseAdjust || simulationParams.dose });
+                  callTdmApi({ amount: Number.isFinite(parsedDose) && parsedDose > 0 ? parsedDose : undefined });
+                }}
+              >그래프 출력</button>
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                simulationData={generateSimulationData()}
+                simulationData={tdmChartData.length > 0 ? tdmChartData : generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
                 selectedDrug={selectedDrug}
@@ -459,11 +533,18 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                   <option key={val} value={val}>{val}</option>
                 ))}
               </select>
-              <button className="ml-2 px-3 py-1 bg-blue-600 text-white rounded" onClick={() => setSimulationParams({ ...simulationParams, halfLife: intervalAdjust || simulationParams.halfLife })}>그래프 출력</button>
+              <button
+                className="ml-2 px-3 py-1 bg-blue-600 text-white rounded"
+                onClick={() => {
+                  const parsedTau = parseFloat((intervalAdjust || simulationParams.halfLife).toString());
+                  setSimulationParams({ ...simulationParams, halfLife: intervalAdjust || simulationParams.halfLife });
+                  callTdmApi({ tau: Number.isFinite(parsedTau) && parsedTau > 0 ? parsedTau : undefined });
+                }}
+              >그래프 출력</button>
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                simulationData={generateSimulationData()}
+                simulationData={tdmChartData.length > 0 ? tdmChartData : generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
                 selectedDrug={selectedDrug}
