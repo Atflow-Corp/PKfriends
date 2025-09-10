@@ -4,6 +4,7 @@ import PKParameterCard from "./pk/PKParameterCard";
 import PKControlPanel from "./pk/PKControlPanel";
 import PKCharts from "./pk/PKCharts";
 import PKDataSummary from "./pk/PKDataSummary";
+import TDMPatientDetails from "./TDMPatientDetails";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { FileText } from "lucide-react";
@@ -45,9 +46,24 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
     ...patientBloodTests.map(b => b.drugName)
   ]));
 
+  // 사용 가능한 약물이 있고 선택된 약물이 없으면 첫 번째 약물 자동 선택
+  if (availableDrugs.length > 0 && !selectedDrug) {
+    setSelectedDrug(availableDrugs[0]);
+  }
+
   const selectedDrugTests = selectedDrug 
     ? patientBloodTests.filter(b => b.drugName === selectedDrug)
     : [];
+
+  // 선택된 약물의 처방 정보 가져오기
+  const selectedPrescription = selectedDrug 
+    ? patientPrescriptions.find(p => p.drugName === selectedDrug)
+    : null;
+
+  // 혈청 크레아티닌 정보 가져오기 (가장 최근 검사 결과)
+  const latestBloodTest = patientBloodTests.length > 0 
+    ? patientBloodTests.sort((a, b) => new Date(b.testDate).getTime() - new Date(a.testDate).getTime())[0]
+    : null;
 
   // Generate PK simulation data
   const generateSimulationData = () => {
@@ -137,6 +153,22 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
         <pre className="text-sm whitespace-pre-line text-slate-700 dark:text-slate-200">{pkParameterText}</pre>
       </div>
 
+      {/* TDM Summary 섹션 */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6">
+        <div className="font-bold text-lg mb-3">TDM Summary</div>
+        <div className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+          {/* 추후 분석엔진을 통해 전달되는 분석의견을 노출합니다. */}
+          현 용법으로 Steady State까지 ACUC는 340mg*h/L으로 투약 6시간 이후 약물 농도가 치료 범위 이하로 떨어질 수 있습니다. 증량 및 투약 간격 조절이 필요할 수 있습니다.
+        </div>
+      </div>
+
+      {/* 환자 TDM 상세 정보 섹션 */}
+      <TDMPatientDetails 
+        currentPatient={currentPatient}
+        selectedPrescription={selectedPrescription}
+        latestBloodTest={latestBloodTest}
+      />
+
       {/* PK Simulation 그래프 (가로 전체) */}
       <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow flex flex-col items-center">
         <div className="w-full max-w-5xl">
@@ -166,7 +198,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                selectedDrugTests={[]}
                 simulationData={simulationData}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
@@ -202,7 +233,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                selectedDrugTests={[]}
                 simulationData={generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
@@ -227,7 +257,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                selectedDrugTests={[]}
                 simulationData={generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
