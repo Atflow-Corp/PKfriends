@@ -170,15 +170,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
       />
 
       {/* PK Simulation 그래프 (가로 전체) */}
-      <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow flex flex-col items-center">
-        <div className="w-full max-w-5xl">
-          <PKCharts
-            simulationData={simulationData}
-            showSimulation={true}
-            currentPatientName={currentPatient.name}
-            selectedDrug={selectedDrug}
-          />
-        </div>
+      <div className="w-full">
+        <PKCharts
+          simulationData={simulationData}
+          showSimulation={true}
+          currentPatientName={currentPatient.name}
+          selectedDrug={selectedDrug}
+        />
       </div>
 
       {/* 용법 탐색 영역 (그래프 넓게) */}
@@ -196,7 +194,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
               현재 용법을 유지할 경우, 투약 6시간 이후 약물 농도가 치료 범위 아래로 떨어질 수 있습니다.<br />
               용량 또는 투여 간격 조정이 필요할 수 있습니다.
             </div>
-            <div className="w-full max-w-5xl mx-auto">
+            <div className="w-full">
               <PKCharts
                 simulationData={simulationData}
                 showSimulation={true}
@@ -231,7 +229,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
               </select>
               <button className="ml-2 px-3 py-1 bg-blue-600 text-white rounded" onClick={() => setSimulationParams({ ...simulationParams, dose: doseAdjust || simulationParams.dose })}>그래프 출력</button>
             </div>
-            <div className="w-full max-w-5xl mx-auto">
+            <div className="w-full">
               <PKCharts
                 simulationData={generateSimulationData()}
                 showSimulation={true}
@@ -255,7 +253,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient }: 
               </select>
               <button className="ml-2 px-3 py-1 bg-blue-600 text-white rounded" onClick={() => setSimulationParams({ ...simulationParams, halfLife: intervalAdjust || simulationParams.halfLife })}>그래프 출력</button>
             </div>
-            <div className="w-full max-w-5xl mx-auto">
+            <div className="w-full">
               <PKCharts
                 simulationData={generateSimulationData()}
                 showSimulation={true}
