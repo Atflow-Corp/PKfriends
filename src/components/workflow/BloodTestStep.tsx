@@ -9,6 +9,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Patient, BloodTest, Prescription } from "@/pages/Index";
 import { FlaskConical, ArrowRight, ArrowLeft, CheckCircle, Plus, X } from "lucide-react";
 import dayjs from "dayjs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface BloodTestStepProps {
   patients: Patient[];
@@ -62,6 +71,9 @@ const BloodTestStep = ({
     unit: "ng/mL",
     notes: ""
   });
+  
+  // 모달 상태 추가
+  const [showAlertModal, setShowAlertModal] = useState(false);
 
   const patientBloodTests = selectedPatient 
     ? bloodTests.filter(b => b.patientId === selectedPatient.id)
@@ -75,10 +87,26 @@ const BloodTestStep = ({
   const handleAddRenal = () => {
     if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) return;
     
+    // 투석 여부가 Y일 때 신 대체요법 입력 체크
+    if (renalForm.dialysis === "Y" && !renalForm.renalReplacement.trim()) {
+      alert("신 대체요법을 입력해주세요.");
+      return;
+    }
+    
+    // 신기능 데이터 추가 조건 체크
+    if (selectedPatient && selectedPatient.age > 20 && renalInfoList.length > 0) {
+      setShowAlertModal(true);
+      return;
+    }
+    // 조건에 부합하면 모달 띄우기 (데이터 추가 후 실행)
+   if (renalForm.dialysis === "Y" && renalForm.renalReplacement.toUpperCase() === "CRRT") {
+    setShowAlertModal(true);
+    }
+
     const newRenalInfo: RenalInfo = {
       id: Date.now().toString(),
       ...renalForm,
-      isSelected: false
+      isSelected: true  // 새로 추가된 데이터는 자동으로 선택
     };
     
     setRenalInfoList([...renalInfoList, newRenalInfo]);
@@ -403,6 +431,53 @@ const BloodTestStep = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* 모달 얼럿 컴포넌트 */}
+      {selectedPatient && (
+        <AlertDialog open={showAlertModal} onOpenChange={setShowAlertModal}>
+          <AlertDialogContent className="transform scale-[1.5]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                 <div className="text-center">혈중 약물 농도 측정 가이드</div>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                <div className="text-center">
+                  {selectedPatient.name} 환자는 고위험군 환자입니다.
+                  <br />
+                  가이드에 맞게 측정되었는지 확인 후 혈중 약물 농도를 입력해 주세요.
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+                        {/* 체크 포인트 및 가이드 박스 */}
+            <div className="flex items-center justify-center space-x-2 mt-4">
+              {/* Check point 박스 */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-accent w-1/2">
+                <h2 className="font-semibold text-lg text-center mb-2">Check point</h2>
+                <ul className="list-disc list-inside text-sm space-y-1">
+                  <li className="text-gray-700">투석 여부: Y</li>
+                  <li className="text-gray-700">신 대체요법: CRRT</li>
+                </ul>
+              </div>
+              <ArrowRight className="h-6 w-6 text-gray-500" />
+              {/* Guide 박스 */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-accent w-1/2">
+                <h2 className="font-semibold text-lg text-center mb-2">Guide</h2>
+                <ul className="text-sm space-y-1 text-center">
+                  <li className="text-gray-700">투약 2시간 후 최고 흡수 농도 측정 권고(C2)</li>
+                </ul>
+              </div>
+            </div>
+            <AlertDialogFooter>
+                <div className="flex justify-center w-full">
+                  <AlertDialogAction onClick={() => setShowAlertModal(false)} className="w-[calc(100%)]">
+                  확인
+                  </AlertDialogAction>
+                </div>
+
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 };
