@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import PKParameterCard from "./pk/PKParameterCard";
 import PKControlPanel from "./pk/PKControlPanel";
@@ -35,7 +35,11 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [intervalAdjust, setIntervalAdjust] = useState("");
   const [tab, setTab] = useState("current");
   const [tdmResult, setTdmResult] = useState<any | null>(null);
-  const [tdmChartData, setTdmChartData] = useState<ChartPoint[]>([]);
+  const [tdmChartDataMain, setTdmChartDataMain] = useState<ChartPoint[]>([]);
+  const [tdmChartDataDose, setTdmChartDataDose] = useState<ChartPoint[]>([]);
+  const [tdmChartDataInterval, setTdmChartDataInterval] = useState<ChartPoint[]>([]);
+  const [tdmResultDose, setTdmResultDose] = useState<any | null>(null);
+  const [tdmResultInterval, setTdmResultInterval] = useState<any | null>(null);
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = selectedPatientId 
@@ -321,8 +325,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       const series = (apiData?.IPRED_CONC?.length ? apiData.IPRED_CONC : apiData?.PRED_CONC) || [];
       const base: ChartPoint[] = series.map((p: any) => ({
         time: Number(p.time) || 0,
-        // Assume API returns mg/L; convert to ng/mL for chart label consistency if needed
-        predicted: Number(p.IPRED ?? p.PRED ?? p.pred ?? 0) || 0,
+        // API 예측 단위가 mg/L라고 가정하고 ng/mL로 변환 (×1000)
+        predicted: ((Number(p.IPRED ?? p.PRED ?? p.pred ?? 0) || 0) * 1000),
         observed: null
       }));
       // Overlay observed points
@@ -368,7 +372,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       }
       const data = await response.json();
       setTdmResult(data);
-      setTdmChartData(toChartData(data));
+      setTdmChartDataMain(toChartData(data));
       setShowSimulation(true);
       try {
         const key = `tdmfriends:tdmResult:${selectedPatientId}`;
@@ -378,6 +382,60 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       console.error(err);
     }
   };
+
+  // Independent calls for per-tab simulations
+  const callTdmApiDose = async (overrides?: { amount?: number }) => {
+    const body = buildTdmRequestBody({ amount: overrides?.amount, tau: undefined });
+    if (!body) return;
+    try {
+      const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
+      const data = await response.json();
+      setTdmResultDose(data);
+      setTdmChartDataDose(toChartData(data));
+    } catch (e) { console.error(e); }
+  };
+
+  const callTdmApiInterval = async (overrides?: { tau?: number }) => {
+    const body = buildTdmRequestBody({ amount: undefined, tau: overrides?.tau });
+    if (!body) return;
+    try {
+      const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
+      const data = await response.json();
+      setTdmResultInterval(data);
+      setTdmChartDataInterval(toChartData(data));
+    } catch (e) { console.error(e); }
+  };
+
+  // Load persisted TDM result upon entering Let's TDM
+  useEffect(() => {
+    if (!selectedPatientId) return;
+    try {
+      const raw = window.localStorage.getItem(`tdmfriends:tdmResult:${selectedPatientId}`);
+      if (raw) {
+        const data = JSON.parse(raw);
+        setTdmResult(data);
+        setTdmChartDataMain(toChartData(data));
+        setShowSimulation(true);
+      } else {
+        setTdmChartDataMain([]);
+      }
+    } catch {}
+    // reset per-tab results when patient changes
+    setTdmResultDose(null);
+    setTdmResultInterval(null);
+    setTdmChartDataDose([]);
+    setTdmChartDataInterval([]);
+  }, [selectedPatientId]);
 
   const getTargetBand = (): { min?: number; max?: number } => {
     if (tdmResult) {
@@ -440,7 +498,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow flex flex-col items-center">
         <div className="w-full max-w-5xl">
           <PKCharts
-            simulationData={tdmChartData.length > 0 ? tdmChartData : simulationData}
+            simulationData={tdmChartDataMain.length > 0 ? tdmChartDataMain : simulationData}
             showSimulation={true}
             currentPatientName={currentPatient.name}
             selectedDrug={selectedDrug}
@@ -467,10 +525,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                simulationData={simulationData}
+                simulationData={tdmChartDataMain.length > 0 ? tdmChartDataMain : simulationData}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
                 selectedDrug={selectedDrug}
+                targetMin={getTargetBand().min}
+                targetMax={getTargetBand().max}
               />
             </div>
           </TabsContent>
@@ -503,16 +563,18 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                 onClick={() => {
                   const parsedDose = parseFloat((doseAdjust || simulationParams.dose).toString().replace(/[^0-9.\-]/g, ''));
                   setSimulationParams({ ...simulationParams, dose: doseAdjust || simulationParams.dose });
-                  callTdmApi({ amount: Number.isFinite(parsedDose) && parsedDose > 0 ? parsedDose : undefined });
+                  callTdmApiDose({ amount: Number.isFinite(parsedDose) && parsedDose > 0 ? parsedDose : undefined });
                 }}
               >그래프 출력</button>
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                simulationData={tdmChartData.length > 0 ? tdmChartData : generateSimulationData()}
+                simulationData={tdmChartDataDose.length > 0 ? tdmChartDataDose : generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
                 selectedDrug={selectedDrug}
+                targetMin={(tdmResultDose && typeof tdmResultDose.CTROUGH_after === 'number') ? tdmResultDose.CTROUGH_after : getTargetBand().min}
+                targetMax={(tdmResultDose && typeof tdmResultDose.CMAX_after === 'number') ? tdmResultDose.CMAX_after : getTargetBand().max}
               />
             </div>
           </TabsContent>
@@ -534,16 +596,18 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                 onClick={() => {
                   const parsedTau = parseFloat((intervalAdjust || simulationParams.halfLife).toString());
                   setSimulationParams({ ...simulationParams, halfLife: intervalAdjust || simulationParams.halfLife });
-                  callTdmApi({ tau: Number.isFinite(parsedTau) && parsedTau > 0 ? parsedTau : undefined });
+                  callTdmApiInterval({ tau: Number.isFinite(parsedTau) && parsedTau > 0 ? parsedTau : undefined });
                 }}
               >그래프 출력</button>
             </div>
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
-                simulationData={tdmChartData.length > 0 ? tdmChartData : generateSimulationData()}
+                simulationData={tdmChartDataInterval.length > 0 ? tdmChartDataInterval : generateSimulationData()}
                 showSimulation={true}
                 currentPatientName={currentPatient.name}
                 selectedDrug={selectedDrug}
+                targetMin={(tdmResultInterval && typeof tdmResultInterval.CTROUGH_after === 'number') ? tdmResultInterval.CTROUGH_after : getTargetBand().min}
+                targetMax={(tdmResultInterval && typeof tdmResultInterval.CMAX_after === 'number') ? tdmResultInterval.CMAX_after : getTargetBand().max}
               />
             </div>
           </TabsContent>
