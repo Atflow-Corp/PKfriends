@@ -18,7 +18,10 @@ interface StepWorkflowProps {
   setSelectedPatient: (patient: Patient | null) => void;
   onAddPatient: (patient: Patient) => void;
   onAddPrescription: (prescription: Prescription) => void;
+  setPrescriptions: (prescriptions: Prescription[]) => void;
   onAddBloodTest: (bloodTest: BloodTest) => void;
+  onDeleteBloodTest: (bloodTestId: string) => void;
+  setBloodTests: (bloodTests: BloodTest[]) => void;
   onAddDrugAdministration: (drugAdministration: DrugAdministration) => void;
   drugAdministrations: DrugAdministration[];
   setDrugAdministrations: (drugAdministrations: DrugAdministration[]) => void;
@@ -32,7 +35,10 @@ const StepWorkflow = ({
   setSelectedPatient,
   onAddPatient,
   onAddPrescription,
+  setPrescriptions,
   onAddBloodTest,
+  onDeleteBloodTest,
+  setBloodTests,
   onAddDrugAdministration,
   drugAdministrations,
   setDrugAdministrations
@@ -80,6 +86,21 @@ const StepWorkflow = ({
   const handlePrevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // 후속 단계 데이터 초기화 함수
+  const clearLaterStepData = () => {
+    if (selectedPatient) {
+      // 혈중 약물 농도 데이터 초기화
+      const filteredBloodTests = bloodTests.filter(test => test.patientId !== selectedPatient.id);
+      setBloodTests(filteredBloodTests);
+      
+      // 투약기록 데이터 초기화
+      const filteredDrugAdministrations = drugAdministrations.filter(admin => admin.patientId !== selectedPatient.id);
+      setDrugAdministrations(filteredDrugAdministrations);
+      
+      console.log("Cleared later step data for patient:", selectedPatient.id);
     }
   };
 
@@ -162,10 +183,20 @@ const StepWorkflow = ({
             patients={patients}
             prescriptions={prescriptions}
             selectedPatient={selectedPatient}
-            onAddPrescription={onAddPrescription}
+            onAddPrescription={(prescription, updatedPrescriptions) => {
+              if (prescription) {
+                onAddPrescription(prescription);
+              } else {
+                // 삭제의 경우 - updatedPrescriptions를 사용하여 prescriptions 상태 업데이트
+                setPrescriptions(updatedPrescriptions);
+              }
+            }}
             onNext={handleNextStep}
             onPrev={handlePrevStep}
             isCompleted={isStepCompleted(2)}
+            bloodTests={bloodTests}
+            drugAdministrations={drugAdministrations}
+            onClearLaterStepData={clearLaterStepData}
           />
         )}
         
@@ -175,6 +206,7 @@ const StepWorkflow = ({
             bloodTests={bloodTests}
             selectedPatient={selectedPatient}
             onAddBloodTest={onAddBloodTest}
+            onDeleteBloodTest={onDeleteBloodTest}
             onNext={handleNextStep}
             onPrev={handlePrevStep}
             isCompleted={isStepCompleted(3)}

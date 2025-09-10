@@ -103,6 +103,10 @@ const Index = ({ onLogout }: IndexProps) => {
     setBloodTests([...bloodTests, bloodTest]);
   };
 
+  const deleteBloodTest = (bloodTestId: string) => {
+    setBloodTests(bloodTests.filter(test => test.id !== bloodTestId));
+  };
+
   const addDrugAdministration = (drugAdministration: DrugAdministration) => {
     setDrugAdministrations([...drugAdministrations, drugAdministration]);
   };
@@ -198,7 +202,10 @@ const Index = ({ onLogout }: IndexProps) => {
               setSelectedPatient={setSelectedPatient}
               onAddPatient={addPatient}
               onAddPrescription={addPrescription}
+              setPrescriptions={setPrescriptions}
               onAddBloodTest={addBloodTest}
+              onDeleteBloodTest={deleteBloodTest}
+              setBloodTests={setBloodTests}
               onAddDrugAdministration={addDrugAdministration}
               drugAdministrations={drugAdministrations}
               setDrugAdministrations={setDrugAdministrations}

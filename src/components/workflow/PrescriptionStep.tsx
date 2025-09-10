@@ -16,6 +16,9 @@ interface PrescriptionStepProps {
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
+  bloodTests: any[];
+  drugAdministrations: any[];
+  onClearLaterStepData: () => void;
 }
 
 const TDM_DRUGS = [
@@ -48,7 +51,10 @@ const PrescriptionStep = ({
   onAddPrescription,
   onNext,
   onPrev,
-  isCompleted
+  isCompleted,
+  bloodTests,
+  drugAdministrations,
+  onClearLaterStepData
 }: PrescriptionStepProps) => {
   const [formData, setFormData] = useState({
     drugName: "",
@@ -61,13 +67,27 @@ const PrescriptionStep = ({
   const patientPrescriptions = selectedPatient 
     ? prescriptions.filter(p => p.patientId === selectedPatient.id)
     : [];
-  const currentPrescription = patientPrescriptions[0];
 
   const selectedDrug = TDM_DRUGS.find(d => d.name === formData.drugName);
   const tdmTargets = selectedDrug ? selectedDrug.targets : [];
   const additionalInfoOptions = selectedDrug ? selectedDrug.additionalInfo : [];
 
   const handleDrugChange = (value: string) => {
+    // 기존 약물명과 다른 경우 후속 단계 데이터 존재 여부 확인
+    if (patientPrescriptions.length > 0 && patientPrescriptions[0].drugName !== value) {
+      const hasLaterData = checkLaterStepData();
+      if (hasLaterData) {
+        const confirmed = window.confirm(
+          "약물명을 변경하면 투약기록 데이터가 초기화됩니다.\n계속하시겠습니까?"
+        );
+        if (!confirmed) {
+          return; // 변경 취소
+        }
+        // 사용자가 확인한 경우 후속 단계 데이터 초기화
+        onClearLaterStepData();
+      }
+    }
+
     const drug = TDM_DRUGS.find(d => d.name === value);
     setFormData({
       drugName: value,
@@ -76,6 +96,16 @@ const PrescriptionStep = ({
       tdmTarget: "Trough Concentration",
       tdmTargetValue: drug?.targets.find(t => t.type === "Trough Concentration")?.value || ""
     });
+  };
+
+  // 후속 단계(3단계 이상)에 데이터가 있는지 확인
+  const checkLaterStepData = () => {
+    if (!selectedPatient) return false;
+    
+    const hasBloodTests = bloodTests.some(test => test.patientId === selectedPatient.id);
+    const hasDrugAdministrations = drugAdministrations.some(admin => admin.patientId === selectedPatient.id);
+    
+    return hasBloodTests || hasDrugAdministrations;
   };
 
   const handleTargetChange = (value: string) => {
@@ -117,7 +147,7 @@ const PrescriptionStep = ({
 
   const handleDelete = (id: string) => {
     if (!selectedPatient) return;
-    const filtered = prescriptions.filter(p => p.id !== id || p.patientId !== selectedPatient.id);
+    const filtered = prescriptions.filter(p => !(p.id === id && p.patientId === selectedPatient.id));
     onAddPrescription(undefined, filtered);
   };
 
@@ -168,15 +198,15 @@ const PrescriptionStep = ({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {currentPrescription && (
-                        <TableRow key={currentPrescription.id}>
-                          <TableCell className="font-medium">{currentPrescription.drugName}</TableCell>
-                          <TableCell>{currentPrescription.indication || "-"}</TableCell>
+                      {patientPrescriptions.map((prescription) => (
+                        <TableRow key={prescription.id}>
+                          <TableCell className="font-medium">{prescription.drugName}</TableCell>
+                          <TableCell>{prescription.indication || "-"}</TableCell>
                           {/* <TableCell>{formData.additionalInfo || "-"}</TableCell> - 사용 여부 미정으로 비노출 */}
-                          <TableCell>{currentPrescription.tdmTarget || "-"}</TableCell>
-                          <TableCell>{currentPrescription.tdmTargetValue || "-"}</TableCell>
+                          <TableCell>{prescription.tdmTarget || "-"}</TableCell>
+                          <TableCell>{prescription.tdmTargetValue || "-"}</TableCell>
                           <TableCell>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(currentPrescription.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(prescription.id)}>
                               <span className="sr-only">삭제</span>
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -184,7 +214,7 @@ const PrescriptionStep = ({
                             </Button>
                           </TableCell>
                         </TableRow>
-                      )}
+                      ))}
                     </TableBody>
                   </Table>
                 </div>

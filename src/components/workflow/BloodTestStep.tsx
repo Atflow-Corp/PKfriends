@@ -24,6 +24,7 @@ interface BloodTestStepProps {
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
   onAddBloodTest: (bloodTest: BloodTest) => void;
+  onDeleteBloodTest: (bloodTestId: string) => void;
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
@@ -47,6 +48,7 @@ const BloodTestStep = ({
   bloodTests,
   selectedPatient,
   onAddBloodTest,
+  onDeleteBloodTest,
   onNext,
   onPrev,
   isCompleted,
@@ -199,7 +201,7 @@ const BloodTestStep = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* 신기능 데이터 테이블 */}
+          {/* 신기능 데이터 */}
           <Card>
             <CardHeader>
               <CardTitle>신기능 데이터 ({renalInfoList.length + 1})</CardTitle>
@@ -207,7 +209,8 @@ const BloodTestStep = ({
                 체크박스를 선택하면 해당 신기능 데이터가 시뮬레이션에 반영됩니다.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
+              {/* 신기능 데이터 테이블 */}
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -270,91 +273,87 @@ const BloodTestStep = ({
                   </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* 신기능 입력 폼 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                신기능 데이터 추가
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="creatinine">혈청 크레아티닌 (mg/dL) *</Label>
-                    <Input
-                      id="creatinine"
-                      type="number"
-                      step="0.01"
-                      value={renalForm.creatinine}
-                      onChange={e => setRenalForm({ ...renalForm, creatinine: e.target.value })}
-                      placeholder="예: 1.2"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="renalDate">검사일 *</Label>
-                    <Input
-                      id="renalDate"
-                      type="date"
-                      value={renalForm.date}
-                      max={today}
-                      onChange={e => setRenalForm({ ...renalForm, date: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="renalFormula">계산식 *</Label>
-                    <Select value={renalForm.formula} onValueChange={v => setRenalForm({ ...renalForm, formula: v })} required>
-                      <SelectTrigger><SelectValue placeholder="계산식 선택" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cockcroft-gault">Cockcroft-Gault</SelectItem>
-                        <SelectItem value="mdrd">MDRD</SelectItem>
-                        <SelectItem value="ckd-epi">CKD-EPI</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              {/* 신기능 데이터 추가 폼 */}
+              <div className="border-t pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Plus className="h-4 w-4" />
+                  <h3 className="text-lg font-semibold">신기능 데이터 추가</h3>
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="result">계산 결과</Label>
-                    <Input
-                      id="result"
-                      value={renalForm.result}
-                      onChange={e => setRenalForm({ ...renalForm, result: e.target.value })}
-                      placeholder="예: 45.2 mL/min"
-                    />
+                <form className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="creatinine">혈청 크레아티닌 (mg/dL) *</Label>
+                      <Input
+                        id="creatinine"
+                        type="number"
+                        step="0.01"
+                        value={renalForm.creatinine}
+                        onChange={e => setRenalForm({ ...renalForm, creatinine: e.target.value })}
+                        placeholder="예: 1.2"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="renalDate">검사일 *</Label>
+                      <Input
+                        id="renalDate"
+                        type="date"
+                        value={renalForm.date}
+                        max={today}
+                        onChange={e => setRenalForm({ ...renalForm, date: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="renalFormula">계산식 *</Label>
+                      <Select value={renalForm.formula} onValueChange={v => setRenalForm({ ...renalForm, formula: v })} required>
+                        <SelectTrigger><SelectValue placeholder="계산식 선택" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cockcroft-gault">Cockcroft-Gault</SelectItem>
+                          <SelectItem value="mdrd">MDRD</SelectItem>
+                          <SelectItem value="ckd-epi">CKD-EPI</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="dialysis">투석 여부 *</Label>
-                    <Select value={renalForm.dialysis} onValueChange={v => setRenalForm({ ...renalForm, dialysis: v as "Y" | "N" })} required>
-                      <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="N">N</SelectItem>
-                        <SelectItem value="Y">Y</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="result">계산 결과</Label>
+                      <Input
+                        id="result"
+                        value={renalForm.result}
+                        onChange={e => setRenalForm({ ...renalForm, result: e.target.value })}
+                        placeholder="예: 45.2 mL/min"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="dialysis">투석 여부 *</Label>
+                      <Select value={renalForm.dialysis} onValueChange={v => setRenalForm({ ...renalForm, dialysis: v as "Y" | "N" })} required>
+                        <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="N">N</SelectItem>
+                          <SelectItem value="Y">Y</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="renalReplacement">신 대체요법</Label>
+                      <Input
+                        id="renalReplacement"
+                        value={renalForm.renalReplacement}
+                        onChange={e => setRenalForm({ ...renalForm, renalReplacement: e.target.value })}
+                        placeholder="예: CRRT, HD"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="renalReplacement">신 대체요법</Label>
-                    <Input
-                      id="renalReplacement"
-                      value={renalForm.renalReplacement}
-                      onChange={e => setRenalForm({ ...renalForm, renalReplacement: e.target.value })}
-                      placeholder="예: CRRT, HD"
-                    />
-                  </div>
-                </div>
-                
-                <Button type="button" onClick={handleAddRenal} className="w-full">
-                  신기능 데이터 추가
-                </Button>
-              </form>
+                  
+                  <Button type="button" onClick={handleAddRenal} className="w-full">
+                    신기능 데이터 추가
+                  </Button>
+                </form>
+              </div>
             </CardContent>
           </Card>
 
@@ -398,6 +397,7 @@ const BloodTestStep = ({
                         <TableHead>시간</TableHead>
                         <TableHead>농도 (ng/mL)</TableHead>
                         <TableHead>비고</TableHead>
+                        <TableHead className="w-16">삭제</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -407,6 +407,15 @@ const BloodTestStep = ({
                           <TableCell>{test.testDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
                           <TableCell>{test.concentration} {test.unit}</TableCell>
                           <TableCell>{test.notes || "-"}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => onDeleteBloodTest(test.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
