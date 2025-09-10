@@ -161,7 +161,7 @@ const PrescriptionStep = ({
                       <TableRow>
                         <TableHead>약물명</TableHead>
                         <TableHead>적응증</TableHead>
-                        <TableHead>추가정보</TableHead>
+                        {/* <TableHead>추가정보</TableHead> - 사용 여부 미정으로 비노출 */}
                         <TableHead>TDM 목표</TableHead>
                         <TableHead>TDM 목표치</TableHead>
                         <TableHead>삭제</TableHead>
@@ -172,7 +172,7 @@ const PrescriptionStep = ({
                         <TableRow key={currentPrescription.id}>
                           <TableCell className="font-medium">{currentPrescription.drugName}</TableCell>
                           <TableCell>{currentPrescription.indication || "-"}</TableCell>
-                          <TableCell>{formData.additionalInfo || "-"}</TableCell>
+                          {/* <TableCell>{formData.additionalInfo || "-"}</TableCell> - 사용 여부 미정으로 비노출 */}
                           <TableCell>{currentPrescription.tdmTarget || "-"}</TableCell>
                           <TableCell>{currentPrescription.tdmTargetValue || "-"}</TableCell>
                           <TableCell>
@@ -229,6 +229,7 @@ const PrescriptionStep = ({
                       </SelectContent>
                     </Select>
                   </div>
+                  {/* 추가정보 선택 드롭다운 - 사용 여부 미정으로 비노출
                   <div>
                     <Label htmlFor="additionalInfo">추가정보</Label>
                     <Select value={formData.additionalInfo} onValueChange={(value) => setFormData(prev => ({ ...prev, additionalInfo: value }))} disabled={!formData.drugName}>
@@ -242,6 +243,7 @@ const PrescriptionStep = ({
                       </SelectContent>
                     </Select>
                   </div>
+                  */}
                   <div>
                     <Label htmlFor="tdmTarget">TDM 목표 *</Label>
                     <Select value={formData.tdmTarget} onValueChange={handleTargetChange} required disabled={!formData.drugName}>
