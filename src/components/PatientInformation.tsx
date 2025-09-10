@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef, useImperativeHandle } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,12 @@ interface PatientInformationProps {
   showHeader?: boolean;
 }
 
+export interface PatientInformationRef {
+  openRegistrationModal: () => void;
+  openEditModalForPatient: (patient: Patient) => void;
+  openViewModalForPatient: (patient: Patient) => void;
+}
+
 interface PatientFormData {
   patientNo: string;
   name: string;
@@ -33,7 +39,7 @@ interface PatientFormData {
   allergies: string;
 }
 
-const PatientInformation = ({ 
+const PatientInformation = forwardRef<PatientInformationRef, PatientInformationProps>(({ 
   onAddPatient, 
   onUpdatePatient, 
   onDeletePatient,
@@ -41,7 +47,7 @@ const PatientInformation = ({
   selectedPatient, 
   setSelectedPatient,
   showHeader = true
-}: PatientInformationProps) => {
+}, ref) => {
   const [formData, setFormData] = useState<PatientFormData>({
     patientNo: "",
     name: "",
@@ -159,6 +165,20 @@ const PatientInformation = ({
     setIsModalOpen(true);
   };
 
+  // 외부에서 사용할 수 있도록 함수들을 export
+  const openRegistrationModal = () => {
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditModalForPatient = (patient: Patient) => {
+    openEditModal(patient);
+  };
+
+  const openViewModalForPatient = (patient: Patient) => {
+    openViewModal(patient);
+  };
+
   // 생년월일 변경 시 나이 자동 계산
   const handleBirthChange = (value: string) => {
     setFormData((prev) => {
@@ -194,6 +214,13 @@ const PatientInformation = ({
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     patient.id.includes(searchTerm)
   );
+
+  // ref를 통해 외부에서 호출할 수 있는 함수들 노출
+  useImperativeHandle(ref, () => ({
+    openRegistrationModal,
+    openEditModalForPatient,
+    openViewModalForPatient
+  }));
 
   return (
     <div className="space-y-6">
@@ -504,6 +531,6 @@ const PatientInformation = ({
       </Card>
     </div>
   );
-};
+});
 
 export default PatientInformation;
