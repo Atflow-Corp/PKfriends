@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
-import { Button } from "@/components/ui/button";
 
 interface SimulationDataPoint {
   time: number;
@@ -9,19 +8,21 @@ interface SimulationDataPoint {
   controlGroup?: number;
 }
 
-interface PKChartsProps {
+interface DosageChartProps {
   simulationData: SimulationDataPoint[];
   showSimulation: boolean;
   currentPatientName?: string;
   selectedDrug?: string;
+  chartTitle?: string;
 }
 
-const PKCharts = ({
+const DosageChart = ({
   simulationData,
   showSimulation,
   currentPatientName,
-  selectedDrug
-}: PKChartsProps) => {
+  selectedDrug,
+  chartTitle = "용법 조정 시뮬레이션"
+}: DosageChartProps) => {
   // 72시간까지 샘플 데이터 생성 (실제로는 props에서 받아야 함)
   const generate72HourData = () => {
     const data = [];
@@ -82,70 +83,8 @@ const PKCharts = ({
 
   return (
     <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow">
-      {/* TDM Simulator 헤더 */}
-      <div className="text-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">TDM Simulator</h1>
-        <p className="text-gray-600 dark:text-gray-300">
-          현 용법의 예측 결과를 확인하고 시뮬레이션을 추가해보세요.
-        </p>
-      </div>
 
-      {/* 요약 카드 섹션 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* 최근 혈중 약물 농도 */}
-        <Card className="bg-white border-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">최근 혈중 약물 농도</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{recentAUC} mg*h/L</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{recentMax} mg/L</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{recentTrough} mg/L</span>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* 예측 약물 농도 */}
-        <Card className="bg-white border-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">예측 약물 농도</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{predictedAUC} mg*h/L</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{predictedMax} mg/L</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{predictedTrough} mg/L</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 범례 */}
-      <div className="flex justify-center gap-6 mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-0.5 bg-orange-500"></div>
-          <span className="text-sm text-gray-600">일반 대조군 결과</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}의 현용법</span>
-        </div>
-      </div>
 
       {/* 메인 그래프 - 가로 스크롤 가능 */}
       <div className="mb-6">
@@ -179,26 +118,26 @@ const PKCharts = ({
                 <Tooltip 
                   formatter={(value: any, name: string) => [
                     typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', 
-                    name === 'predicted' ? '환자 현용법' : name === 'controlGroup' ? '일반 대조군' : '실제값'
+                    name === 'predicted' ? '투약시간 조정시' : name === 'controlGroup' ? '용량조정시' : '실제값'
                   ]}
                   labelFormatter={(value) => `Time: ${value} hours`}
                 />
-                {/* 일반 대조군 결과 (주황색) */}
+                {/* 용량조정시 (핑크색) */}
                 <Line 
                   type="monotone" 
                   dataKey="controlGroup" 
-                  stroke="#f97316" 
+                  stroke="#ec4899" 
                   strokeWidth={2}
-                  name="일반 대조군"
+                  name="용량조정시"
                   dot={false}
                 />
-                {/* 환자 현용법 (파란색) */}
+                {/* 투약시간 조정시 (시안색) */}
                 <Line 
                   type="monotone" 
                   dataKey="predicted" 
-                  stroke="#3b82f6" 
+                  stroke="#06b6d4" 
                   strokeWidth={2}
-                  name="환자 현용법"
+                  name="투약시간 조정시"
                   dot={false}
                 />
                 {/* 실제 측정값 (빨간 점) */}
@@ -216,23 +155,8 @@ const PKCharts = ({
         </div>
       </div>
 
-
-
-      {/* 그래프 해석 가이드 */}
-      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-gray-800 dark:text-white mb-3">그래프 해석</h3>
-        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를, 점선은 평균 약물 농도를 의미합니다.</p>
-          <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
-          <p><strong>(3)</strong> 파란 range는 TDM 목표치의 범위로 참고할 수 있습니다.</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            * 일반적으로 목표치를 Trough로 했을 때 (1)과 (2)가 (3)의 range 안에 모두 있다면 현 용법이 적절하다는 의미로 해석될 수 있습니다.
-              </p>
-            </div>
-          </div>
-
     </div>
   );
 };
 
-export default PKCharts;
+export default DosageChart;
