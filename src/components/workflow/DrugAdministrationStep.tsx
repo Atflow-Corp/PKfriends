@@ -15,7 +15,7 @@ interface DrugAdministrationStepProps {
   prescriptions: Prescription[];
   selectedPatient: Patient | null;
   onAddDrugAdministration: (drugAdministration: DrugAdministration) => void;
-  setDrugAdministrations: (records: any[]) => void;
+  setDrugAdministrations: (records: unknown[]) => void;
   drugAdministrations: DrugAdministration[];
   onNext: () => void;
   onPrev: () => void;
@@ -50,7 +50,7 @@ const DrugAdministrationStep = ({
   // 날짜 오늘 이후 선택 불가
   const today = dayjs().format("YYYY-MM-DD");
 
-  const handleChange = (key: keyof DrugAdministration, value: any) => {
+  const handleChange = (key: keyof DrugAdministration, value: unknown) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 

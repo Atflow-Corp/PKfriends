@@ -1,4 +1,9 @@
-import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
+import {
+  Patient,
+  Prescription,
+  BloodTest,
+  DrugAdministration,
+} from "@/pages/Index";
 
 type RenalInfo = {
   id: string;
@@ -12,15 +17,21 @@ type RenalInfo = {
 };
 
 const toDate = (d: string, t: string) => new Date(`${d}T${t}`);
-const hoursDiff = (later: Date, earlier: Date) => (later.getTime() - earlier.getTime()) / 36e5;
+const hoursDiff = (later: Date, earlier: Date) =>
+  (later.getTime() - earlier.getTime()) / 36e5;
 
-const getSelectedRenalInfo = (selectedPatientId: string | null | undefined): RenalInfo | null => {
+const getSelectedRenalInfo = (
+  selectedPatientId: string | null | undefined
+): RenalInfo | null => {
   try {
     if (!selectedPatientId) return null;
-    const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatientId}`);
+    const raw = window.localStorage.getItem(
+      `tdmfriends:renal:${selectedPatientId}`
+    );
     if (!raw) return null;
     const list = JSON.parse(raw) as RenalInfo[];
-    const chosen = list.find(item => item.isSelected) || list[list.length - 1];
+    const chosen =
+      list.find((item) => item.isSelected) || list[list.length - 1];
     return chosen || null;
   } catch {
     return null;
@@ -41,29 +52,40 @@ export const computeCRCL = (
 ): number => {
   const renal = getSelectedRenalInfo(selectedPatientId);
   if (renal) {
-    const parsedResult = parseFloat((renal.result || '').toString().replace(/[^0-9.\-]/g, ''));
+    const parsedResult = parseFloat(
+      (renal.result || "").toString().replace(/[^0-9.-]/g, "")
+    );
     if (!Number.isNaN(parsedResult) && parsedResult > 0) {
       return parsedResult;
     }
-    const scrMgDl = parseFloat((renal.creatinine || '').toString());
+    const scrMgDl = parseFloat((renal.creatinine || "").toString());
     if (!Number.isNaN(scrMgDl) && scrMgDl > 0) {
       const isFemale = sex01 === 0;
-      if (renal.formula === 'cockcroft-gault') {
+      if (renal.formula === "cockcroft-gault") {
         const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
         return isFemale ? base * 0.85 : base;
       }
-      if (renal.formula === 'mdrd') {
+      if (renal.formula === "mdrd") {
         const bsa = mostellerBsa(heightCm, weightKg);
-        const eGFR = 175 * Math.pow(scrMgDl, -1.154) * Math.pow(ageYears, -0.203) * (isFemale ? 0.742 : 1);
+        const eGFR =
+          175 *
+          Math.pow(scrMgDl, -1.154) *
+          Math.pow(ageYears, -0.203) *
+          (isFemale ? 0.742 : 1);
         return eGFR * (bsa / 1.73);
       }
-      if (renal.formula === 'ckd-epi') {
+      if (renal.formula === "ckd-epi") {
         const bsa = mostellerBsa(heightCm, weightKg);
         const k = isFemale ? 0.7 : 0.9;
         const a = isFemale ? -0.329 : -0.411;
         const minScrK = Math.min(scrMgDl / k, 1);
         const maxScrK = Math.max(scrMgDl / k, 1);
-        const eGFR = 141 * Math.pow(minScrK, a) * Math.pow(maxScrK, -1.209) * Math.pow(0.993, ageYears) * (isFemale ? 1.018 : 1);
+        const eGFR =
+          141 *
+          Math.pow(minScrK, a) *
+          Math.pow(maxScrK, -1.209) *
+          Math.pow(0.993, ageYears) *
+          (isFemale ? 1.018 : 1);
         return eGFR * (bsa / 1.73);
       }
       // fallback
@@ -74,22 +96,33 @@ export const computeCRCL = (
   return 90;
 };
 
-export const computeTauFromAdministrations = (events: DrugAdministration[]): number | undefined => {
+export const computeTauFromAdministrations = (
+  events: DrugAdministration[]
+): number | undefined => {
   if (!events || events.length < 2) return undefined;
-  const sorted = [...events].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime());
+  const sorted = [...events].sort(
+    (a, b) =>
+      toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
+  );
   const last = sorted[sorted.length - 1];
   const prev = sorted[sorted.length - 2];
-  const tauHours = hoursDiff(toDate(last.date, last.time), toDate(prev.date, prev.time));
+  const tauHours = hoursDiff(
+    toDate(last.date, last.time),
+    toDate(prev.date, prev.time)
+  );
   return tauHours > 0 ? tauHours : undefined;
 };
 
-export const parseTargetValue = (target?: string, value?: string): { auc?: number; trough?: number } => {
+export const parseTargetValue = (
+  target?: string,
+  value?: string
+): { auc?: number; trough?: number } => {
   if (!value) return {};
-  const nums = (value.match(/\d+\.?\d*/g) || []).map(v => parseFloat(v));
+  const nums = (value.match(/\d+\.?\d*/g) || []).map((v) => parseFloat(v));
   if (nums.length === 0) return {};
   const mid = nums.length === 1 ? nums[0] : (nums[0] + nums[1]) / 2;
-  if (target && target.toLowerCase().includes('auc')) return { auc: mid };
-  if (target && target.toLowerCase().includes('trough')) return { trough: mid };
+  if (target && target.toLowerCase().includes("auc")) return { auc: mid };
+  if (target && target.toLowerCase().includes("trough")) return { trough: mid };
   return {};
 };
 
@@ -102,54 +135,146 @@ export const buildTdmRequestBody = (args: {
   selectedDrugName?: string;
   overrides?: { amount?: number; tau?: number };
 }) => {
-  const { patients, prescriptions, bloodTests, drugAdministrations, selectedPatientId, selectedDrugName, overrides } = args;
-  const patient = patients.find(p => p.id === selectedPatientId);
-  const tdmPrescription = prescriptions.find(p => p.patientId === selectedPatientId);
+  const {
+    patients,
+    prescriptions,
+    bloodTests,
+    drugAdministrations,
+    selectedPatientId,
+    selectedDrugName,
+    overrides,
+  } = args;
+  const patient = patients.find((p) => p.id === selectedPatientId);
+  const tdmPrescription = prescriptions.find(
+    (p) => p.patientId === selectedPatientId
+  );
   if (!patient || !tdmPrescription) return null;
 
   const weight = patient.weight;
   const age = patient.age;
-  const sex = patient.gender === 'male' ? 1 : 0;
+  const sex = patient.gender === "male" ? 1 : 0;
   const height = patient.height;
   const crcl = computeCRCL(selectedPatientId, weight, age, sex, height);
 
-  const patientDoses = (drugAdministrations || []).filter(d => d.patientId === selectedPatientId);
+  const patientDoses = (drugAdministrations || []).filter(
+    (d) => d.patientId === selectedPatientId
+  );
   const inferredTau = computeTauFromAdministrations(patientDoses);
-  const lastDose = patientDoses.length > 0 ? [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime())[patientDoses.length - 1] : undefined;
+  const lastDose =
+    patientDoses.length > 0
+      ? [...patientDoses].sort(
+          (a, b) =>
+            toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
+        )[patientDoses.length - 1]
+      : undefined;
   const amount = overrides?.amount ?? (lastDose ? lastDose.dose : undefined);
   const tau = overrides?.tau ?? inferredTau;
   const toxi = 1;
-  const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(tdmPrescription.tdmTarget, tdmPrescription.tdmTargetValue);
+  const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(
+    tdmPrescription.tdmTarget,
+    tdmPrescription.tdmTargetValue
+  );
 
-  const dataset: any[] = [];
+  const dataset: unknown[] = [];
   // Dosing events
-  const sortedDoses = [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime());
-  const anchorDoseTime = sortedDoses.length > 0 ? toDate(sortedDoses[0].date, sortedDoses[0].time) : undefined;
+  const sortedDoses = [...patientDoses].sort(
+    (a, b) =>
+      toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
+  );
+  const anchorDoseTime =
+    sortedDoses.length > 0
+      ? toDate(sortedDoses[0].date, sortedDoses[0].time)
+      : undefined;
   if (sortedDoses.length > 0 && anchorDoseTime) {
     for (const d of sortedDoses) {
       const t = Math.max(0, hoursDiff(toDate(d.date, d.time), anchorDoseTime));
-      const rate = d.isIVInfusion && d.infusionTime ? (d.dose / (d.infusionTime / 60)) : 0;
-      dataset.push({ ID: selectedPatientId, TIME: t, DV: null, AMT: d.dose, RATE: rate, CMT: 1, WT: weight, SEX: sex, AGE: age, CRCL: crcl, TOXI: toxi, EVID: 1 });
+      const rate =
+        d.isIVInfusion && d.infusionTime ? d.dose / (d.infusionTime / 60) : 0;
+      dataset.push({
+        ID: selectedPatientId,
+        TIME: t,
+        DV: null,
+        AMT: d.dose,
+        RATE: rate,
+        CMT: 1,
+        WT: weight,
+        SEX: sex,
+        AGE: age,
+        CRCL: crcl,
+        TOXI: toxi,
+        EVID: 1,
+      });
     }
   } else if (amount !== undefined) {
-    dataset.push({ ID: selectedPatientId, TIME: 0.0, DV: null, AMT: amount, RATE: 0, CMT: 1, WT: weight, SEX: sex, AGE: age, CRCL: crcl, TOXI: toxi, EVID: 1 });
+    dataset.push({
+      ID: selectedPatientId,
+      TIME: 0.0,
+      DV: null,
+      AMT: amount,
+      RATE: 0,
+      CMT: 1,
+      WT: weight,
+      SEX: sex,
+      AGE: age,
+      CRCL: crcl,
+      TOXI: toxi,
+      EVID: 1,
+    });
   }
 
-  const anchor = anchorDoseTime || (sortedDoses.length > 0 ? toDate(sortedDoses[0].date, sortedDoses[0].time) : new Date());
-  const relatedTests = selectedDrugName ? bloodTests.filter(b => b.patientId === selectedPatientId && b.drugName === selectedDrugName) : bloodTests.filter(b => b.patientId === selectedPatientId);
+  const anchor =
+    anchorDoseTime ||
+    (sortedDoses.length > 0
+      ? toDate(sortedDoses[0].date, sortedDoses[0].time)
+      : new Date());
+  const relatedTests = selectedDrugName
+    ? bloodTests.filter(
+        (b) =>
+          b.patientId === selectedPatientId && b.drugName === selectedDrugName
+      )
+    : bloodTests.filter((b) => b.patientId === selectedPatientId);
   if (relatedTests.length > 0) {
     for (const b of relatedTests) {
       const t = hoursDiff(b.testDate, anchor);
-      const dvMgPerL = b.unit && b.unit.toLowerCase().includes('ng/ml') ? (b.concentration / 1000) : b.concentration;
-      dataset.push({ ID: selectedPatientId, TIME: t, DV: dvMgPerL, AMT: 0, RATE: 0, CMT: 1, WT: weight, SEX: sex, AGE: age, CRCL: crcl, TOXI: toxi, EVID: 0 });
+      const dvMgPerL =
+        b.unit && b.unit.toLowerCase().includes("ng/ml")
+          ? b.concentration / 1000
+          : b.concentration;
+      dataset.push({
+        ID: selectedPatientId,
+        TIME: t,
+        DV: dvMgPerL,
+        AMT: 0,
+        RATE: 0,
+        CMT: 1,
+        WT: weight,
+        SEX: sex,
+        AGE: age,
+        CRCL: crcl,
+        TOXI: toxi,
+        EVID: 0,
+      });
     }
   } else {
-    dataset.push({ ID: selectedPatientId, TIME: (tau ?? 2.0), DV: null, AMT: 0, RATE: 0, CMT: 1, WT: weight, SEX: sex, AGE: age, CRCL: crcl, TOXI: toxi, EVID: 0 });
+    dataset.push({
+      ID: selectedPatientId,
+      TIME: tau ?? 2.0,
+      DV: null,
+      AMT: 0,
+      RATE: 0,
+      CMT: 1,
+      WT: weight,
+      SEX: sex,
+      AGE: age,
+      CRCL: crcl,
+      TOXI: toxi,
+      EVID: 0,
+    });
   }
 
   return {
-    input_tau: (tau ?? 12),
-    input_amount: (amount ?? 100),
+    input_tau: tau ?? 12,
+    input_amount: amount ?? 100,
     input_WT: weight,
     input_CRCL: crcl,
     input_AGE: age,
@@ -157,23 +282,32 @@ export const buildTdmRequestBody = (args: {
     input_TOXI: toxi,
     input_AUC: aucTarget ?? undefined,
     input_CTROUGH: cTroughTarget ?? undefined,
-    dataset
+    dataset,
   };
 };
 
 export const runTdmAndPersist = async (args: {
-  body: any;
+  body: unknown;
   patientId: string;
-}): Promise<any> => {
+}): Promise<unknown> => {
   const { body, patientId } = args;
-  const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const response = await fetch(
+    "http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
   if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
   const data = await response.json();
-  try { window.localStorage.setItem(`tdmfriends:tdmResult:${patientId}`, JSON.stringify(data)); } catch {}
+  try {
+    window.localStorage.setItem(
+      `tdmfriends:tdmResult:${patientId}`,
+      JSON.stringify(data)
+    );
+  } catch {
+    /* empty */
+  }
   return data;
 };
-

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 function TablePage(props) {
   const [currentCondition, setCurrentCondition] = useState({
@@ -25,6 +25,13 @@ function TablePage(props) {
   const [activePage, setActivePage] = useState('table'); // 'table' 또는 'terms'
   const [errorModal, setErrorModal] = useState("");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  // 부모 -> 자식 동기화 중 변경 전파(onRecordsChange) 차단 플래그
+  const skipPropagateRef = useRef(false);
+  // 최신 onRecordsChange 콜백 참조 보관 (의존성으로 인한 재실행 방지)
+  const onRecordsChangeRef = useRef(props.onRecordsChange);
+  useEffect(() => { onRecordsChangeRef.current = props.onRecordsChange; }, [props.onRecordsChange]);
+  // 마지막 전송한 records 스냅샷 (불필요한 전파 방지)
+  const lastRecordsJsonRef = useRef(null);
   useEffect(() => {
     const updateDark = () => setIsDarkMode(document.documentElement.classList.contains('dark'));
     updateDark();
@@ -69,21 +76,31 @@ function TablePage(props) {
         };
       }).sort((a,b) => a.time - b.time);
       rows.forEach((row, i) => { row.round = `${i + 1} 회차`; });
+      // 부모 props 적용으로 인한 변경 전파 차단
+      skipPropagateRef.current = true;
       setTableData([titleRow, ...rows]);
       setIsTableGenerated(true);
+      // 다음 틱에서 해제
+      setTimeout(() => { skipPropagateRef.current = false; }, 0);
     } catch {}
   }, [props.initialAdministrations]);
 
   // Propagate table changes to parent for persistence
   useEffect(() => {
-    if (!props.onRecordsChange) return;
+    if (!onRecordsChangeRef.current) return;
+    if (skipPropagateRef.current) { skipPropagateRef.current = false; return; }
     const records = tableData.filter(r => !r.isTitle).map(r => ({
       timeStr: r.timeStr,
       amount: r.amount,
       route: r.route,
       injectionTime: r.injectionTime
     }));
-    props.onRecordsChange(records);
+    try {
+      const json = JSON.stringify(records);
+      if (lastRecordsJsonRef.current === json) return;
+      lastRecordsJsonRef.current = json;
+    } catch {}
+    onRecordsChangeRef.current(records);
   }, [tableData]);
 
   // 초기 로드 완료 후 isInitialLoad를 false로 설정
@@ -95,14 +112,22 @@ function TablePage(props) {
 
   // props가 변경될 때 state 업데이트
   useEffect(() => {
+    let changed = false;
     if (props.initialConditions) {
       setConditions(props.initialConditions);
+      changed = true;
     }
     if (props.initialTableData) {
+      skipPropagateRef.current = true; // 부모에서 내려온 테이블 데이터 적용 시 전파 차단
       setTableData(props.initialTableData);
+      changed = true;
     }
     if (props.initialIsTableGenerated !== undefined) {
       setIsTableGenerated(props.initialIsTableGenerated);
+      changed = true;
+    }
+    if (changed) {
+      setTimeout(() => { skipPropagateRef.current = false; }, 0);
     }
   }, [props.initialConditions, props.initialTableData, props.initialIsTableGenerated]);
 

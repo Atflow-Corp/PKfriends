@@ -279,7 +279,11 @@ const Index = ({ onLogout }: IndexProps) => {
               onAddDrugAdministration={addDrugAdministration}
               drugAdministrations={drugAdministrations}
               setDrugAdministrations={setDrugAdministrations}
-            />
+              onUpdatePatient={function (patient: Patient): void {
+                throw new Error("Function not implemented.");
+              } } onDeletePatient={function (patientId: string): void {
+                throw new Error("Function not implemented.");
+              } }            />
           </TabsContent>
 
           <TabsContent value="management">

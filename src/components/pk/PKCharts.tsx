@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
+import { useMemo } from "react";
 
 interface SimulationDataPoint {
   time: number;
@@ -9,79 +10,106 @@ interface SimulationDataPoint {
 }
 
 interface PKChartsProps {
-  simulationData: SimulationDataPoint[];
   showSimulation: boolean;
   currentPatientName?: string;
   selectedDrug?: string;
   targetMin?: number | null;
   targetMax?: number | null;
+  recentAUC?: number;
+  recentMax?: number;
+  recentTrough?: number;
+  predictedAUC?: number;
+  predictedMax?: number;
+  predictedTrough?: number;
+  // Optional: pass separated series from API (ng/mL)
+  ipredSeries?: { time: number; value: number }[];
+  predSeries?: { time: number; value: number }[];
+  observedSeries?: { time: number; value: number }[];
 }
 
 const PKCharts = ({
-  simulationData,
   showSimulation,
   currentPatientName,
   selectedDrug,
   targetMin,
-  targetMax
+  targetMax,
+  recentAUC: propRecentAUC,
+  recentMax: propRecentMax,
+  recentTrough: propRecentTrough,
+  predictedAUC: propPredictedAUC,
+  predictedMax: propPredictedMax,
+  predictedTrough: propPredictedTrough,
+  ipredSeries,
+  predSeries,
+  observedSeries
 }: PKChartsProps) => {
-  // 72시간까지 샘플 데이터 생성 (실제로는 props에서 받아야 함)
-  const generate72HourData = () => {
-    const data = [];
-    for (let t = 0; t <= 72; t += 0.5) {
-      // 24시간 주기로 반복되는 패턴 생성
-      const cycleTime = t % 24;
-      const cycle = Math.floor(t / 24);
-      
-      // 각 주기마다 약간의 변화를 주어 더 현실적으로 만들기
-      const cycleFactor = Math.pow(0.95, cycle); // 각 주기마다 5% 감소
-      
-      let predicted, controlGroup;
-      
-      if (cycleTime <= 8) {
-        // 첫 8시간: 감소 구간
-        predicted = (27 - cycleTime * 2.5) * cycleFactor;
-        controlGroup = (30 - cycleTime * 2.5) * cycleFactor;
-      } else if (cycleTime <= 9) {
-        // 8-9시간: 급상승 (투약)
-        const riseTime = cycleTime - 8;
-        predicted = (5 + riseTime * 23) * cycleFactor;
-        controlGroup = (10 + riseTime * 25) * cycleFactor;
-      } else {
-        // 9-24시간: 감소 구간
-        const decayTime = cycleTime - 9;
-        predicted = (28 - decayTime * 1.4) * cycleFactor;
-        controlGroup = (35 - decayTime * 1.5) * cycleFactor;
+  // Merge separated series if provided; otherwise fall back to simulationData
+  const data: SimulationDataPoint[] = useMemo(() => {
+    if ((ipredSeries && ipredSeries.length) || (predSeries && predSeries.length) || (observedSeries && observedSeries.length)) {
+      const map = new Map<number, SimulationDataPoint & { controlGroup?: number }>();
+      const getPoint = (t: number) => {
+        const key = Number(t) || 0;
+        const existed = map.get(key);
+        if (existed) return existed;
+        const created: SimulationDataPoint & { controlGroup?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0 };
+        map.set(key, created);
+        return created;
+      };
+      for (const p of ipredSeries || []) {
+        const pt = getPoint(p.time);
+        pt.predicted = p.value;
       }
-      
-      // 실제 측정값은 첫 24시간에만 배치
-      let observed = null;
-      if (cycle === 0) {
-        if (Math.abs(cycleTime - 6) < 0.5) observed = 25 * cycleFactor;
-        if (Math.abs(cycleTime - 13) < 0.5) observed = 20 * cycleFactor;
-        if (Math.abs(cycleTime - 18) < 0.5) observed = 25 * cycleFactor;
+      for (const p of predSeries || []) {
+        const pt = getPoint(p.time) as SimulationDataPoint & { controlGroup?: number };
+        pt.controlGroup = p.value;
       }
-      
-      data.push({
-        time: t,
-        predicted: Math.max(0, predicted),
-        observed,
-        controlGroup: Math.max(0, controlGroup)
-      });
+      for (const p of observedSeries || []) {
+        const pt = getPoint(p.time);
+        pt.observed = p.value;
+      }
+      return Array.from(map.values()).sort((a, b) => a.time - b.time);
     }
-    return data;
-  };
+    return [];
+  }, [ipredSeries, predSeries, observedSeries]);
 
-  const sampleData = simulationData.length > 0 ? simulationData : generate72HourData();
+  // API 응답 혹은 기본값 (기본값을 null로 두고 표시 시 단위 없이 '-')
+  const recentAUC: number | null = typeof propRecentAUC === 'number' ? propRecentAUC : null;
+  const recentMax: number | null = typeof propRecentMax === 'number' ? propRecentMax : null;
+  const recentTrough: number | null = typeof propRecentTrough === 'number' ? propRecentTrough : null;
+  const predictedAUC: number | null = typeof propPredictedAUC === 'number' ? propPredictedAUC : null;
+  const predictedMax: number | null = typeof propPredictedMax === 'number' ? propPredictedMax : null;
+  const predictedTrough: number | null = typeof propPredictedTrough === 'number' ? propPredictedTrough : null;
 
-  // PK 파라미터 계산 (샘플 데이터)
-  const recentAUC = 335;
-  const recentMax = 29;
-  const recentTrough = 5;
-  const predictedAUC = 490;
-  const predictedMax = 38;
-  const predictedTrough = 18;
-  const averageConcentration = 15.9;
+  // 평균 농도(ng/mL): 시간-농도 곡선의 평균값 (구간 평균), 데이터가 충분할 때만 계산
+  const averageConcentration: number | null = (() => {
+    if (!data || data.length < 2) return null;
+    const sorted = [...data].sort((a, b) => a.time - b.time);
+    const t0 = sorted[0].time;
+    const tn = sorted[sorted.length - 1].time;
+    const duration = tn - t0;
+    if (duration <= 0) return null;
+    let auc = 0; // ng·h/mL
+    for (let i = 1; i < sorted.length; i++) {
+      const dt = sorted[i].time - sorted[i - 1].time;
+      if (dt <= 0) continue;
+      // predicted 라인을 기준으로 계산 (ng/mL)
+      const cPrev = sorted[i - 1].predicted ?? 0;
+      const cCurr = sorted[i].predicted ?? 0;
+      auc += ((cPrev + cCurr) / 2) * dt;
+    }
+    return auc / duration;
+  })();
+
+  // Y축 상한: 데이터의 최대값과 targetMax 중 큰 값
+  const yMax = useMemo(() => {
+    const dataMax = (data || []).reduce((m, p) => {
+      const candidates = [p.predicted, p.controlGroup ?? 0, p.observed ?? 0].filter(v => typeof v === 'number') as number[];
+      const localMax = candidates.length ? Math.max(...candidates) : 0;
+      return Math.max(m, localMax);
+    }, 0);
+    const targetMaxNum = typeof targetMax === 'number' ? targetMax : 0;
+    return Math.max(dataMax, targetMaxNum);
+  }, [data, targetMax]);
 
   return (
     <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow">
@@ -103,15 +131,15 @@ const PKCharts = ({
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{recentAUC} mg*h/L</span>
+              <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{recentMax} mg/L</span>
+              <span className="font-semibold">{recentMax != null ? `${recentMax} mg/L` : '-'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{recentTrough} mg/L</span>
+              <span className="font-semibold">{recentTrough != null ? `${recentTrough} mg/L` : '-'}</span>
             </div>
           </CardContent>
         </Card>
@@ -124,15 +152,15 @@ const PKCharts = ({
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{predictedAUC} mg*h/L</span>
+              <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{predictedMax} mg/L</span>
+              <span className="font-semibold">{predictedMax != null ? `${predictedMax} mg/L` : '-'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{predictedTrough} mg/L</span>
+              <span className="font-semibold">{predictedTrough != null ? `${predictedTrough} mg/L` : '-'}</span>
             </div>
           </CardContent>
         </Card>
@@ -146,7 +174,7 @@ const PKCharts = ({
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}의 현용법</span>
+          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
         </div>
       </div>
 
@@ -158,7 +186,7 @@ const PKCharts = ({
         <div className="h-96 overflow-x-auto overflow-y-hidden">
           <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={sampleData}>
+              <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="time" 
@@ -171,24 +199,26 @@ const PKCharts = ({
                   tickFormatter={(value) => `${value}h`}
                 />
                 <YAxis 
-                  label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'insideLeft' }}
+                  label={{ value: 'Concentration(mg/L)', angle: -90, position: 'insideLeft' }}
                   tick={{ fontSize: 12 }}
-                  domain={[0, 36]}
+                  domain={[0, yMax]}
                 />
                 {/* 목표 범위 (파란색 영역) */}
                 {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
-                  <ReferenceArea y1={targetMin} y2={targetMax} fill="#93c5fd" fillOpacity={0.25} />
+                  <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
                 )}
                 {/* 평균 약물 농도 점선 */}
-                <ReferenceLine y={averageConcentration} stroke="#3b82f6" strokeDasharray="5 5" />
+                {typeof averageConcentration === 'number' && (
+                  <ReferenceLine y={averageConcentration} stroke="#3b82f6" strokeDasharray="5 5" />
+                )}
                 <Tooltip 
-                  formatter={(value: any, name: string) => [
+                  formatter={(value: unknown, name: string) => [
                     typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', 
                     name === 'predicted' ? '환자 현용법' : name === 'controlGroup' ? '일반 대조군' : '실제값'
                   ]}
                   labelFormatter={(value) => `Time: ${value} hours`}
                 />
-                {/* 일반 대조군 결과 (주황색) */}
+                {/* 대조군 (PRED_CONC, 주황색) */}
                 <Line 
                   type="monotone" 
                   dataKey="controlGroup" 
@@ -197,7 +227,7 @@ const PKCharts = ({
                   name="일반 대조군"
                   dot={false}
                 />
-                {/* 환자 현용법 (파란색) */}
+                {/* 환자 (IPRED_CONC, 파란색) */}
                 <Line 
                   type="monotone" 
                   dataKey="predicted" 

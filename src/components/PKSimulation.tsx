@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import PKParameterCard from "./pk/PKParameterCard";
 import PKControlPanel from "./pk/PKControlPanel";
@@ -20,6 +20,38 @@ interface PKSimulationProps {
 
 type ChartPoint = { time: number; predicted: number; observed: number | null };
 
+// TDM API 응답 및 데이터셋 최소 타입 정의 (필요 필드만 선언)
+type ConcentrationPoint = {
+  time: number;
+  IPRED?: number;
+};
+
+interface TdmApiResponse {
+  AUC_before?: number;
+  CMAX_before?: number;
+  CTROUGH_before?: number;
+  AUC_after?: number;
+  CMAX_after?: number;
+  CTROUGH_after?: number;
+  IPRED_CONC?: ConcentrationPoint[];
+  PRED_CONC?: ConcentrationPoint[];
+}
+
+interface TdmDatasetRow {
+  ID: string;
+  TIME: number;
+  DV: number | null;
+  AMT: number;
+  RATE: number;
+  CMT: number;
+  WT: number;
+  SEX: number;
+  AGE: number;
+  CRCL: number;
+  TOXI: number;
+  EVID: number;
+}
+
 const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [] }: PKSimulationProps) => {
   const [selectedPatientId, setSelectedPatientId] = useState(selectedPatient?.id || "");
   const [selectedDrug, setSelectedDrug] = useState("");
@@ -31,40 +63,45 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   });
   const [showSimulation, setShowSimulation] = useState(false);
   const simulationRef = useRef<HTMLDivElement>(null);
+  const [selectedDose, setSelectedDose] = useState("250");
   const [doseAdjust, setDoseAdjust] = useState("");
   const [doseUnit, setDoseUnit] = useState("mg");
   const [intervalAdjust, setIntervalAdjust] = useState("");
+  const [selectedInterval, setSelectedInterval] = useState("6");
   const [tab, setTab] = useState("current");
-  const [tdmResult, setTdmResult] = useState<any | null>(null);
+  const [tdmResult, setTdmResult] = useState<TdmApiResponse | null>(null);
   const [tdmChartDataMain, setTdmChartDataMain] = useState<ChartPoint[]>([]);
   const [tdmChartDataDose, setTdmChartDataDose] = useState<ChartPoint[]>([]);
   const [tdmChartDataInterval, setTdmChartDataInterval] = useState<ChartPoint[]>([]);
-  const [tdmResultDose, setTdmResultDose] = useState<any | null>(null);
-  const [tdmResultInterval, setTdmResultInterval] = useState<any | null>(null);
+  const [tdmExtraSeries, setTdmExtraSeries] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
+  const [tdmExtraSeriesDose, setTdmExtraSeriesDose] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
+  const [tdmExtraSeriesInterval, setTdmExtraSeriesInterval] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
+  const [tdmResultDose, setTdmResultDose] = useState<TdmApiResponse | null>(null);
+  const [tdmResultInterval, setTdmResultInterval] = useState<TdmApiResponse | null>(null);
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
-  const patientPrescriptions = selectedPatientId 
-    ? prescriptions.filter(p => p.patientId === selectedPatientId)
-    : [];
-  const patientBloodTests = selectedPatientId 
-    ? bloodTests.filter(b => b.patientId === selectedPatientId)
-    : [];
+  const patientPrescriptions = useMemo(() => (
+    selectedPatientId ? prescriptions.filter(p => p.patientId === selectedPatientId) : []
+  ), [selectedPatientId, prescriptions]);
+  const patientBloodTests = useMemo(() => (
+    selectedPatientId ? bloodTests.filter(b => b.patientId === selectedPatientId) : []
+  ), [selectedPatientId, bloodTests]);
 
-  const availableDrugs = Array.from(new Set([
+  const availableDrugs = useMemo(() => Array.from(new Set([
     ...patientPrescriptions.map(p => p.drugName),
     ...patientBloodTests.map(b => b.drugName)
-  ]));
+  ])), [patientPrescriptions, patientBloodTests]);
 
   // 사용 가능한 약물이 있고 선택된 약물이 없으면 첫 번째 약물 자동 선택
   useEffect(() => {
     if (availableDrugs.length > 0 && !selectedDrug) {
       setSelectedDrug(availableDrugs[0]);
     }
-  }, [availableDrugs.length, selectedDrug]);
+  }, [availableDrugs, selectedDrug]);
 
-  const selectedDrugTests = selectedDrug 
-    ? patientBloodTests.filter(b => b.drugName === selectedDrug)
-    : [];
+  const selectedDrugTests = useMemo(() => (
+    selectedDrug ? patientBloodTests.filter(b => b.drugName === selectedDrug) : []
+  ), [selectedDrug, patientBloodTests]);
 
   // 선택된 약물의 처방 정보 가져오기
   const selectedPrescription = selectedDrug 
@@ -73,7 +110,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   // 혈청 크레아티닌 정보 가져오기 (가장 최근 검사 결과)
   const latestBloodTest = patientBloodTests.length > 0 
-    ? patientBloodTests.sort((a, b) => new Date(b.testDate).getTime() - new Date(a.testDate).getTime())[0]
+    ? [...patientBloodTests].sort((a, b) => new Date(b.testDate).getTime() - new Date(a.testDate).getTime())[0]
     : null;
 
   // Generate PK simulation data
@@ -137,7 +174,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   };
 
   // Helpers
-  const getSelectedRenalInfo = () => {
+  const getSelectedRenalInfo = useCallback(() => {
     try {
       if (!selectedPatientId) return null;
       const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatientId}`);
@@ -148,12 +185,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     } catch {
       return null;
     }
-  };
+  }, [selectedPatientId]);
 
-  const computeCRCL = (weightKg: number, ageYears: number, sex01: number) => {
+  const computeCRCL = useCallback((weightKg: number, ageYears: number, sex01: number) => {
     const renal = getSelectedRenalInfo();
     if (renal) {
-      const parsedResult = parseFloat((renal.result || '').toString().replace(/[^0-9.\-]/g, ''));
+      const parsedResult = parseFloat((renal.result || '').toString().replace(/[^0-9.-]/g, ''));
       // If result field already has a numeric value, prefer it
       if (!Number.isNaN(parsedResult) && parsedResult > 0) {
         return parsedResult; // assume mL/min
@@ -188,7 +225,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       }
     }
     return 90; // fallback if data unavailable
-  };
+  }, [currentPatient, getSelectedRenalInfo]);
 
   const parseTargetValue = (target?: string, value?: string) => {
     // returns { auc?: number, trough?: number }
@@ -209,17 +246,17 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   const hoursDiff = (later: Date, earlier: Date) => (later.getTime() - earlier.getTime()) / 36e5;
 
-  const computeTauFromAdministrations = (events: DrugAdministration[]) => {
+  const computeTauFromAdministrations = useCallback((events: DrugAdministration[]) => {
     if (events.length < 2) return undefined;
     const sorted = [...events].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime());
     const last = sorted[sorted.length - 1];
     const prev = sorted[sorted.length - 2];
     const tauHours = hoursDiff(toDate(last.date, last.time), toDate(prev.date, prev.time));
     return tauHours > 0 ? tauHours : undefined;
-  };
+  }, []);
 
   // TDM API integration
-  const buildTdmRequestBody = (overrides?: { amount?: number; tau?: number }) => {
+  const buildTdmRequestBody = useCallback((overrides?: { amount?: number; tau?: number }) => {
     const currentPatient = patients.find(p => p.id === selectedPatientId);
     const tdmPrescription = prescriptions.find(p => p.patientId === selectedPatientId);
     if (!currentPatient || !tdmPrescription) return null;
@@ -234,15 +271,15 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     const uiTau = parseFloat((simulationParams.halfLife || '').toString());
     const tau = overrides?.tau ?? (Number.isFinite(uiTau) && uiTau > 0 ? uiTau : computeTauFromAdministrations(patientDoses) ?? undefined);
     const lastDose = patientDoses.length > 0 ? [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime())[patientDoses.length - 1] : undefined;
-    const parseDose = (val: any) => {
-      const num = parseFloat((val ?? '').toString().replace(/[^0-9.\-]/g, ''));
+    const parseDose = (val: unknown) => {
+      const num = parseFloat((val ?? '').toString().replace(/[^0-9.-]/g, ''));
       return Number.isFinite(num) && num > 0 ? num : undefined;
     };
     const amount = overrides?.amount ?? (lastDose ? lastDose.dose : parseDose(simulationParams.dose));
     const toxi = 1;
     const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(tdmPrescription.tdmTarget, tdmPrescription.tdmTargetValue);
 
-    const dataset = [] as any[];
+    const dataset: TdmDatasetRow[] = [];
     // Build dosing events relative to first dose time
     const sortedDoses = [...patientDoses].sort((a, b) => toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime());
     const anchorDoseTime = sortedDoses.length > 0 ? toDate(sortedDoses[0].date, sortedDoses[0].time) : undefined;
@@ -293,7 +330,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         const dvMgPerL = b.unit && b.unit.toLowerCase().includes('ng/ml') ? (b.concentration / 1000) : b.concentration;
         dataset.push({
           ID: selectedPatientId,
-          TIME: t,
+          TIME: Math.max(0, t),
           DV: dvMgPerL,
           AMT: 0,
           RATE: 0,
@@ -336,103 +373,56 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       input_CTROUGH: cTroughTarget ?? undefined,
       dataset
     };
-  };
+  }, [patients, selectedPatientId, prescriptions, drugAdministrations, simulationParams, selectedDrug, patientBloodTests, computeCRCL, computeTauFromAdministrations]);
 
-  const toChartData = (apiData: any): ChartPoint[] => {
+  const toChartData = useCallback((apiData: TdmApiResponse | null | undefined, obsDataset?: TdmDatasetRow[] | null): ChartPoint[] => {
     try {
-      const series = (apiData?.IPRED_CONC?.length ? apiData.IPRED_CONC : apiData?.PRED_CONC) || [];
-      const base: ChartPoint[] = series.map((p: any) => ({
-        time: Number(p.time) || 0,
-        // API 예측 단위가 mg/L라고 가정하고 ng/mL로 변환 (×1000)
-        predicted: ((Number(p.IPRED ?? p.PRED ?? p.pred ?? 0) || 0) * 1000),
-        observed: null
-      }));
-      // Overlay observed points
-      const addObserved = (points: ChartPoint[]) => {
-        const obsList = selectedDrug ? patientBloodTests.filter(b => b.drugName === selectedDrug) : patientBloodTests;
-        for (const b of obsList) {
-          // estimate time relative to first dose anchor used earlier is unknown here; best effort: align by closest time
-          const t = b.timeAfterDose ?? undefined;
-          if (t !== undefined && t !== null) {
-            const dv = b.concentration;
-            // find nearest index
-            let idx = -1; let minDiff = Infinity;
-            for (let i = 0; i < points.length; i++) {
-              const d = Math.abs(points[i].time - t);
-              if (d < minDiff) { minDiff = d; idx = i; }
-            }
-            if (idx >= 0) {
-              points[idx] = { ...points[idx], observed: dv };
-            } else {
-              points.push({ time: t, predicted: 0, observed: dv });
-            }
+      const ipred = apiData?.IPRED_CONC || [];
+      const pred = apiData?.PRED_CONC || [];
+      const pointMap = new Map<number, (ChartPoint & { controlGroup?: number })>();
+
+      // helper to get or create point
+      const getPoint = (t: number): ChartPoint & { controlGroup?: number } => {
+        const key = Number(t) || 0;
+        const existing = pointMap.get(key);
+        if (existing) return existing;
+        const created: ChartPoint & { controlGroup?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0 };
+        pointMap.set(key, created);
+        return created;
+      };
+
+      // IPRED_CONC -> predicted (use API unit as-is)
+      for (const p of ipred as Array<{ time: number; IPRED?: number }>) {
+        const t = Number(p.time) || 0;
+        const y = (Number((p.IPRED ?? 0)) || 0);
+        const pt = getPoint(t);
+        pt.predicted = y;
+      }
+      // PRED_CONC -> controlGroup
+      for (const p of pred as Array<{ time: number; IPRED?: number }>) {
+        const t = Number(p.time) || 0;
+        const y = (Number((p.IPRED ?? 0)) || 0);
+        const pt = getPoint(t);
+        pt.controlGroup = y;
+      }
+      // Observed from input dataset DV (mg/L -> ng/mL)
+      if (obsDataset && obsDataset.length > 0) {
+        for (const row of obsDataset) {
+          if (row.EVID === 0 && row.DV != null) {
+            const t = Number(row.TIME) || 0;
+            const y = Number(row.DV);
+            const pt = getPoint(t);
+            pt.observed = y;
           }
         }
-        return points.sort((a, b) => a.time - b.time);
-      };
-      return addObserved(base);
+      }
+      const result = Array.from(pointMap.values()).sort((a, b) => a.time - b.time);
+      return result;
     } catch {
       return [];
     }
-  };
+  }, []);
 
-  const callTdmApi = async (overrides?: { amount?: number; tau?: number }) => {
-    const body = buildTdmRequestBody(overrides);
-    if (!body) return;
-    try {
-      const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) {
-        throw new Error(`TDM API error: ${response.status}`);
-      }
-      const data = await response.json();
-      setTdmResult(data);
-      setTdmChartDataMain(toChartData(data));
-      setShowSimulation(true);
-      try {
-        const key = `tdmfriends:tdmResult:${selectedPatientId}`;
-        window.localStorage.setItem(key, JSON.stringify(data));
-      } catch {}
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Independent calls for per-tab simulations
-  const callTdmApiDose = async (overrides?: { amount?: number }) => {
-    const body = buildTdmRequestBody({ amount: overrides?.amount, tau: undefined });
-    if (!body) return;
-    try {
-      const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
-      const data = await response.json();
-      setTdmResultDose(data);
-      setTdmChartDataDose(toChartData(data));
-    } catch (e) { console.error(e); }
-  };
-
-  const callTdmApiInterval = async (overrides?: { tau?: number }) => {
-    const body = buildTdmRequestBody({ amount: undefined, tau: overrides?.tau });
-    if (!body) return;
-    try {
-      const response = await fetch("http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
-      const data = await response.json();
-      setTdmResultInterval(data);
-      setTdmChartDataInterval(toChartData(data));
-    } catch (e) { console.error(e); }
-  };
 
   // Load persisted TDM result upon entering Let's TDM
   useEffect(() => {
@@ -442,30 +432,48 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       if (raw) {
         const data = JSON.parse(raw);
         setTdmResult(data);
-        setTdmChartDataMain(toChartData(data));
+        const bodyForObs = buildTdmRequestBody();
+        setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
+        setTdmExtraSeries({
+          ipredSeries: (data?.IPRED_CONC || [])
+            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
+            .filter(p => p.time >= 0 && p.time <= 72),
+          predSeries: (data?.PRED_CONC || [])
+            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
+            .filter(p => p.time >= 0 && p.time <= 72),
+          observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[]) || [])
+            .filter(r => r.EVID === 0 && r.DV != null)
+            .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+            .filter(p => p.time >= 0 && p.time <= 72)
+        });
         setShowSimulation(true);
       } else {
         setTdmChartDataMain([]);
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Failed to read TDM result from localStorage', e);
+    }
     // reset per-tab results when patient changes
     setTdmResultDose(null);
     setTdmResultInterval(null);
     setTdmChartDataDose([]);
     setTdmChartDataInterval([]);
-  }, [selectedPatientId]);
+  }, [selectedPatientId, toChartData, buildTdmRequestBody]);
 
   const getTargetBand = (): { min?: number; max?: number } => {
-    if (tdmResult) {
-      const min = typeof tdmResult.CTROUGH_after === 'number' ? tdmResult.CTROUGH_after : undefined;
-      const max = typeof tdmResult.CMAX_after === 'number' ? tdmResult.CMAX_after : undefined;
-      if (min !== undefined || max !== undefined) return { min, max };
-    }
     const cp = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
-    const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g) || [];
-    const min = nums[0] ? parseFloat(nums[0]) : undefined;
-    const max = nums[1] ? parseFloat(nums[1]) : undefined;
-    return { min, max };
+    const target = (cp?.tdmTarget || '').toLowerCase();
+    // AUC 목표는 제외
+    if (!target || target.includes('auc')) return {};
+    // Ctrough 또는 Cmax인 경우만 범위 표시
+    if (target.includes('trough') || target.includes('cmax')) {
+      const nums = (cp?.tdmTargetValue || '').match(/\d+\.?\d*/g) || [];
+      const min = nums[0] ? parseFloat(nums[0]) : undefined;
+      const max = nums[1] ? parseFloat(nums[1]) : undefined;
+      // 숫자 2개일 때만 표시되도록 PKCharts 쪽 조건과 맞춤 (max > min)
+      return { min, max };
+    }
+    return {};
   };
 
   // PDF 저장 함수
@@ -498,31 +506,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         <pre className="text-sm whitespace-pre-line text-slate-700 dark:text-slate-200">{pkParameterText}</pre>
       </div>
 
-      {tdmResult && (
-        <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4">
-          <div className="font-bold mb-2 text-emerald-800 dark:text-emerald-200">최근 TDM 결과 (로컬 저장)</div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-            <div>AUC_before: {tdmResult.AUC_before ?? '-'}</div>
-            <div>CMAX_before: {tdmResult.CMAX_before ?? '-'}</div>
-            <div>CTROUGH_before: {tdmResult.CTROUGH_before ?? '-'}</div>
-            <div>AUC_after: {tdmResult.AUC_after ?? '-'}</div>
-            <div>CMAX_after: {tdmResult.CMAX_after ?? '-'}</div>
-            <div>CTROUGH_after: {tdmResult.CTROUGH_after ?? '-'}</div>
-          </div>
-        </div>
-      )}
-
-      {/* PK Simulation 그래프 (가로 전체) */}
-      <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow flex flex-col items-center">
-        <div className="w-full max-w-5xl">
-          <PKCharts
-            simulationData={tdmChartDataMain.length > 0 ? tdmChartDataMain : simulationData}
-            showSimulation={true}
-            currentPatientName={currentPatient.name}
-            selectedDrug={selectedDrug}
-            targetMin={getTargetBand().min}
-            targetMax={getTargetBand().max}
-          />
+      {/* TDM Summary 섹션 */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6">
+        <div className="font-bold text-lg mb-3">TDM Summary</div>
+        <div className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+          {/* 추후 분석엔진을 통해 전달되는 분석의견을 노출합니다. */}
+          현 용법으로 Steady State까지 ACUC는 340mg*h/L으로 투약 6시간 이후 약물 농도가 치료 범위 이하로 떨어질 수 있습니다. 증량 및 투약 간격 조절이 필요할 수 있습니다.
         </div>
       </div>
 
@@ -536,10 +525,20 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       {/* PK Simulation 그래프 (가로 전체) */}
       <div className="w-full">
         <PKCharts
-          simulationData={simulationData}
           showSimulation={true}
           currentPatientName={currentPatient.name}
           selectedDrug={selectedDrug}
+          targetMin={getTargetBand().min}
+          targetMax={getTargetBand().max}
+          recentAUC={tdmResult?.AUC_before}
+          recentMax={tdmResult?.CMAX_before}
+          recentTrough={tdmResult?.CTROUGH_before}
+          predictedAUC={tdmResult?.AUC_after}
+          predictedMax={tdmResult?.CMAX_after}
+          predictedTrough={tdmResult?.CTROUGH_after}
+          ipredSeries={tdmExtraSeries?.ipredSeries}
+          predSeries={tdmExtraSeries?.predSeries}
+          observedSeries={tdmExtraSeries?.observedSeries}
         />
       </div>
 
@@ -559,16 +558,68 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
               <div className="w-12 h-0.5 bg-pink-500"></div>
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white">용량 조정 시</h3>
             </div>
-            
-            <div className="w-full max-w-5xl mx-auto">
-              <PKCharts
-                simulationData={tdmChartDataMain.length > 0 ? tdmChartDataMain : simulationData}
-                showSimulation={true}
-                currentPatientName={currentPatient.name}
-                selectedDrug={selectedDrug}
-                targetMin={getTargetBand().min}
-                targetMax={getTargetBand().max}
-              />
+
+            <div className="space-y-3 mb-4">
+              <div className="flex gap-2 mb-3">
+                <button
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedDose === "125"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setSelectedDose("125");
+                    setSimulationParams({ ...simulationParams, dose: "125 mg" });
+                  }}
+                >
+                  125 mg
+                </button>
+                <button
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedDose === "250"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setSelectedDose("250");
+                    setSimulationParams({ ...simulationParams, dose: "250 mg" });
+                  }}
+                >
+                  250 mg
+                </button>
+                <button
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedDose === "500"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setSelectedDose("500");
+                    setSimulationParams({ ...simulationParams, dose: "500 mg" });
+                  }}
+                >
+                  500 mg
+                </button>
+              </div>
+            </div>
+
+            {/* 예측 약물 농도 카드 */}
+            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-800 dark:text-white mb-3">예측 약물 농도</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-300">AUC:</span>
+                  <span className="font-semibold text-gray-800 dark:text-white">335 mg*h/L</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-300">max 농도:</span>
+                  <span className="font-semibold text-gray-800 dark:text-white">29 mg/L</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-300">trough 농도:</span>
+                  <span className="font-semibold text-gray-800 dark:text-white">5 mg/L</span>
+                </div>
+              </div>
             </div>
           </div>
 
