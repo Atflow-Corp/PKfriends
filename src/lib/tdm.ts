@@ -292,7 +292,7 @@ export const runTdmAndPersist = async (args: {
 }): Promise<unknown> => {
   const { body, patientId } = args;
   const response = await fetch(
-    "http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm",
+    "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -306,8 +306,8 @@ export const runTdmAndPersist = async (args: {
       `tdmfriends:tdmResult:${patientId}`,
       JSON.stringify(data)
     );
-  } catch {
-    /* empty */
+  } catch (e) {
+    console.error("Failed to save TDM result to localStorage", e);
   }
   return data;
 };
