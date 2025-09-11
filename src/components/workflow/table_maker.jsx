@@ -12,9 +12,10 @@ function TablePage(props) {
     totalDoses: ""
   });
   
-  const [conditions, setConditions] = useState([]);
-  const [tableData, setTableData] = useState([]);
-  const [isTableGenerated, setIsTableGenerated] = useState(false);
+  const [conditions, setConditions] = useState(props.initialConditions || []);
+  const [tableData, setTableData] = useState(props.initialTableData || []);
+  const [isTableGenerated, setIsTableGenerated] = useState(props.initialIsTableGenerated || false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [draggedRow, setDraggedRow] = useState(null);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [editingCondition, setEditingCondition] = useState(null);
@@ -84,6 +85,26 @@ function TablePage(props) {
     }));
     props.onRecordsChange(records);
   }, [tableData]);
+
+  // 초기 로드 완료 후 isInitialLoad를 false로 설정
+  useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+    }
+  }, [isInitialLoad]);
+
+  // props가 변경될 때 state 업데이트
+  useEffect(() => {
+    if (props.initialConditions) {
+      setConditions(props.initialConditions);
+    }
+    if (props.initialTableData) {
+      setTableData(props.initialTableData);
+    }
+    if (props.initialIsTableGenerated !== undefined) {
+      setIsTableGenerated(props.initialIsTableGenerated);
+    }
+  }, [props.initialConditions, props.initialTableData, props.initialIsTableGenerated]);
 
   // 투약 경로 옵션
   const routeOptions = ["경구", "정맥", "피하", "수액"];
@@ -306,7 +327,9 @@ function TablePage(props) {
     setIsTableGenerated(true);
     if (props.onTableGenerated) props.onTableGenerated();
     setSelectedRows(new Set()); // 선택 상태 초기화
-    if (props.onSaveRecords) {
+    
+    // 초기 로드가 아닐 때만 onSaveRecords 호출 (중복 저장 방지)
+    if (props.onSaveRecords && !isInitialLoad) {
       // title row 제외, 실제 투약기록만 전달
       const records = newTableData.filter(row => !row.isTitle);
       props.onSaveRecords(records);
@@ -365,6 +388,27 @@ function TablePage(props) {
     }
   };
 
+  // 테이블 데이터만 삭제 (투약 서머리 데이터는 유지)
+  const resetTableData = () => {
+    if (window.confirm("투약 기록 테이블을 전체 삭제하시겠습니까? 투약 조건은 유지됩니다.")) {
+      setTableData([]);
+      setIsTableGenerated(false);
+      setSelectedRows(new Set());
+      setCurrentCondition({
+        route: "",
+        dosage: "",
+        unit: "mg",
+        intervalHours: "",
+        injectionTime: "",
+        firstDoseDate: "",
+        firstDoseTime: "",
+        totalDoses: ""
+      });
+      setIsEditMode(false);
+      setEditingConditionId(null);
+    }
+  };
+
   // 드래그 시작
   const handleDragStart = (e, rowId) => {
     setDraggedRow(rowId);
@@ -412,8 +456,7 @@ function TablePage(props) {
         padding: "0",
         fontFamily: "Arial, sans-serif",
         background: isDarkMode ? "#181e29" : "#f4f6fa",
-        color: isDarkMode ? "#e0e6f0" : "#333",
-        minHeight: "100vh"
+        color: isDarkMode ? "#e0e6f0" : "#333"
       }}
     >
       <div style={{ width: "100%", margin: 0, padding: "0 0 40px 0" }}>
@@ -766,7 +809,7 @@ function TablePage(props) {
           </div>
 
           {/*2 생성된 테이블 */}
-          {isTableGenerated && (
+          {(isTableGenerated || tableData.length > 0) && (
             <div style={{ 
               background: isDarkMode ? "#23293a" : "white", 
               padding: "20px",
@@ -963,44 +1006,65 @@ function TablePage(props) {
                 </table>
               </div>
 
-              <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "15px" }}>
                 <button
-                  onClick={addRow}
+                  onClick={resetTableData}
                   style={{
                     padding: "8px 16px",
                     backgroundColor: "#fff",
-                    color: "#222",
-                    border: "1px solid #dee2e6",
+                    color: "#dc2626",
+                    border: "1px solid #fecaca",
                     borderRadius: "8px",
                     cursor: "pointer",
                     fontWeight: 400,
                     fontSize: "15px",
                     transition: "background 0.2s, color 0.2s"
                   }}
-                  onMouseOver={e => { e.target.style.backgroundColor = "#f4f6fa"; }}
+                  onMouseOver={e => { e.target.style.backgroundColor = "#fef2f2"; }}
                   onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
                 >
-                  + 행추가
+                  🗑️ 전체 삭제
                 </button>
-                
-                <button
-                  onClick={deleteSelectedRows}
-                  style={{
-                    padding: "8px 16px",
-                    backgroundColor: "#fff",
-                    color: "#fb7185",
-                    border: "1px solid #ffe4e6",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontWeight: 400,
-                    fontSize: "15px",
-                    transition: "background 0.2s, color 0.2s"
-                  }}
-                  onMouseOver={e => { e.target.style.backgroundColor = "#f4f6fa"; }}
-                  onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
-                >
-                  선택 삭제
-                </button>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={addRow}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: "#fff",
+                      color: "#222",
+                      border: "1px solid #dee2e6",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      fontWeight: 400,
+                      fontSize: "15px",
+                      transition: "background 0.2s, color 0.2s"
+                    }}
+                    onMouseOver={e => { e.target.style.backgroundColor = "#f4f6fa"; }}
+                    onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
+                  >
+                    + 행추가
+                  </button>
+                  
+                  <button
+                    onClick={deleteSelectedRows}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: "#fff",
+                      color: "#fb7185",
+                      border: "1px solid #ffe4e6",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      fontWeight: 400,
+                      fontSize: "15px",
+                      transition: "background 0.2s, color 0.2s"
+                    }}
+                    onMouseOver={e => { e.target.style.backgroundColor = "#f4f6fa"; }}
+                    onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
+                  >
+                    선택 삭제
+                  </button>
+                </div>
               </div>
             </div>
           )}

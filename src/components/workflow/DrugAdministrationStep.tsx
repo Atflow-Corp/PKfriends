@@ -47,7 +47,6 @@ const DrugAdministrationStep = ({
   const [tableReady, setTableReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 약물명은 상단에 텍스트로만 표시, 선택 불가
   // 날짜 오늘 이후 선택 불가
   const today = dayjs().format("YYYY-MM-DD");
 
@@ -86,7 +85,7 @@ const DrugAdministrationStep = ({
   const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient?.id);
 
   useEffect(() => {
-    // no-op for now
+    // no-op
   }, []);
 
   return (
@@ -122,8 +121,7 @@ const DrugAdministrationStep = ({
             initialAdministrations={patientDrugAdministrations}
             onSaveRecords={(records) => {
               if (selectedPatient && tdmDrug) {
-                const others = drugAdministrations.filter(d => d.patientId !== selectedPatient.id);
-                const newOnes = records.map((row, idx) => ({
+                const newAdministrations = records.map((row, idx) => ({
                   id: `${Date.now()}_${idx}`,
                   patientId: selectedPatient.id,
                   drugName: tdmDrug.drugName,
@@ -136,12 +134,15 @@ const DrugAdministrationStep = ({
                   infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
                   administrationTime: undefined
                 }));
-                setDrugAdministrations([...others, ...newOnes]);
+                const updatedAdministrations = [
+                  ...drugAdministrations.filter(d => d.patientId !== selectedPatient.id),
+                  ...newAdministrations
+                ];
+                setDrugAdministrations(updatedAdministrations);
               }
             }}
             onRecordsChange={(records) => {
               if (selectedPatient && tdmDrug) {
-                const others = drugAdministrations.filter(d => d.patientId !== selectedPatient.id);
                 const mapped = records.map((row, idx) => ({
                   id: `${Date.now()}_${idx}`,
                   patientId: selectedPatient.id,
@@ -155,7 +156,11 @@ const DrugAdministrationStep = ({
                   infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
                   administrationTime: undefined
                 }));
-                setDrugAdministrations([...others, ...mapped]);
+                const updatedAdministrations = [
+                  ...drugAdministrations.filter(d => d.patientId !== selectedPatient.id),
+                  ...mapped
+                ];
+                setDrugAdministrations(updatedAdministrations);
               }
             }}
           />

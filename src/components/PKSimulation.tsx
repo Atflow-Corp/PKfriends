@@ -3,11 +3,12 @@ import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/In
 import PKParameterCard from "./pk/PKParameterCard";
 import PKControlPanel from "./pk/PKControlPanel";
 import PKCharts from "./pk/PKCharts";
+import DosageChart from "./pk/DosageChart";
 import PKDataSummary from "./pk/PKDataSummary";
+import TDMPatientDetails from "./TDMPatientDetails";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { FileText } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface PKSimulationProps {
   patients: Patient[];
@@ -54,9 +55,26 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     ...patientBloodTests.map(b => b.drugName)
   ]));
 
+  // 사용 가능한 약물이 있고 선택된 약물이 없으면 첫 번째 약물 자동 선택
+  useEffect(() => {
+    if (availableDrugs.length > 0 && !selectedDrug) {
+      setSelectedDrug(availableDrugs[0]);
+    }
+  }, [availableDrugs.length, selectedDrug]);
+
   const selectedDrugTests = selectedDrug 
     ? patientBloodTests.filter(b => b.drugName === selectedDrug)
     : [];
+
+  // 선택된 약물의 처방 정보 가져오기
+  const selectedPrescription = selectedDrug 
+    ? patientPrescriptions.find(p => p.drugName === selectedDrug)
+    : null;
+
+  // 혈청 크레아티닌 정보 가져오기 (가장 최근 검사 결과)
+  const latestBloodTest = patientBloodTests.length > 0 
+    ? patientBloodTests.sort((a, b) => new Date(b.testDate).getTime() - new Date(a.testDate).getTime())[0]
+    : null;
 
   // Generate PK simulation data
   const generateSimulationData = () => {
@@ -508,21 +526,40 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         </div>
       </div>
 
-      {/* 용법 탐색 영역 (그래프 넓게) */}
+      {/* 환자 TDM 상세 정보 섹션 */}
+      <TDMPatientDetails 
+        currentPatient={currentPatient}
+        selectedPrescription={selectedPrescription}
+        latestBloodTest={latestBloodTest}
+      />
+
+      {/* PK Simulation 그래프 (가로 전체) */}
+      <div className="w-full">
+        <PKCharts
+          simulationData={simulationData}
+          showSimulation={true}
+          currentPatientName={currentPatient.name}
+          selectedDrug={selectedDrug}
+        />
+      </div>
+
+      {/* 용법 조정 시뮬레이션 영역 */}
       <div className="bg-white dark:bg-slate-900 rounded-lg p-6 mt-6 shadow">
-        <div className="font-bold text-lg mb-4">용법 탐색</div>
-        <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="mb-4">
-            <TabsTrigger value="current">현 용법 유지</TabsTrigger>
-            <TabsTrigger value="dose">용량 조정</TabsTrigger>
-            <TabsTrigger value="interval">투여 간격 조정</TabsTrigger>
-          </TabsList>
-          <TabsContent value="current">
-            <div className="mb-2 font-semibold">1. 현 용법 유지</div>
-            <div className="mb-2 text-sm text-muted-foreground">
-              현재 용법을 유지할 경우, 투약 6시간 이후 약물 농도가 치료 범위 아래로 떨어질 수 있습니다.<br />
-              용량 또는 투여 간격 조정이 필요할 수 있습니다.
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">용법 조정 시뮬레이션</h2>
+          <p className="text-gray-600 dark:text-gray-300">
+            용법을 조정하고 즉시 예측 결과를 확인해보세요.
+          </p>
+        </div>
+      
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {/* 용량 조정 시 카드 */}
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border-2 border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-12 h-0.5 bg-pink-500"></div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">용량 조정 시</h3>
             </div>
+            
             <div className="w-full max-w-5xl mx-auto">
               <PKCharts
                 simulationData={tdmChartDataMain.length > 0 ? tdmChartDataMain : simulationData}
@@ -533,85 +570,89 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                 targetMax={getTargetBand().max}
               />
             </div>
-          </TabsContent>
-          <TabsContent value="dose">
-            <div className="mb-2 font-semibold">2. 용량 조정</div>
-            <div className="flex gap-2 items-center mb-2">
-              <span>용량:</span>
-              <select
-                className="border rounded px-2 py-1 w-24"
-                value={doseAdjust || simulationParams.dose.split(' ')[0]}
-                onChange={e => setDoseAdjust(e.target.value + ' ' + doseUnit)}
-              >
-                {[50, 100, 200, 250, 500, 1000].map(val => (
-                  <option key={val} value={val}>{val}</option>
-                ))}
-              </select>
-              <select
-                className="border rounded px-2 py-1 w-16"
-                value={doseUnit}
-                onChange={e => {
-                  setDoseUnit(e.target.value);
-                  setDoseAdjust((doseAdjust || simulationParams.dose.split(' ')[0]) + ' ' + e.target.value);
-                }}
-              >
-                <option value="mg">mg</option>
-                <option value="정">정</option>
-              </select>
-              <button
-                className="ml-2 px-3 py-1 bg-blue-600 text-white rounded"
-                onClick={() => {
-                  const parsedDose = parseFloat((doseAdjust || simulationParams.dose).toString().replace(/[^0-9.\-]/g, ''));
-                  setSimulationParams({ ...simulationParams, dose: doseAdjust || simulationParams.dose });
-                  callTdmApiDose({ amount: Number.isFinite(parsedDose) && parsedDose > 0 ? parsedDose : undefined });
-                }}
-              >그래프 출력</button>
+          </div>
+
+          {/* 투약 간격 조정 시 카드 */}
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border-2 border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-12 h-0.5 bg-cyan-500"></div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">투약 간격 조정 시</h3>
             </div>
-            <div className="w-full max-w-5xl mx-auto">
-              <PKCharts
-                simulationData={tdmChartDataDose.length > 0 ? tdmChartDataDose : generateSimulationData()}
-                showSimulation={true}
-                currentPatientName={currentPatient.name}
-                selectedDrug={selectedDrug}
-                targetMin={(tdmResultDose && typeof tdmResultDose.CTROUGH_after === 'number') ? tdmResultDose.CTROUGH_after : getTargetBand().min}
-                targetMax={(tdmResultDose && typeof tdmResultDose.CMAX_after === 'number') ? tdmResultDose.CMAX_after : getTargetBand().max}
-              />
+            
+            <div className="space-y-3 mb-4">
+              <div className="flex gap-2 mb-3">
+                <button
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedInterval === "6"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setSelectedInterval("6");
+                    setSimulationParams({ ...simulationParams, halfLife: "6" });
+                  }}
+                >
+                  6시간
+                </button>
+                <button
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedInterval === "8"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setSelectedInterval("8");
+                    setSimulationParams({ ...simulationParams, halfLife: "8" });
+                  }}
+                >
+                  8시간
+                </button>
+                <button
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedInterval === "10"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setSelectedInterval("10");
+                    setSimulationParams({ ...simulationParams, halfLife: "10" });
+                  }}
+                >
+                  10시간
+                </button>
+              </div>
             </div>
-          </TabsContent>
-          <TabsContent value="interval">
-            <div className="mb-2 font-semibold">3. 투여 간격 조정</div>
-            <div className="flex gap-2 items-center mb-2">
-              <span>투여 간격 (half-life, h):</span>
-              <select
-                className="border rounded px-2 py-1 w-24"
-                value={intervalAdjust || simulationParams.halfLife}
-                onChange={e => setIntervalAdjust(e.target.value)}
-              >
-                {[1,2,3,6,8,12,24,48].map(val => (
-                  <option key={val} value={val}>{val}</option>
-                ))}
-              </select>
-              <button
-                className="ml-2 px-3 py-1 bg-blue-600 text-white rounded"
-                onClick={() => {
-                  const parsedTau = parseFloat((intervalAdjust || simulationParams.halfLife).toString());
-                  setSimulationParams({ ...simulationParams, halfLife: intervalAdjust || simulationParams.halfLife });
-                  callTdmApiInterval({ tau: Number.isFinite(parsedTau) && parsedTau > 0 ? parsedTau : undefined });
-                }}
-              >그래프 출력</button>
+            
+            {/* 예측 약물 농도 카드 */}
+            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-800 dark:text-white mb-3">예측 약물 농도</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-300">AUC:</span>
+                  <span className="font-semibold text-gray-800 dark:text-white">335 mg*h/L</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-300">max 농도:</span>
+                  <span className="font-semibold text-gray-800 dark:text-white">29 mg/L</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-300">trough 농도:</span>
+                  <span className="font-semibold text-gray-800 dark:text-white">5 mg/L</span>
+                </div>
+              </div>
             </div>
-            <div className="w-full max-w-5xl mx-auto">
-              <PKCharts
-                simulationData={tdmChartDataInterval.length > 0 ? tdmChartDataInterval : generateSimulationData()}
-                showSimulation={true}
-                currentPatientName={currentPatient.name}
-                selectedDrug={selectedDrug}
-                targetMin={(tdmResultInterval && typeof tdmResultInterval.CTROUGH_after === 'number') ? tdmResultInterval.CTROUGH_after : getTargetBand().min}
-                targetMax={(tdmResultInterval && typeof tdmResultInterval.CMAX_after === 'number') ? tdmResultInterval.CMAX_after : getTargetBand().max}
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
+        
+        <div className="w-full">
+          <DosageChart
+            simulationData={generateSimulationData()}
+            showSimulation={true}
+            currentPatientName={currentPatient.name}
+            selectedDrug={selectedDrug}
+            chartTitle="용법 조정 시뮬레이션"
+          />
+        </div>
       </div>
 
       {/* PDF 보고서 생성 버튼 (하단 우측, 문서 아이콘 포함) */}

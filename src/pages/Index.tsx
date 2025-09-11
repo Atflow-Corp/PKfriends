@@ -55,6 +55,10 @@ export interface BloodTest {
   timeAfterDose: number;
   testDate: Date;
   notes: string;
+  // 신기능 정보 (BloodTestStep에서 추가)
+  creatinine?: string;
+  dialysis?: 'Y' | 'N';
+  renalReplacement?: string;
 }
 
 export interface DrugAdministration {
@@ -169,8 +173,8 @@ const Index = ({ onLogout }: IndexProps) => {
     setBloodTests([...bloodTests, bloodTest]);
   };
 
-  const deleteBloodTest = (id: string) => {
-    setBloodTests(bloodTests.filter(bt => bt.id !== id));
+  const deleteBloodTest = (bloodTestId: string) => {
+    setBloodTests(bloodTests.filter(test => test.id !== bloodTestId));
   };
 
   const addDrugAdministration = (drugAdministration: DrugAdministration) => {
@@ -268,8 +272,10 @@ const Index = ({ onLogout }: IndexProps) => {
               setSelectedPatient={setSelectedPatient}
               onAddPatient={addPatient}
               onAddPrescription={addPrescription}
+              setPrescriptions={setPrescriptions}
               onAddBloodTest={addBloodTest}
               onDeleteBloodTest={deleteBloodTest}
+              setBloodTests={setBloodTests}
               onAddDrugAdministration={addDrugAdministration}
               drugAdministrations={drugAdministrations}
               setDrugAdministrations={setDrugAdministrations}
@@ -290,6 +296,8 @@ const Index = ({ onLogout }: IndexProps) => {
               <CardContent>
                 <PatientRegistration 
                   onAddPatient={addPatient}
+                  onUpdatePatient={(p)=>setPatients(prev=>prev.map(x=>x.id===p.id?p:x))}
+                  onDeletePatient={(id)=>setPatients(prev=>prev.filter(x=>x.id!==id))}
                   patients={patients}
                   selectedPatient={selectedPatient}
                   setSelectedPatient={setSelectedPatient}
