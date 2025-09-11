@@ -17,6 +17,8 @@ interface StepWorkflowProps {
   selectedPatient: Patient | null;
   setSelectedPatient: (patient: Patient | null) => void;
   onAddPatient: (patient: Patient) => void;
+  onUpdatePatient: (patient: Patient) => void;
+  onDeletePatient: (patientId: string) => void;
   onAddPrescription: (prescription: Prescription) => void;
   setPrescriptions: (prescriptions: Prescription[]) => void;
   onAddBloodTest: (bloodTest: BloodTest) => void;
@@ -34,6 +36,8 @@ const StepWorkflow = ({
   selectedPatient,
   setSelectedPatient,
   onAddPatient,
+  onUpdatePatient,
+  onDeletePatient,
   onAddPrescription,
   setPrescriptions,
   onAddBloodTest,
@@ -173,6 +177,8 @@ const StepWorkflow = ({
             selectedPatient={selectedPatient}
             setSelectedPatient={setSelectedPatient}
             onAddPatient={onAddPatient}
+            onUpdatePatient={onUpdatePatient}
+            onDeletePatient={onDeletePatient}
             onNext={handleNextStep}
             isCompleted={isStepCompleted(1)}
           />
@@ -234,6 +240,7 @@ const StepWorkflow = ({
             prescriptions={prescriptions}
             bloodTests={bloodTests}
             selectedPatient={selectedPatient}
+            drugAdministrations={drugAdministrations}
             onPrev={handlePrevStep}
           />
         )}

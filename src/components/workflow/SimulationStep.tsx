@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Patient, Prescription, BloodTest } from "@/pages/Index";
+import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { Activity, ArrowLeft, CheckCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import PKSimulation from "../PKSimulation";
 
 interface SimulationStepProps {
@@ -9,6 +10,7 @@ interface SimulationStepProps {
   prescriptions: Prescription[];
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
+  drugAdministrations: DrugAdministration[];
   onPrev: () => void;
 }
 
@@ -17,8 +19,17 @@ const SimulationStep = ({
   prescriptions,
   bloodTests,
   selectedPatient,
+  drugAdministrations,
   onPrev
 }: SimulationStepProps) => {
+  const [tdmResult, setTdmResult] = useState<unknown | null>(null);
+  useEffect(() => {
+    if (!selectedPatient) { setTdmResult(null); return; }
+    try {
+      const raw = window.localStorage.getItem(`tdmfriends:tdmResult:${selectedPatient.id}`);
+      if (raw) setTdmResult(JSON.parse(raw)); else setTdmResult(null);
+    } catch { setTdmResult(null); }
+  }, [selectedPatient?.id]);
   if (!selectedPatient) {
     return (
       <Card>
@@ -34,6 +45,7 @@ const SimulationStep = ({
 
   const patientPrescriptions = prescriptions.filter(p => p.patientId === selectedPatient.id);
   const patientBloodTests = bloodTests.filter(b => b.patientId === selectedPatient.id);
+  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient.id);
 
   return (
     <div className="space-y-6">
@@ -55,6 +67,7 @@ const SimulationStep = ({
             prescriptions={prescriptions}
             bloodTests={bloodTests}
             selectedPatient={selectedPatient}
+            drugAdministrations={patientDrugAdministrations}
           />
 
           {/* Navigation */}

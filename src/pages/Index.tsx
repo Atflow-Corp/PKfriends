@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 export interface Patient {
   id: string;
@@ -85,6 +86,7 @@ const Index = ({ onLogout }: IndexProps) => {
   const [drugAdministrations, setDrugAdministrations] = useState<DrugAdministration[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isDark, setIsDark] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -95,12 +97,76 @@ const Index = ({ onLogout }: IndexProps) => {
     }
   }, [isDark]);
 
+  // Load persisted data on mount
+  useEffect(() => {
+    const savedPatients = storage.getJSON<Patient[]>(STORAGE_KEYS.patients, [] as Patient[]);
+    const revivePatients = (savedPatients || []).map((p: any) => ({ ...p, createdAt: p.createdAt ? new Date(p.createdAt) : new Date() }));
+    setPatients(revivePatients);
+
+    const savedPrescriptions = storage.getJSON<Prescription[]>(STORAGE_KEYS.prescriptions, [] as Prescription[]);
+    const revivePrescriptions = (savedPrescriptions || []).map((pr: any) => ({
+      ...pr,
+      startDate: pr.startDate ? new Date(pr.startDate) : new Date(),
+      endDate: pr.endDate ? new Date(pr.endDate) : undefined
+    }));
+    setPrescriptions(revivePrescriptions);
+
+    const savedBloodTests = storage.getJSON<BloodTest[]>(STORAGE_KEYS.bloodTests, [] as BloodTest[]);
+    const reviveBloodTests = (savedBloodTests || []).map((bt: any) => ({
+      ...bt,
+      testDate: bt.testDate ? new Date(bt.testDate) : new Date()
+    }));
+    setBloodTests(reviveBloodTests);
+
+    const savedDrugAdministrations = storage.getJSON<DrugAdministration[]>(STORAGE_KEYS.drugAdministrations, [] as DrugAdministration[]);
+    setDrugAdministrations(savedDrugAdministrations || []);
+
+    const savedSelectedPatientId = storage.getJSON<string | null>(STORAGE_KEYS.selectedPatientId, null);
+    if (savedSelectedPatientId) {
+      const found = revivePatients.find(p => p.id === savedSelectedPatientId) || null;
+      setSelectedPatient(found);
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist data when state changes
+  useEffect(() => {
+    if (!hydrated) return;
+    storage.setJSON(STORAGE_KEYS.patients, patients);
+  }, [hydrated, patients]);
+  useEffect(() => {
+    if (!hydrated) return;
+    storage.setJSON(STORAGE_KEYS.prescriptions, prescriptions);
+  }, [hydrated, prescriptions]);
+  useEffect(() => {
+    if (!hydrated) return;
+    storage.setJSON(STORAGE_KEYS.bloodTests, bloodTests);
+  }, [hydrated, bloodTests]);
+  useEffect(() => {
+    if (!hydrated) return;
+    storage.setJSON(STORAGE_KEYS.drugAdministrations, drugAdministrations);
+  }, [hydrated, drugAdministrations]);
+  useEffect(() => {
+    if (!hydrated) return;
+    if (selectedPatient?.id) {
+      storage.setJSON(STORAGE_KEYS.selectedPatientId, selectedPatient.id);
+    } else {
+      storage.remove(STORAGE_KEYS.selectedPatientId);
+    }
+  }, [hydrated, selectedPatient]);
+
   const addPatient = (patient: Patient) => {
     setPatients([...patients, patient]);
   };
 
-  const addPrescription = (prescription: Prescription) => {
-    setPrescriptions([...prescriptions, prescription]);
+  const addPrescription = (prescription?: Prescription, updatedPrescriptions?: Prescription[]) => {
+    if (updatedPrescriptions) {
+      setPrescriptions(prescription ? [...updatedPrescriptions, prescription] : updatedPrescriptions);
+      return;
+    }
+    if (prescription) {
+      setPrescriptions([...prescriptions, prescription]);
+    }
   };
 
   const addBloodTest = (bloodTest: BloodTest) => {
@@ -213,7 +279,11 @@ const Index = ({ onLogout }: IndexProps) => {
               onAddDrugAdministration={addDrugAdministration}
               drugAdministrations={drugAdministrations}
               setDrugAdministrations={setDrugAdministrations}
-            />
+              onUpdatePatient={function (patient: Patient): void {
+                throw new Error("Function not implemented.");
+              } } onDeletePatient={function (patientId: string): void {
+                throw new Error("Function not implemented.");
+              } }            />
           </TabsContent>
 
           <TabsContent value="management">
@@ -230,6 +300,8 @@ const Index = ({ onLogout }: IndexProps) => {
               <CardContent>
                 <PatientRegistration 
                   onAddPatient={addPatient}
+                  onUpdatePatient={(p)=>setPatients(prev=>prev.map(x=>x.id===p.id?p:x))}
+                  onDeletePatient={(id)=>setPatients(prev=>prev.filter(x=>x.id!==id))}
                   patients={patients}
                   selectedPatient={selectedPatient}
                   setSelectedPatient={setSelectedPatient}

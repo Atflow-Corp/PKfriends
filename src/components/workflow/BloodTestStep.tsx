@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +64,25 @@ const BloodTestStep = ({
     renalReplacement: ""
   });
   const [renalInfoList, setRenalInfoList] = useState<RenalInfo[]>([]);
+
+  // Persist renal info list per patient in localStorage
+  useEffect(() => {
+    if (!selectedPatient) return;
+    try {
+      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as RenalInfo[];
+        setRenalInfoList(parsed);
+      }
+    } catch (_err) { /* no-op */ }
+  }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!selectedPatient) return;
+    try {
+      window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}`, JSON.stringify(renalInfoList));
+    } catch (_err) { /* no-op */ }
+  }, [selectedPatient?.id, renalInfoList]);
 
   // 혈중 약물 농도 입력 상태
   const [formData, setFormData] = useState({
@@ -137,29 +156,25 @@ const BloodTestStep = ({
     e.preventDefault();
     if (!selectedPatient) return;
     if (!formData.testDate || !formData.concentration) return;
-    // 날짜/시간 파싱 (YYYY-MM-DD HH:mm 또는 YYYYMMDDHHmm)
-    let datePart = "";
-    let timePart = "";
-    let input = formData.testDate.trim();
-    if (/^\d{8}\d{4}$/.test(input.replace(/[-: ]/g, ""))) {
-      // 202507251400
-      datePart = input.slice(0, 8);
-      timePart = input.slice(8, 12);
-      datePart = datePart.slice(0,4) + '-' + datePart.slice(4,6) + '-' + datePart.slice(6,8);
-      timePart = timePart.slice(0,2) + ':' + timePart.slice(2,4);
-    } else if (/^\d{4}-\d{2}-\d{2} ?\d{2}:\d{2}$/.test(input)) {
-      // 2025-07-25 14:00
-      [datePart, timePart] = input.split(/ +/);
-    } else {
-      alert("날짜와 시간 형식이 올바르지 않습니다. 예: 2025-07-25 14:00 또는 202507251400");
+    // 날짜/시간 파싱: YYYY-MM-DD HH:mm 또는 12자리 숫자(YYYYMMDDHHmm) 모두 지원
+    const compact = formData.testDate.trim().replace(/[-: ]/g, "");
+    if (!/^\d{12}$/.test(compact)) {
+      alert("날짜와 시간 형식이 올바르지 않습니다. 예: 2025-09-01 14:00 또는 202509011400");
       return;
     }
+    const y = compact.slice(0, 4);
+    const m = compact.slice(4, 6);
+    const d = compact.slice(6, 8);
+    const hh = compact.slice(8, 10);
+    const mm = compact.slice(10, 12);
+    const datePart = `${y}-${m}-${d}`;
+    const timePart = `${hh}:${mm}`;
     // 오늘 이후 날짜 입력 방지
     if (datePart > today) {
       alert("날짜는 오늘 이후로 입력할 수 없습니다.");
       return;
     }
-    const testDateTime = new Date(`${datePart}T${timePart}`);
+    const testDateTime = dayjs(`${datePart} ${timePart}`, "YYYY-MM-DD HH:mm").toDate();
     const newBloodTest: BloodTest = {
       id: Date.now().toString(),
       patientId: selectedPatient.id,
