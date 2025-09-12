@@ -46,6 +46,7 @@ const DrugAdministrationStep = ({
   });
   const [tableReady, setTableReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [conditions, setConditions] = useState<any[]>([]);
 
   // 날짜 오늘 이후 선택 불가
   const today = dayjs().format("YYYY-MM-DD");
@@ -84,6 +85,44 @@ const DrugAdministrationStep = ({
 
   const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient?.id);
 
+  // localStorage 키 생성
+  const getStorageKey = () => selectedPatient ? `tdmfriends:conditions:${selectedPatient.id}` : null;
+
+  // 컴포넌트 마운트 시 저장된 conditions 복원
+  useEffect(() => {
+    if (!selectedPatient) return;
+    
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
+
+    try {
+      const savedConditions = localStorage.getItem(storageKey);
+      if (savedConditions) {
+        const parsed = JSON.parse(savedConditions);
+        console.log('Restoring conditions:', parsed);
+        setConditions(parsed);
+      } else {
+        console.log('No saved conditions found');
+      }
+    } catch (error) {
+      console.error('Failed to restore conditions:', error);
+    }
+  }, [selectedPatient?.id]);
+
+  // conditions 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (!selectedPatient) return;
+    
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
+    
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(conditions));
+    } catch (error) {
+      console.error('Failed to save conditions:', error);
+    }
+  }, [conditions, selectedPatient?.id]);
+
   useEffect(() => {
     // no-op
   }, []);
@@ -103,7 +142,9 @@ const DrugAdministrationStep = ({
         </CardHeader>
         <CardContent>
           <div className="py-2 px-3 rounded bg-muted dark:bg-slate-800 text-base font-semibold mb-4">
-            약물명: {tdmDrug?.drugName || "-"}
+            <div className="text-sm">
+              <span className="text-muted-foreground">TDM 내역:</span> {tdmDrug?.drugName || "-"}, {tdmDrug?.indication || "-"}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -119,6 +160,8 @@ const DrugAdministrationStep = ({
             onComplete={onNext}
             onTableGenerated={() => setTableReady(true)}
             initialAdministrations={patientDrugAdministrations}
+            initialConditions={conditions}
+            onConditionsChange={setConditions}
             onSaveRecords={(records) => {
               if (selectedPatient && tdmDrug) {
                 const newAdministrations = records.map((row, idx) => ({

@@ -490,6 +490,7 @@ const PrescriptionStep = ({
     e.preventDefault();
     if (!selectedPatient) return;
     
+    
     // 신규 TDM은 1개만 허용 - 기존 신규 TDM이 있는지 확인
     const newlyAddedCount = getNewlyAddedTdmCount();
     if (newlyAddedCount > 0) {
@@ -616,7 +617,6 @@ const PrescriptionStep = ({
                         <TableHead>약물명</TableHead>
                         <TableHead>적응증</TableHead>
                         <TableHead>추가정보</TableHead>
-                        <TableHead>TDM 목표</TableHead>
                         <TableHead>TDM 목표치</TableHead>
                         <TableHead>등록일</TableHead>
                         <TableHead>삭제</TableHead>
@@ -634,8 +634,7 @@ const PrescriptionStep = ({
                             <TableCell className="font-medium">{prescription.drugName}</TableCell>
                             <TableCell>{prescription.indication || "-"}</TableCell>
                             <TableCell>{prescription.additionalInfo || "-"}</TableCell>
-                            <TableCell>{prescription.tdmTarget || "-"}</TableCell>
-                            <TableCell>{prescription.tdmTargetValue || "-"}</TableCell>
+                            <TableCell>{prescription.tdmTarget && prescription.tdmTargetValue ? `${prescription.tdmTarget}: ${prescription.tdmTargetValue}` : (prescription.tdmTargetValue || "-")}</TableCell>
                             <TableCell>{prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-"}</TableCell>
                             <TableCell>
                               {/* 신규로 추가한 TDM만 삭제 가능 */}
@@ -721,6 +720,7 @@ const PrescriptionStep = ({
                       </SelectContent>
                     </Select>
                   </div>
+                  
                   
                   {shouldShowAdditionalInfo() && (
                     <div>
