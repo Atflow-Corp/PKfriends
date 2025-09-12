@@ -44,6 +44,7 @@ export interface Prescription {
   indication?: string;
   tdmTarget?: string;
   tdmTargetValue?: string;
+  additionalInfo?: string;
 }
 
 export interface BloodTest {
