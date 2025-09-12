@@ -25,6 +25,7 @@ interface BloodTestStepProps {
   selectedPatient: Patient | null;
   onAddBloodTest: (bloodTest: BloodTest) => void;
   onDeleteBloodTest: (bloodTestId: string) => void;
+  onUpdateBloodTest: (bloodTestId: string, updates: Partial<BloodTest>) => void;
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
@@ -49,6 +50,7 @@ const BloodTestStep = ({
   selectedPatient,
   onAddBloodTest,
   onDeleteBloodTest,
+  onUpdateBloodTest,
   onNext,
   onPrev,
   isCompleted,
@@ -58,7 +60,7 @@ const BloodTestStep = ({
   const [renalForm, setRenalForm] = useState<Omit<RenalInfo, 'id' | 'isSelected'>>({
     creatinine: "",
     date: "",
-    formula: "",
+    formula: "cockcroft-gault",
     result: "",
     dialysis: "N",
     renalReplacement: ""
@@ -105,6 +107,12 @@ const BloodTestStep = ({
   // 2단계에서 입력한 TDM 약물 1개만 사용
   const tdmDrug = prescriptions.find(p => p.patientId === selectedPatient?.id);
 
+  // TDM 약물이 변경될 때마다 단위 업데이트
+  useEffect(() => {
+    const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";
+    setFormData(prev => ({ ...prev, unit: defaultUnit }));
+  }, [tdmDrug?.drugName]);
+
   const handleAddRenal = () => {
     if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) return;
     
@@ -134,7 +142,7 @@ const BloodTestStep = ({
     setRenalForm({
       creatinine: "",
       date: "",
-      formula: "",
+      formula: "cockcroft-gault",
       result: "",
       dialysis: "N",
       renalReplacement: ""
@@ -150,6 +158,10 @@ const BloodTestStep = ({
       ...item,
       isSelected: item.id === id ? checked : false
     })));
+  };
+
+  const handleBloodTestSelectionChange = (id: string, checked: boolean) => {
+    onUpdateBloodTest(id, { isSelected: checked });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -183,10 +195,24 @@ const BloodTestStep = ({
       unit: formData.unit,
       timeAfterDose: 0, // Lab 단계에서는 미사용
       testDate: testDateTime,
-      notes: formData.notes
+      notes: formData.notes,
+      isSelected: true // 새로 추가된 데이터는 자동으로 선택
     };
     onAddBloodTest(newBloodTest);
-    setFormData({ testDate: "", testTime: "", concentration: "", unit: "ng/mL", notes: "" });
+    const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";
+    setFormData({ testDate: "", testTime: "", concentration: "", unit: defaultUnit, notes: "" });
+  };
+
+  const handleNext = () => {
+    // TDM이 반코마이신일 때 신기능 데이터 필수 입력 검증
+    if (tdmDrug?.drugName === "Vancomycin") {
+      const hasSelectedRenalData = renalInfoList.some(item => item.isSelected);
+      if (!hasSelectedRenalData) {
+        alert("신기능 데이터를 입력해주세요.");
+        return;
+      }
+    }
+    onNext();
   };
 
   if (!selectedPatient) {
@@ -208,7 +234,7 @@ const BloodTestStep = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FlaskConical className="h-5 w-5" />
-            Lab
+            3단계: Lab
             {isCompleted && <CheckCircle className="h-5 w-5 text-green-600" />}
           </CardTitle>
           <CardDescription>
@@ -216,6 +242,32 @@ const BloodTestStep = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* 2단계에서 선택한 TDM 내역 표시 */}
+          {tdmDrug && (
+            <div className="py-3 px-4 rounded bg-muted dark:bg-slate-800 mb-4">
+              <div className="text-base font-semibold mb-2">
+                TDM 선택 정보: {tdmDrug.drugName}
+              </div>
+              <div className="space-y-1 text-sm">
+                {tdmDrug.indication && (
+                  <div>
+                    <span className="font-medium">적응증:</span> {tdmDrug.indication}
+                  </div>
+                )}
+                {tdmDrug.additionalInfo && (
+                  <div>
+                    <span className="font-medium">추가정보:</span> {tdmDrug.additionalInfo}
+                  </div>
+                )}
+                {tdmDrug.tdmTarget && tdmDrug.tdmTargetValue && (
+                  <div>
+                    <span className="font-medium">TDM목표치:</span> {tdmDrug.tdmTarget} {tdmDrug.tdmTargetValue}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           {/* 신기능 데이터 */}
           <Card>
             <CardHeader>
@@ -355,12 +407,21 @@ const BloodTestStep = ({
                     </div>
                     <div>
                       <Label htmlFor="renalReplacement">신 대체요법</Label>
-                      <Input
-                        id="renalReplacement"
-                        value={renalForm.renalReplacement}
-                        onChange={e => setRenalForm({ ...renalForm, renalReplacement: e.target.value })}
-                        placeholder="예: CRRT, HD"
-                      />
+                      <Select 
+                        value={renalForm.renalReplacement} 
+                        onValueChange={v => setRenalForm({ ...renalForm, renalReplacement: v })}
+                        disabled={renalForm.dialysis === "N"}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="신 대체요법 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="HD">HD</SelectItem>
+                          <SelectItem value="CRRT">CRRT</SelectItem>
+                          <SelectItem value="PD">PD</SelectItem>
+                          <SelectItem value="기타">기타</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   
@@ -378,7 +439,7 @@ const BloodTestStep = ({
               <CardTitle>혈중 약물 농도</CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 items-center">
+              <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 items-end">
                 <div>
                   <Label htmlFor="drugDateTime">날짜/시간</Label>
                   <Input
@@ -391,16 +452,50 @@ const BloodTestStep = ({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="concentration">농도 (ng/mL)</Label>
+                  <Label htmlFor="concentration">농도</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="concentration"
+                      type="number"
+                      step="0.01"
+                      value={formData.concentration}
+                      onChange={e => setFormData({ ...formData, concentration: e.target.value })}
+                      className="flex-1"
+                    />
+                    <Select 
+                      value={formData.unit} 
+                      onValueChange={v => setFormData({ ...formData, unit: v })}
+                    >
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tdmDrug?.drugName === "Vancomycin" ? (
+                          <>
+                            <SelectItem value="mg/L">mg/L</SelectItem>
+                            <SelectItem value="μg/mL">μg/mL</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="ng/mL">ng/mL</SelectItem>
+                            <SelectItem value="μg/L">μg/L</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="notes">비고</Label>
                   <Input
-                    id="concentration"
-                    type="number"
-                    step="0.01"
-                    value={formData.concentration}
-                    onChange={e => setFormData({ ...formData, concentration: e.target.value })}
+                    id="notes"
+                    type="text"
+                    value={formData.notes}
+                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="비고 입력"
                   />
                 </div>
-                <Button type="submit" className="mt-6">추가</Button>
+                <Button type="submit">추가</Button>
               </form>
               {/* 입력된 혈중 약물 농도 리스트 */}
               {patientBloodTests.length > 0 && (
@@ -408,9 +503,10 @@ const BloodTestStep = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-16">분석사용</TableHead>
                         <TableHead>날짜</TableHead>
                         <TableHead>시간</TableHead>
-                        <TableHead>농도 (ng/mL)</TableHead>
+                        <TableHead>농도</TableHead>
                         <TableHead>비고</TableHead>
                         <TableHead className="w-16">삭제</TableHead>
                       </TableRow>
@@ -418,6 +514,12 @@ const BloodTestStep = ({
                     <TableBody>
                       {patientBloodTests.map((test) => (
                         <TableRow key={test.id}>
+                          <TableCell>
+                            <Checkbox 
+                              checked={test.isSelected || false}
+                              onCheckedChange={(checked) => handleBloodTestSelectionChange(test.id, checked as boolean)}
+                            />
+                          </TableCell>
                           <TableCell>{test.testDate.toLocaleDateString()}</TableCell>
                           <TableCell>{test.testDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
                           <TableCell>{test.concentration} {test.unit}</TableCell>
@@ -447,7 +549,7 @@ const BloodTestStep = ({
               TDM 선택
             </Button>
             {isCompleted && (
-              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
+              <Button onClick={handleNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
                 투약 기록
                 <ArrowRight className="h-4 w-4" />
               </Button>

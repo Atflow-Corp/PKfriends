@@ -56,6 +56,7 @@ export interface BloodTest {
   timeAfterDose: number;
   testDate: Date;
   notes: string;
+  isSelected?: boolean;
   // 신기능 정보 (BloodTestStep에서 추가)
   creatinine?: string;
   dialysis?: 'Y' | 'N';
