@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 function TablePage(props) {
+  // 투약경로를 국문으로 변환하는 헬퍼 함수
+  const convertRouteToKorean = (route) => {
+    if (route === "IV") return "정맥";
+    else if (route === "oral") return "경구";
+    else if (route === "subcutaneous") return "피하";
+    else if (route === "intramuscular") return "근육";
+    return route || "";
+  };
+
   const [currentCondition, setCurrentCondition] = useState({
     route: "",
     dosage: "",
@@ -30,6 +39,10 @@ function TablePage(props) {
   // 최신 onRecordsChange 콜백 참조 보관 (의존성으로 인한 재실행 방지)
   const onRecordsChangeRef = useRef(props.onRecordsChange);
   useEffect(() => { onRecordsChangeRef.current = props.onRecordsChange; }, [props.onRecordsChange]);
+  
+  // 최신 onConditionsChange 콜백 참조 보관
+  const onConditionsChangeRef = useRef(props.onConditionsChange);
+  useEffect(() => { onConditionsChangeRef.current = props.onConditionsChange; }, [props.onConditionsChange]);
   // 마지막 전송한 records 스냅샷 (불필요한 전파 방지)
   const lastRecordsJsonRef = useRef(null);
   useEffect(() => {
@@ -103,12 +116,20 @@ function TablePage(props) {
     onRecordsChangeRef.current(records);
   }, [tableData]);
 
+  // Propagate conditions changes to parent
+  useEffect(() => {
+    if (!onConditionsChangeRef.current) return;
+    console.log('Conditions changed:', conditions);
+    onConditionsChangeRef.current(conditions);
+  }, [conditions]);
+
   // 초기 로드 완료 후 isInitialLoad를 false로 설정
   useEffect(() => {
     if (isInitialLoad) {
       setIsInitialLoad(false);
     }
   }, [isInitialLoad]);
+
 
   // props가 변경될 때 state 업데이트
   useEffect(() => {
@@ -132,7 +153,46 @@ function TablePage(props) {
   }, [props.initialConditions, props.initialTableData, props.initialIsTableGenerated]);
 
   // 투약 경로 옵션
-  const routeOptions = ["경구", "정맥", "피하", "수액"];
+  const routeOptions = [
+    { value: "경구", label: "경구 (oral)" },
+    { value: "정맥", label: "정맥 (IV)" },
+    { value: "피하", label: "피하 (SC)" },
+    { value: "수액", label: "수액 (IV infusion)" }
+  ];
+
+  // 약물별 기본 투약용량 정의
+  const getDefaultDosage = (drugName, route) => {
+    if (!drugName || !route) return "";
+    
+    const drug = drugName.toLowerCase();
+    const routeLower = route.toLowerCase();
+    
+    if (drug === "vancomycin") {
+      if (routeLower === "정맥" || routeLower === "iv") return "10";
+    } else if (drug === "cyclosporin" || drug === "cyclosporine") {
+      if (routeLower === "정맥" || routeLower === "iv") return "10";
+      else if (routeLower === "경구" || routeLower === "oral") return "25";
+    }
+    
+    return "";
+  };
+
+  // 약물별 기본 단위 정의
+  const getDefaultUnit = (drugName, route) => {
+    if (!drugName || !route) return "mg";
+    
+    const drug = drugName.toLowerCase();
+    const routeLower = route.toLowerCase();
+    
+    if (drug === "vancomycin") {
+      return "mg";
+    } else if (drug === "cyclosporin" || drug === "cyclosporine") {
+      if (routeLower === "정맥" || routeLower === "iv") return "mg";
+      else if (routeLower === "경구" || routeLower === "oral") return "mg";
+    }
+    
+    return "mg";
+  };
   
   // 단위 옵션
   const unitOptions = ["mg", "g", "mcg"];
@@ -148,7 +208,22 @@ function TablePage(props) {
 
   // 현재 조건 입력값 변경 처리
   const handleCurrentConditionChange = (field, value) => {
-    setCurrentCondition(prev => ({ ...prev, [field]: value }));
+    setCurrentCondition(prev => {
+      const newCondition = { ...prev, [field]: value };
+      
+      // 투약 경로가 변경되면 기본 투약용량과 단위 설정
+      if (field === "route" && props.tdmDrug?.drugName) {
+        const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, value);
+        const defaultUnit = getDefaultUnit(props.tdmDrug.drugName, value);
+        
+        if (defaultDosage) {
+          newCondition.dosage = defaultDosage;
+          newCondition.unit = defaultUnit;
+        }
+      }
+      
+      return newCondition;
+    });
   };
 
   // 조건 추가 또는 수정
@@ -356,7 +431,12 @@ function TablePage(props) {
     // 초기 로드가 아닐 때만 onSaveRecords 호출 (중복 저장 방지)
     if (props.onSaveRecords && !isInitialLoad) {
       // title row 제외, 실제 투약기록만 전달
-      const records = newTableData.filter(row => !row.isTitle);
+      const records = newTableData.filter(row => !row.isTitle).map(row => ({
+        timeStr: row.timeStr,
+        amount: row.amount,
+        route: row.route,
+        injectionTime: row.injectionTime
+      }));
       props.onSaveRecords(records);
     }
   };
@@ -364,9 +444,24 @@ function TablePage(props) {
   // 테이블 데이터 수정 함수
   const handleTableEdit = (id, field, value) => {
     setTableData(prev => 
-      prev.map(row => 
-        row.id === id ? { ...row, [field]: value } : row
-      )
+      prev.map(row => {
+        if (row.id === id) {
+          const updatedRow = { ...row, [field]: value };
+          
+          // 투약 경로가 변경되면 기본 투약용량과 단위 설정
+          if (field === "route" && props.tdmDrug?.drugName) {
+            const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, value);
+            const defaultUnit = getDefaultUnit(props.tdmDrug.drugName, value);
+            
+            if (defaultDosage) {
+              updatedRow.amount = `${defaultDosage} ${defaultUnit}`;
+            }
+          }
+          
+          return updatedRow;
+        }
+        return row;
+      })
     );
   };
 
@@ -485,10 +580,7 @@ function TablePage(props) {
       }}
     >
       <div style={{ width: "100%", margin: 0, padding: "0 0 40px 0" }}>
-        <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-          <h1 style={{ textAlign: "center", color: isDarkMode ? "#e0e6f0" : "#333", marginBottom: "30px" }}>
-            투약 기록 테이블 생성기
-          </h1>
+        <div>
           {/* 이하 기존 테이블 입력 UI 코드 유지 */}
           {/* 1단계: 개선된 조건 입력 UI */}
           <div style={{
@@ -498,7 +590,7 @@ function TablePage(props) {
             marginBottom: "30px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h2 style={{ marginBottom: 20, color: isDarkMode ? "#e0e6f0" : "#495057" }}>1단계: 투약 조건 입력</h2>
+            <h1 style={{ marginBottom: 20, color: isDarkMode ? "#e0e6f0" : "#495057" }}>1단계: 처방 내역을 입력하세요</h1>
 
                        {/* 현재 조건 입력 박스 */}
             <div style={{
@@ -532,7 +624,7 @@ function TablePage(props) {
                   >
                     <option value="">투약 경로를 선택해주세요</option>
                     {routeOptions.map(option => (
-                      <option key={option} value={option}>{option}</option>
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </div>
@@ -610,13 +702,13 @@ function TablePage(props) {
 
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
-                    주입시간
+                    주입시간 (분)
                   </label>
                   <input
                     type="text"
                     value={currentCondition.injectionTime}
                     onChange={(e) => handleCurrentConditionChange("injectionTime", e.target.value)}
-                    placeholder="예: 30분"
+                    placeholder="bolus 투여 시 0 입력"
                     disabled={currentCondition.route !== "정맥"}
                     style={{
                       width: "100%",
@@ -716,7 +808,7 @@ function TablePage(props) {
             {/* 투약 기록 summary */}
             <div style={{ marginTop: "20px" }}>
               <h3 style={{ marginBottom: "10px", color: "#495057" }}>
-                투약 기록 summary
+                처방 내역 summary
               </h3>
               <div style={{
                 border: "1px solid #dee2e6",
@@ -726,7 +818,12 @@ function TablePage(props) {
                 maxHeight: "200px",
                 overflowY: "auto"
               }}>
-                {conditions.map((condition, index) => (
+                {conditions.length === 0 ? (
+                  <div style={{ color: "#6c757d", fontStyle: "italic" }}>
+                    투약 조건을 추가해주세요.
+                  </div>
+                ) : (
+                  conditions.map((condition, index) => (
                   <div key={condition.id} style={{
                     borderBottom: "1px dashed #eee",
                     paddingBottom: "10px",
@@ -778,17 +875,7 @@ function TablePage(props) {
                       </button>
                     </div>
                   </div>
-                ))}
-                {/* Existing persisted rows summary */}
-                {tableData.filter(r => !r.isTitle).length > 0 && (
-                  <div style={{ fontSize: "13px", color: "#6c757d" }}>
-                    {tableData.filter(r => !r.isTitle).map((row, idx) => (
-                      <div key={row.id} style={{ borderBottom: "1px dashed #eee", padding: "6px 0" }}>
-                        <span style={{ fontWeight: "bold", color: "#10b981", marginRight: 8 }}>저장 {idx + 1}:</span>
-                        {`${row.timeStr}, ${row.amount}, ${row.route}${row.route === '정맥' && row.injectionTime && row.injectionTime !== '-' ? ` (${row.injectionTime}분)` : ''}`}
-                      </div>
-                    ))}
-                  </div>
+                  ))
                 )}
               </div>
             </div>
@@ -834,14 +921,26 @@ function TablePage(props) {
           </div>
 
           {/*2 생성된 테이블 */}
-          {(isTableGenerated || tableData.length > 0) && (
+          <div style={{ 
+            background: isDarkMode ? "#23293a" : "white", 
+            padding: "20px",
+            borderRadius: "8px",
+            border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
+          }}>
+            <h2 style={{ marginBottom: 10, color: isDarkMode ? '#e0e6f0' : '#495057' }}>2단계 : 투약 기록을 확인하세요</h2>
             <div style={{ 
-              background: isDarkMode ? "#23293a" : "white", 
-              padding: "20px",
-              borderRadius: "8px",
-              border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
+              marginBottom: 20, 
+              color: isDarkMode ? '#9ca3af' : '#6b7280', 
+              fontSize: '14px',
+              lineHeight: '1.5'
             }}>
-              <h2 style={{ marginBottom:20, color: isDarkMode ? '#e0e6f0' : '#495057' }}>2단계 : 투약 기록 확인</h2>
+              <div style={{ marginBottom: '8px' }}>
+                • 투약 기록 정보를 정확히 입력할 수록 분석의 정확도가 높아집니다.
+              </div>
+              <div>
+                • 투약 시간을 선택해서 정확한 시간으로 수정할 수 있습니다.
+              </div>
+            </div>
               
               <div style={{ overflowX: "auto" }}>
                 <table style={{
@@ -852,7 +951,7 @@ function TablePage(props) {
                   background: isDarkMode ? "#23293a" : "white"
                 }}>
                   <tbody>
-                  {tableData.map((row) => (
+                  {tableData.length > 0 ? tableData.map((row) => (
                       <tr 
                         key={row.id} 
                         draggable={!row.isTitle}
@@ -969,7 +1068,7 @@ function TablePage(props) {
                               }}
                             >
                               {routeOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
+                                <option key={option.value} value={option.value}>{option.label}</option>
                               ))}
                             </select>
                           )}
@@ -1026,7 +1125,18 @@ function TablePage(props) {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    )) : (
+                      <tr>
+                        <td colSpan="6" style={{
+                          padding: "40px",
+                          textAlign: "center",
+                          color: isDarkMode ? "#6b7280" : "#6b7280",
+                          fontStyle: "italic"
+                        }}>
+                          투약 조건을 입력하고 "투약기록 입력 완료" 버튼을 클릭하여 테이블을 생성하세요.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1092,7 +1202,6 @@ function TablePage(props) {
                 </div>
               </div>
             </div>
-          )}
         </div>
       </div>
       {/* 에러 모달 */}
