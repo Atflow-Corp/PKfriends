@@ -51,7 +51,7 @@ const StepWorkflow = ({
 
   const steps = [
     { id: 1, title: "환자 등록 및 선택", icon: User, description: "환자를 선택하거나 신규 등록해주세요." },
-    { id: 2, title: "TDM 약물정보", icon: Pill, description: "TDM 약물 정보를 입력합니다." },
+    { id: 2, title: "TDM 선택", icon: Pill, description: "TDM 약물 정보를 입력합니다." },
     { id: 3, title: "Lab", icon: FlaskConical, description: "신기능 및 혈중 약물 농도 정보를 입력합니다." },
     { id: 4, title: "투약 기록", icon: History, description: "투약 기록을 입력합니다." },
     { id: 5, title: "Let's TDM", icon: Activity, description: "정밀의료 시뮬레이션 결과를 확인해보세요." }

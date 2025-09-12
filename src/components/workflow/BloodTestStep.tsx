@@ -444,7 +444,7 @@ const BloodTestStep = ({
           <div className="flex justify-between">
             <Button variant="outline" onClick={onPrev} className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4" />
-              TDM 약물정보
+              TDM 선택
             </Button>
             {isCompleted && (
               <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
