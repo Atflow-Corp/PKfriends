@@ -42,6 +42,7 @@ interface RenalInfo {
   dialysis: "Y" | "N";
   renalReplacement: string;
   isSelected: boolean;
+  isBlack: boolean; // 인종정보 필요 시 추가하며 임의로 흑인 아님으로 처리한다.
 }
 
 const BloodTestStep = ({
@@ -63,9 +64,94 @@ const BloodTestStep = ({
     formula: "cockcroft-gault",
     result: "",
     dialysis: "N",
-    renalReplacement: ""
+    renalReplacement: "",
+    isBlack: false // 인종정보 필요 시 추가하며 임의로 흑인 아님으로 처리한다.
   });
   const [renalInfoList, setRenalInfoList] = useState<RenalInfo[]>([]);
+
+  // 신기능 계산 함수들
+  const calculateRenalFunction = (creatinine: number, formula: string, patient: Patient, isBlack: boolean = false): string => {
+    if (!creatinine || creatinine <= 0) return "";
+
+    switch (formula) {
+      case "cockcroft-gault":
+        return calculateCockcroftGault(creatinine, patient.age, patient.weight, patient.height, patient.gender);
+      case "mdrd":
+        return calculateMDRD(creatinine, patient.age, patient.gender, isBlack);
+      case "ckd-epi":
+        return calculateCKDEPI(creatinine, patient.age, patient.gender, isBlack);
+      default:
+        return "";
+    }
+  };
+
+  // 이상체중(IBW) 계산
+  const calculateIBW = (height: number, gender: string): number => {
+    if (gender === "여성") {
+      return 45.5 + 0.9 * (height - 152);
+    } else {
+      return 50 + 0.9 * (height - 152);
+    }
+  };
+
+  // 조정체중(AdjBW) 계산
+  const calculateAdjBW = (actualWeight: number, idealWeight: number): number => {
+    return idealWeight + 0.4 * (actualWeight - idealWeight);
+  };
+
+  // Cockcroft-Gault 공식 (고도비만 환자 조정체중 고려)
+  const calculateCockcroftGault = (creatinine: number, age: number, weight: number, height: number, gender: string): string => {
+    const genderFactor = gender === "여성" ? 0.85 : 1.0;
+    
+    // 이상체중 계산
+    const idealWeight = calculateIBW(height, gender);
+    
+    // 고도비만 판단 (BMI > 30 또는 실제체중 > 이상체중의 120%)
+    const bmi = weight / Math.pow(height / 100, 2);
+    const isMorbidlyObese = bmi > 30 || weight > idealWeight * 1.2;
+    
+    // 체중 결정
+    const adjustedWeight = isMorbidlyObese ? calculateAdjBW(weight, idealWeight) : weight;
+    
+    const ccr = ((140 - age) * adjustedWeight * genderFactor) / (72 * creatinine);
+    
+    // 조정체중 사용 여부 표시
+    const weightInfo = isMorbidlyObese ? ` (조정체중: ${Math.round(adjustedWeight * 10) / 10}kg)` : "";
+    return `CCr-CG = ${Math.round(ccr * 10) / 10} mL/min${weightInfo}`;
+  };
+
+  // MDRD 공식
+  const calculateMDRD = (creatinine: number, age: number, gender: string, isBlack: boolean): string => {
+    const genderFactor = gender === "여성" ? 0.742 : 1.0;
+    const raceFactor = isBlack ? 1.212 : 1.0;
+    const egfr = 175 * Math.pow(creatinine, -1.154) * Math.pow(age, -0.203) * genderFactor * raceFactor;
+    return `eGFR-MDRD = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
+  };
+
+  // CKD-EPI 공식
+  const calculateCKDEPI = (creatinine: number, age: number, gender: string, isBlack: boolean): string => {
+    const isFemale = gender === "여성";
+    const raceFactor = isBlack ? 1.212 : 1.0;
+    
+    let alpha, kappa, minCr, maxCr;
+    
+    if (isFemale) {
+      alpha = -0.329;
+      kappa = 0.7;
+      minCr = 0.7;
+      maxCr = 0.7;
+    } else {
+      alpha = -0.411;
+      kappa = 0.9;
+      minCr = 0.9;
+      maxCr = 0.9;
+    }
+
+    const scr = Math.min(Math.max(creatinine / kappa, 1), 999);
+    const egfr = 141 * Math.pow(scr, alpha) * Math.pow(0.993, age) * raceFactor;
+    
+    return `eGFR-CKD-EPI = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
+  };
 
   // Persist renal info list per patient in localStorage
   useEffect(() => {
@@ -92,7 +178,7 @@ const BloodTestStep = ({
     testTime: "",
     concentration: "",
     unit: "ng/mL",
-    notes: ""
+    measurementType: "Trough"
   });
   
   // 모달 상태 추가
@@ -145,7 +231,8 @@ const BloodTestStep = ({
       formula: "cockcroft-gault",
       result: "",
       dialysis: "N",
-      renalReplacement: ""
+      renalReplacement: "",
+      isBlack: false // 인종정보 필요 시 추가하며 임의로 흑인 아님으로 처리한다.
     });
   };
 
@@ -160,9 +247,6 @@ const BloodTestStep = ({
     })));
   };
 
-  const handleBloodTestSelectionChange = (id: string, checked: boolean) => {
-    onUpdateBloodTest(id, { isSelected: checked });
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,12 +279,11 @@ const BloodTestStep = ({
       unit: formData.unit,
       timeAfterDose: 0, // Lab 단계에서는 미사용
       testDate: testDateTime,
-      notes: formData.notes,
-      isSelected: true // 새로 추가된 데이터는 자동으로 선택
+      measurementType: formData.measurementType
     };
     onAddBloodTest(newBloodTest);
     const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";
-    setFormData({ testDate: "", testTime: "", concentration: "", unit: defaultUnit, notes: "" });
+    setFormData({ testDate: "", testTime: "", concentration: "", unit: defaultUnit, measurementType: "Trough" });
   };
 
   const handleNext = () => {
@@ -283,7 +366,7 @@ const BloodTestStep = ({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-16">분석사용</TableHead>
-                      <TableHead>혈청 크레아티닌(mg/dL)</TableHead>
+                      <TableHead>혈청 크레아티닌</TableHead>
                       <TableHead>검사일</TableHead>
                       <TableHead>계산식</TableHead>
                       <TableHead>결과</TableHead>
@@ -320,7 +403,7 @@ const BloodTestStep = ({
                             onCheckedChange={(checked) => handleRenalSelectionChange(renalInfo.id, checked as boolean)}
                           />
                         </TableCell>
-                        <TableCell>{renalInfo.creatinine}</TableCell>
+                        <TableCell>{renalInfo.creatinine} mg/dL</TableCell>
                         <TableCell>{renalInfo.date}</TableCell>
                         <TableCell>{renalInfo.formula}</TableCell>
                         <TableCell>{renalInfo.result || "-"}</TableCell>
@@ -357,6 +440,15 @@ const BloodTestStep = ({
                         step="0.01"
                         value={renalForm.creatinine}
                         onChange={e => setRenalForm({ ...renalForm, creatinine: e.target.value })}
+                        onBlur={() => {
+                          if (renalForm.creatinine && selectedPatient) {
+                            const creatinine = parseFloat(renalForm.creatinine);
+                            if (!isNaN(creatinine)) {
+                              const result = calculateRenalFunction(creatinine, renalForm.formula, selectedPatient, renalForm.isBlack);
+                              setRenalForm(prev => ({ ...prev, result }));
+                            }
+                          }
+                        }}
                         placeholder="예: 1.2"
                         required
                       />
@@ -374,7 +466,24 @@ const BloodTestStep = ({
                     </div>
                     <div>
                       <Label htmlFor="renalFormula">계산식 *</Label>
-                      <Select value={renalForm.formula} onValueChange={v => setRenalForm({ ...renalForm, formula: v })} required>
+                      <Select 
+                        value={renalForm.formula} 
+                        onValueChange={v => {
+                          setRenalForm(prev => {
+                            const newForm = { ...prev, formula: v };
+                            // 계산식 변경 시 자동 계산
+                            if (prev.creatinine && selectedPatient) {
+                              const creatinine = parseFloat(prev.creatinine);
+                              if (!isNaN(creatinine)) {
+                                const result = calculateRenalFunction(creatinine, v, selectedPatient, prev.isBlack);
+                                newForm.result = result;
+                              }
+                            }
+                            return newForm;
+                          });
+                        }} 
+                        required
+                      >
                         <SelectTrigger><SelectValue placeholder="계산식 선택" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cockcroft-gault">Cockcroft-Gault</SelectItem>
@@ -391,8 +500,17 @@ const BloodTestStep = ({
                       <Input
                         id="result"
                         value={renalForm.result}
-                        onChange={e => setRenalForm({ ...renalForm, result: e.target.value })}
-                        placeholder="예: 45.2 mL/min"
+                        onChange={e => {
+                          // 자동계산된 값이 있고 사용자가 수정하려고 할 때 얼럿
+                          if (renalForm.result && renalForm.result.includes("=") && e.target.value !== renalForm.result) {
+                            const confirmed = window.confirm("자동계산된 데이터를 삭제하고 직접 입력하시겠습니까?");
+                            if (!confirmed) {
+                              return; // 취소 시 원래 값 유지
+                            }
+                          }
+                          setRenalForm({ ...renalForm, result: e.target.value });
+                        }}
+                        placeholder="자동계산"
                       />
                     </div>
                     <div>
@@ -486,14 +604,19 @@ const BloodTestStep = ({
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="notes">비고</Label>
-                  <Input
-                    id="notes"
-                    type="text"
-                    value={formData.notes}
-                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="비고 입력"
-                  />
+                  <Label htmlFor="measurementType">측정 기준</Label>
+                  <Select 
+                    value={formData.measurementType} 
+                    onValueChange={v => setFormData({ ...formData, measurementType: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="측정 기준 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Trough">Trough</SelectItem>
+                      <SelectItem value="Peak">Peak</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Button type="submit">추가</Button>
               </form>
@@ -503,27 +626,20 @@ const BloodTestStep = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-16">분석사용</TableHead>
                         <TableHead>날짜</TableHead>
                         <TableHead>시간</TableHead>
                         <TableHead>농도</TableHead>
-                        <TableHead>비고</TableHead>
+                        <TableHead>측정 기준</TableHead>
                         <TableHead className="w-16">삭제</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {patientBloodTests.map((test) => (
                         <TableRow key={test.id}>
-                          <TableCell>
-                            <Checkbox 
-                              checked={test.isSelected || false}
-                              onCheckedChange={(checked) => handleBloodTestSelectionChange(test.id, checked as boolean)}
-                            />
-                          </TableCell>
                           <TableCell>{test.testDate.toLocaleDateString()}</TableCell>
                           <TableCell>{test.testDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
                           <TableCell>{test.concentration} {test.unit}</TableCell>
-                          <TableCell>{test.notes || "-"}</TableCell>
+                          <TableCell>{test.measurementType || "-"}</TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"

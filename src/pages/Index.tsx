@@ -55,7 +55,7 @@ export interface BloodTest {
   unit: string;
   timeAfterDose: number;
   testDate: Date;
-  notes: string;
+  measurementType: string; // 측정 기준 (Trough/Peak)
   isSelected?: boolean;
   // 신기능 정보 (BloodTestStep에서 추가)
   creatinine?: string;
@@ -167,7 +167,8 @@ const Index = ({ onLogout }: IndexProps) => {
       return;
     }
     if (prescription) {
-      setPrescriptions([...prescriptions, prescription]);
+      // 신규 TDM은 최상단에 추가
+      setPrescriptions([prescription, ...prescriptions]);
     }
   };
 
