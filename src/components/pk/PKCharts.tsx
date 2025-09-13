@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
 import { useMemo } from "react";
+import { ChartColumnIncreasing } from "lucide-react";
 
 interface SimulationDataPoint {
   time: number;
@@ -123,57 +124,41 @@ const PKCharts = ({
   return (
     <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow">
       {/* TDM Simulator 헤더 */}
-      <div className="text-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">TDM Simulator</h1>
-        <p className="text-gray-600 dark:text-gray-300">
-          현 용법의 예측 결과를 확인하고 시뮬레이션을 추가해보세요.
-        </p>
+      <div className="text-left mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
+          <ChartColumnIncreasing className="w-8 h-8 text-blue-600" />
+          {currentPatientName ? `${currentPatientName} 환자의 TDM 분석 결과` : 'TDM 분석 결과'}
+        </h1>
       </div>
 
-      {/* 요약 카드 섹션 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* 최근 혈중 약물 농도 */}
-        <Card className="bg-white border-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">최근 혈중 약물 농도</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
+      {/* 그래프 해석 가이드 */}
+      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-gray-800 dark:text-white mb-3">그래프 해석 Tip</h3>
+        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          {selectedDrug === 'Vancomycin' ? (
+            // 반코마이신 해석 가이드
+            <>
+              <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를 의미합니다.</p>
+              <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
+              <p><strong>(3)</strong> AUC 데이터는 차트의 누적 면적이 목표 범위 내 있을 때 용법이 적절하다고 해석할 수 있습니다.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                * 현 용법이 적절하다면 일반 대조군의 차트 면적과 유사한 패턴을 보여야 합니다.
+              </p>
+            </>
+          ) : (
+            // 사이클로스포린 해석 가이드
+            <>
+              <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를 의미합니다.</p>
+              <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
+              <p><strong>(3)</strong> 파란색 range는 TDM목표치 범위를 의미합니다.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                * (1)과 (2)가 (3)의 range안에 모두 있다면 현 용법이 적절하다는 의미로 해석될 수 있습니다.
+              </p>
+            </>
+          )}
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{recentMax != null ? `${recentMax} mg/L` : '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{recentTrough != null ? `${recentTrough} mg/L` : '-'}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 예측 약물 농도 */}
-        <Card className="bg-white border-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">예측 약물 농도</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{predictedMax != null ? `${predictedMax} mg/L` : '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{predictedTrough != null ? `${predictedTrough} mg/L` : '-'}</span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
 
       {/* 범례 */}
       <div className="flex justify-center gap-6 mb-4">
@@ -188,14 +173,16 @@ const PKCharts = ({
       </div>
 
       {/* 메인 그래프 - 가로 스크롤 가능 */}
-      <div className="mb-6">
+      <div className="mb-2">
         <div className="text-sm text-gray-600 mb-2">
           📊 72시간까지 조회 가능 (가로 스크롤로 24시간 이후 데이터 확인)
         </div>
         <div className="h-96 overflow-x-auto overflow-y-hidden">
           <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
+              {selectedDrug === 'Vancomycin' ? (
+                // 반코마이신: Area Chart
+                <AreaChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="time" 
@@ -211,8 +198,8 @@ const PKCharts = ({
                   label={{ value: 'Concentration(mg/L)', angle: -90, position: 'insideLeft' }}
                   tick={{ fontSize: 12 }}
                   domain={[0, yMax]}
-                  tickCount={6}
-                  tickFormatter={(value) => `${value.toFixed(2)}`}
+                    tickCount={6}
+                    tickFormatter={(value) => `${value.toFixed(2)}`}
                 />
                 {/* 목표 범위 (파란색 영역) */}
                 {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
@@ -225,6 +212,61 @@ const PKCharts = ({
                 <Tooltip 
                   formatter={(value: unknown, name: string) => [
                     typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', 
+                    name === 'predicted' ? '환자 현용법' : name === 'controlGroup' ? '일반 대조군' : '실제값'
+                  ]}
+                  labelFormatter={(value) => `Time: ${value} hours`}
+                />
+                  {/* 대조군 (PRED_CONC, 주황색 영역) */}
+                  <Area 
+                    type="monotone" 
+                    dataKey="controlGroup" 
+                    stroke="#f97316" 
+                    fill="#f97316"
+                    fillOpacity={0.3}
+                    name="일반 대조군"
+                  />
+                  {/* 환자 (IPRED_CONC, 파란색 영역) */}
+                  <Area 
+                    type="monotone" 
+                    dataKey="predicted" 
+                    stroke="#3b82f6" 
+                    fill="#3b82f6"
+                    fillOpacity={0.3}
+                    name="환자 현용법"
+                  />
+                </AreaChart>
+              ) : (
+                // 사이클로스포린: Line Chart + 목표 범위
+                <LineChart data={data}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    dataKey="time" 
+                    label={{ value: 'Time(hours)', position: 'insideBottom', offset: -5 }}
+                    tick={{ fontSize: 12 }}
+                    domain={[0, 72]}
+                    type="number"
+                    scale="linear"
+                    ticks={[0, 8, 16, 24, 32, 40, 48, 56, 64, 72]}
+                    tickFormatter={(value) => `${value}h`}
+                  />
+                  <YAxis 
+                    label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'insideLeft' }}
+                    tick={{ fontSize: 12 }}
+                    domain={[0, yMax]}
+                    tickCount={6}
+                    tickFormatter={(value) => `${Math.round(value)}`}
+                  />
+                  {/* 목표 범위 (파란색 영역) */}
+                  {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
+                    <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
+                  )}
+                  {/* 평균 약물 농도 점선 */}
+                  {typeof averageConcentration === 'number' && (
+                    <ReferenceLine y={averageConcentration} stroke="#3b82f6" strokeDasharray="5 5" />
+                  )}
+                  <Tooltip 
+                    formatter={(value: unknown, name: string) => [
+                      typeof value === 'number' ? `${value.toFixed(2)} ng/mL` : 'N/A', 
                     name === 'predicted' ? '환자 현용법' : name === 'controlGroup' ? '일반 대조군' : '실제값'
                   ]}
                   labelFormatter={(value) => `Time: ${value} hours`}
@@ -257,24 +299,97 @@ const PKCharts = ({
                   name="실제값"
                 />
               </LineChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
+      {/* 구분선 */}
+      <div className="border-t border-gray-200 dark:border-gray-700 my-8"></div>
 
+      {/* TDM Summary division */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6 border border-blue-200 dark:border-blue-800 mt-4">
+        <h2 className="text-xl font-bold text-blue-800 dark:text-blue-200 mb-4 flex items-center gap-2">
+          TDM Summary
+        </h2>
+        
+        {/* 요약 카드 섹션 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* 최근 혈중 약물 농도 */}
+          <Card className="bg-white border-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-gray-800">최근 혈중 약물 농도</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">AUC:</span>
+                <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">max 농도:</span>
+                <span className="font-semibold">{recentMax != null ? `${recentMax} mg/L` : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">trough 농도:</span>
+                <span className="font-semibold">{recentTrough != null ? `${recentTrough} mg/L` : '-'}</span>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* 그래프 해석 가이드 */}
-      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-gray-800 dark:text-white mb-3">그래프 해석</h3>
-        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를, 점선은 평균 약물 농도를 의미합니다.</p>
-          <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
-          <p><strong>(3)</strong> 파란 range는 TDM 목표치의 범위로 참고할 수 있습니다.</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            * 일반적으로 목표치를 Trough로 했을 때 (1)과 (2)가 (3)의 range 안에 모두 있다면 현 용법이 적절하다는 의미로 해석될 수 있습니다.
+          {/* 예측 약물 농도 */}
+          <Card className="bg-white border-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg text-gray-800">예측 약물 농도</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">AUC:</span>
+                <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">max 농도:</span>
+                <span className="font-semibold">{predictedMax != null ? `${predictedMax} mg/L` : '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">trough 농도:</span>
+                <span className="font-semibold">{predictedTrough != null ? `${predictedTrough} mg/L` : '-'}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* TDM friends Comments */}
+        <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg text-blue-800 dark:text-blue-200 flex items-center gap-2">
+              TDM friends Comments
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+            <div className="flex items-start gap-2">
+              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+              <p className="leading-relaxed">
+                <span className="font-semibold text-blue-700 dark:text-blue-300">투약 조건</span>(Vancomycin/폐혈증)의 TDM 목표는 
+                <span className="font-semibold text-blue-600 dark:text-blue-400"> AUC (400~600 mg*h/L)</span>입니다.
               </p>
             </div>
+            <div className="flex items-start gap-2">
+              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+              <p className="leading-relaxed">
+                현 용법 (Vancomycin/125mg/8시간 간격)으로 Steady State까지 
+                <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 340mg*h/L</span>으로 
+                투약 6시간 이후 약물 누적 노출 농도가 치료 범위 이하로 떨어질 수 있습니다.
+              </p>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+              <p className="leading-relaxed">
+                김아무개 환자의 경우 <span className="font-semibold text-red-600 dark:text-red-400">투약 용량 증량</span>을 권장합니다.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
           </div>
 
     </div>
