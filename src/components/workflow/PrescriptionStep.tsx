@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Patient, Prescription } from "@/pages/Index";
 import { Pill, ArrowRight, ArrowLeft, CheckCircle, Plus } from "lucide-react";
 
@@ -123,9 +122,6 @@ const PrescriptionStep = ({
     return prescriptionId.startsWith('temp');
   };
 
-  const isExistingTdm = (prescriptionId: string): boolean => {
-    return isTempTdm(prescriptionId);
-  };
 
   // 과거 데이터(테스트 데이터)가 아니면 모두 신규 데이터로 판단
   const isNewlyAddedTdm = (prescriptionId: string): boolean => {
@@ -295,7 +291,7 @@ const PrescriptionStep = ({
       startDate: new Date('2024-01-15'),
       route: "IV",
       prescribedBy: "Dr. Kim",
-      indication: "Neurosurgical patient/Korean",
+      indication: "Neurosurgical patients/Korean",
       tdmTarget: "Trough Concentration",
       tdmTargetValue: "10-20 mg/L",
       additionalInfo: ""
@@ -613,33 +609,39 @@ const PrescriptionStep = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>선택</TableHead>
+                        <TableHead>등록일</TableHead>
                         <TableHead>약물명</TableHead>
                         <TableHead>적응증</TableHead>
                         <TableHead>추가정보</TableHead>
                         <TableHead>TDM 목표치</TableHead>
-                        <TableHead>등록일</TableHead>
                         <TableHead>삭제</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {allPrescriptions.map((prescription) => (
-                          <TableRow key={prescription.id} className={selectedTdmId === prescription.id ? "bg-blue-50" : ""}>
+                          <TableRow 
+                            key={prescription.id} 
+                            className={`cursor-pointer hover:bg-blue-50/50 ${selectedTdmId === prescription.id ? "bg-blue-50" : ""}`}
+                            onClick={() => handleTdmSelect(prescription)}
+                          >
                             <TableCell>
-                              <Checkbox
-                                checked={selectedTdmId === prescription.id}
-                                onCheckedChange={() => handleTdmSelect(prescription)}
-                              />
+                              {isNewlyAddedTdm(prescription.id) ? "등록 중" : (prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-")}
                             </TableCell>
                             <TableCell className="font-medium">{prescription.drugName}</TableCell>
                             <TableCell>{prescription.indication || "-"}</TableCell>
                             <TableCell>{prescription.additionalInfo || "-"}</TableCell>
                             <TableCell>{prescription.tdmTarget && prescription.tdmTargetValue ? `${prescription.tdmTarget}: ${prescription.tdmTargetValue}` : (prescription.tdmTargetValue || "-")}</TableCell>
-                            <TableCell>{prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-"}</TableCell>
                             <TableCell>
                               {/* 신규로 추가한 TDM만 삭제 가능 */}
                               {isNewlyAddedTdm(prescription.id) && (
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(prescription.id)}>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // 행 클릭 이벤트 방지
+                                    handleDelete(prescription.id);
+                                  }}
+                                >
                                   <span className="sr-only">삭제</span>
                                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

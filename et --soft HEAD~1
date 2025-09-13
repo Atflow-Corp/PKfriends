@@ -1,5 +1,0 @@
-[33m665bae4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mBR-CHA-0910-LETS-TDM-UI[m[33m)[m feat: TDM 상세 정보 UI 개선 및 접기/펼치기 기능 추가
-[33m082aa21[m[33m ([m[1;31morigin/BR-CHA-0910-LETS-TDM-UI[m[33m)[m feat: TDM 상세 정보 UI 개선 및 접기/펼치기 기능 추가
-[33m95ba444[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m Merge pull request #15 from Atflow-Corp/feature/drug-table-ui
-[33m297a017[m[33m ([m[1;31morigin/feature/drug-table-ui[m[33m)[m TDM 약물 테이블 표시 문제 수정 및 DrugAdministrationStep 동기화 개선
-[33meba46a4[m Merge pull request #14 from Atflow-Corp/feature/bloodtest-guide
