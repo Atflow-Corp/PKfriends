@@ -100,7 +100,7 @@ const PKCharts = ({
     return auc / duration;
   })();
 
-  // Y축 상한: 데이터의 최대값과 targetMax 중 큰 값
+  // Y축 상한: 반코마이신 데이터에 최적화된 범위 (0~0.2 mg/L)
   const yMax = useMemo(() => {
     const dataMax = (data || []).reduce((m, p) => {
       const candidates = [p.predicted, p.controlGroup ?? 0, p.observed ?? 0].filter(v => typeof v === 'number') as number[];
@@ -108,7 +108,16 @@ const PKCharts = ({
       return Math.max(m, localMax);
     }, 0);
     const targetMaxNum = typeof targetMax === 'number' ? targetMax : 0;
-    return Math.max(dataMax, targetMaxNum);
+    
+    // 반코마이신 데이터에 최적화된 Y축 범위 설정
+    const calculatedMax = Math.max(dataMax, targetMaxNum);
+    
+    // 데이터가 0.2 mg/L 이하인 경우 0.2로 고정, 그 이상인 경우 1.2배 여유분 제공
+    if (calculatedMax <= 0.2) {
+      return 0.2;
+    } else {
+      return Math.ceil(calculatedMax * 1.2 * 10) / 10; // 0.1 단위로 반올림
+    }
   }, [data, targetMax]);
 
   return (
@@ -202,6 +211,8 @@ const PKCharts = ({
                   label={{ value: 'Concentration(mg/L)', angle: -90, position: 'insideLeft' }}
                   tick={{ fontSize: 12 }}
                   domain={[0, yMax]}
+                  tickCount={6}
+                  tickFormatter={(value) => `${value.toFixed(2)}`}
                 />
                 {/* 목표 범위 (파란색 영역) */}
                 {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
