@@ -500,20 +500,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     <div className="space-y-6">
       {/* Buttons removed per requirement */}
 
-      {/* PK Parameter 섹션 */}
-      <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-2">
+      {/* PK Parameter 섹션 - 주석처리 */}
+      {/* <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-2">
         <div className="font-bold mb-1">PK Parameter</div>
         <pre className="text-sm whitespace-pre-line text-slate-700 dark:text-slate-200">{pkParameterText}</pre>
-      </div>
+      </div> */}
 
-      {/* TDM Summary 섹션 */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6">
-        <div className="font-bold text-lg mb-3">TDM Summary</div>
-        <div className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
-          {/* 추후 분석엔진을 통해 전달되는 분석의견을 노출합니다. */}
-          현 용법으로 Steady State까지 ACUC는 340mg*h/L으로 투약 6시간 이후 약물 농도가 치료 범위 이하로 떨어질 수 있습니다. 증량 및 투약 간격 조절이 필요할 수 있습니다.
-        </div>
-      </div>
+     
 
       {/* 환자 TDM 상세 정보 섹션 */}
       <TDMPatientDetails 
