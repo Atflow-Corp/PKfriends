@@ -520,6 +520,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         currentPatient={currentPatient}
         selectedPrescription={selectedPrescription}
         latestBloodTest={latestBloodTest}
+        drugAdministrations={drugAdministrations}
       />
 
       {/* PK Simulation 그래프 (가로 전체) */}
