@@ -71,15 +71,18 @@ const PatientStep = ({
           {/* Existing Patients */}
           {patients.length > 0 && (
             <div className="space-y-4">
-              <Label htmlFor="patientSearch">이름 또는 번호로 검색</Label>
-              <Input
-                id="patientSearch"
-                placeholder="이름 또는 환자번호 입력"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="mb-2"
-              />
-              <Label>기존 환자 리스트</Label>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">
+                  등록된 환자 ({patients.length})
+                </h2>
+                <Input
+                  id="patientSearch"
+                  placeholder="이름 또는 환자번호로 검색"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-1/4"
+                />
+              </div>
               <div className="rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>

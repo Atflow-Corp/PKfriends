@@ -6,9 +6,39 @@ import PKCharts from "./pk/PKCharts";
 import DosageChart from "./pk/DosageChart";
 import PKDataSummary from "./pk/PKDataSummary";
 import TDMPatientDetails from "./TDMPatientDetails";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
-import { FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+
+// TDM 약물 기본 데이터 (PrescriptionStep에서 가져옴)
+const TDM_DRUGS = [
+  { 
+    name: "Vancomycin", 
+    indications: ["Not specified/Korean", "Neurosurgical patients/Korean"], 
+    targets: [
+      { type: "Trough Concentration", value: "10-20 mg/L" },
+      { type: "Peak Concentration", value: "25-40 mg/L" },
+      { type: "AUC", value: "400-600 mg·h/L" }
+    ],
+    defaultTargets: {
+      "Not specified/Korean": { type: "AUC", value: "400-600 mg·h/L" },
+      "Neurosurgical patients/Korean": { type: "AUC", value: "400-600 mg·h/L" }
+    }
+  },
+  { 
+    name: "Cyclosporin", 
+    indications: ["Renal transplant recipients/Korean", "Allo-HSCT/Korean", "Thoracic transplant recipients/European"], 
+    targets: [
+      { type: "Trough Concentration", value: "100-400 ng/mL" },
+      { type: "Peak Concentration", value: "800-1200 ng/mL" },
+      { type: "C2 Concentration", value: "1200-1700 ng/mL" }
+    ],
+    defaultTargets: {
+      "Allo-HSCT/Korean": { type: "Trough Concentration", value: "150-400 ng/mL" },
+      "Thoracic transplant recipients/European": { type: "Trough Concentration", value: "170-230 ng/mL" },
+      "Renal transplant recipients/Korean": { type: "Trough Concentration", value: "100-400 ng/mL" }
+    }
+  }
+];
 
 interface PKSimulationProps {
   patients: Patient[];
@@ -16,6 +46,7 @@ interface PKSimulationProps {
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
   drugAdministrations?: DrugAdministration[];
+  onDownloadPDF?: () => void;
 }
 
 type ChartPoint = { time: number; predicted: number; observed: number | null };
@@ -52,7 +83,7 @@ interface TdmDatasetRow {
   EVID: number;
 }
 
-const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [] }: PKSimulationProps) => {
+const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [], onDownloadPDF }: PKSimulationProps) => {
   const [selectedPatientId, setSelectedPatientId] = useState(selectedPatient?.id || "");
   const [selectedDrug, setSelectedDrug] = useState("");
   const [simulationParams, setSimulationParams] = useState({
@@ -78,6 +109,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [tdmExtraSeriesInterval, setTdmExtraSeriesInterval] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
   const [tdmResultDose, setTdmResultDose] = useState<TdmApiResponse | null>(null);
   const [tdmResultInterval, setTdmResultInterval] = useState<TdmApiResponse | null>(null);
+  const [adjustmentCards, setAdjustmentCards] = useState<Array<{ id: number; type: 'dosage' | 'interval' }>>([]);
+  const [selectedDosage, setSelectedDosage] = useState<{ [cardId: number]: string }>({});
+  const [selectedIntervalOption, setSelectedIntervalOption] = useState<{ [cardId: number]: string }>({});
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [cardToDelete, setCardToDelete] = useState<number | null>(null);
+  const [cardChartData, setCardChartData] = useState<{ [cardId: number]: boolean }>({});
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = useMemo(() => (
@@ -86,6 +123,21 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const patientBloodTests = useMemo(() => (
     selectedPatientId ? bloodTests.filter(b => b.patientId === selectedPatientId) : []
   ), [selectedPatientId, bloodTests]);
+
+  // TDM 데이터 가져오기 헬퍼 함수
+  const getTdmData = useCallback((drugName: string) => {
+    const prescription = patientPrescriptions.find(p => p.drugName === drugName);
+    const tdmDrug = TDM_DRUGS.find(d => d.name === drugName);
+    
+    return {
+      indication: prescription?.indication || tdmDrug?.indications?.[0] || '적응증',
+      target: prescription?.tdmTarget || tdmDrug?.defaultTargets?.[prescription?.indication || '']?.type || tdmDrug?.targets?.[0]?.type || '목표 유형',
+      targetValue: prescription?.tdmTargetValue || tdmDrug?.defaultTargets?.[prescription?.indication || '']?.value || tdmDrug?.targets?.[0]?.value || '목표값',
+      dosage: prescription?.dosage || 0,
+      unit: prescription?.unit || 'mg',
+      frequency: prescription?.frequency || '시간'
+    };
+  }, [patientPrescriptions]);
 
   const availableDrugs = useMemo(() => Array.from(new Set([
     ...patientPrescriptions.map(p => p.drugName),
@@ -171,6 +223,76 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   const handleGenerateSimulation = () => {
     setShowSimulation(true);
+  };
+
+  // 용법 조정 버튼 핸들러
+  const handleDosageAdjustment = () => {
+    const newCardNumber = adjustmentCards.length + 1;
+    setAdjustmentCards(prev => [...prev, { id: newCardNumber, type: 'dosage' }]);
+    setCardChartData(prev => ({ ...prev, [newCardNumber]: false })); // 빈 차트로 초기화
+  };
+
+  const handleIntervalAdjustment = () => {
+    const newCardNumber = adjustmentCards.length + 1;
+    setAdjustmentCards(prev => [...prev, { id: newCardNumber, type: 'interval' }]);
+    setCardChartData(prev => ({ ...prev, [newCardNumber]: false })); // 빈 차트로 초기화
+  };
+
+  // 카드 삭제 확인 다이얼로그 열기
+  const handleRemoveCardClick = (cardId: number) => {
+    setCardToDelete(cardId);
+    setShowDeleteAlert(true);
+  };
+
+  // 카드 삭제 확인
+  const handleConfirmDelete = () => {
+    if (cardToDelete !== null) {
+      setAdjustmentCards(prev => prev.filter(card => card.id !== cardToDelete));
+      // 카드 삭제 시 해당 카드의 선택 상태도 제거
+      setSelectedDosage(prev => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+      setSelectedIntervalOption(prev => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+      setCardChartData(prev => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+    }
+    setShowDeleteAlert(false);
+    setCardToDelete(null);
+  };
+
+  // 카드 삭제 취소
+  const handleCancelDelete = () => {
+    setShowDeleteAlert(false);
+    setCardToDelete(null);
+  };
+
+  // 용량 선택 핸들러
+  const handleDosageSelect = (cardId: number, dosage: string) => {
+    setSelectedDosage(prev => ({
+      ...prev,
+      [cardId]: dosage
+    }));
+    // 버튼 선택 시 차트 그리기 활성화
+    setCardChartData(prev => ({ ...prev, [cardId]: true }));
+  };
+
+  // 간격 선택 핸들러
+  const handleIntervalSelect = (cardId: number, interval: string) => {
+    setSelectedIntervalOption(prev => ({
+      ...prev,
+      [cardId]: interval
+    }));
+    // 버튼 선택 시 차트 그리기 활성화
+    setCardChartData(prev => ({ ...prev, [cardId]: true }));
   };
 
   // Helpers
@@ -476,15 +598,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     return {};
   };
 
-  // PDF 저장 함수
-  const handleDownloadPDF = async () => {
-    if (!simulationRef.current) return;
-    const canvas = await html2canvas(simulationRef.current);
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [canvas.width, canvas.height] });
-    pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
-    pdf.save("PK_simulation_report.pdf");
-  };
 
   // 진입 조건: 환자, 처방, 혈액검사, 약물명, 파라미터 등 없을 때 안내
   if (!selectedPatientId || !currentPatient || availableDrugs.length === 0) {
@@ -533,183 +646,205 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
           ipredSeries={tdmExtraSeries?.ipredSeries}
           predSeries={tdmExtraSeries?.predSeries}
           observedSeries={tdmExtraSeries?.observedSeries}
+          // TDM 내역 데이터
+          tdmIndication={getTdmData(selectedDrug).indication}
+          tdmTarget={getTdmData(selectedDrug).target}
+          tdmTargetValue={getTdmData(selectedDrug).targetValue}
+          // 투약기록 데이터
+          currentDosage={getTdmData(selectedDrug).dosage}
+          currentUnit={getTdmData(selectedDrug).unit}
+          currentFrequency={getTdmData(selectedDrug).frequency}
         />
       </div>
 
-      {/* 용법 조정 시뮬레이션 영역 */}
-      <div className="bg-white dark:bg-slate-900 rounded-lg p-6 mt-6 shadow">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">용법 조정 시뮬레이션</h2>
-          <p className="text-gray-600 dark:text-gray-300">
-            용법을 조정하고 즉시 예측 결과를 확인해보세요.
+      {/* 용법 조정 카드들 */}
+      {adjustmentCards.map((card) => (
+        <div key={`adjustment-${card.id}`} className={`bg-white dark:bg-slate-900 rounded-lg p-6 mt-6 shadow-lg border-2 ${
+          card.type === 'dosage' 
+            ? 'border-pink-200 dark:border-pink-800' 
+            : 'border-green-200 dark:border-green-800'
+        }`}>
+          <div className="flex justify-between items-start mb-6">
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">용법 조정 {card.id}</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {card.type === 'dosage' 
+                  ? '투약 용량을 조정하고 즉시 예측 결과를 확인해보세요'
+                  : '투약 시간의 간격을 조정하고 즉시 예측 결과를 확인해보세요'
+                }
           </p>
         </div>
-      
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* 용량 조정 시 카드 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border-2 border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-12 h-0.5 bg-pink-500"></div>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">용량 조정 시</h3>
+            <button 
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl font-bold flex-shrink-0"
+              onClick={() => handleRemoveCardClick(card.id)}
+            >
+              ×
+            </button>
             </div>
 
-            <div className="space-y-3 mb-4">
-              <div className="flex gap-2 mb-3">
-                <button
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedDose === "125"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => {
-                    setSelectedDose("125");
-                    setSimulationParams({ ...simulationParams, dose: "125 mg" });
-                  }}
+          {/* 버튼 섹션 */}
+          <div className="flex justify-center gap-4 mb-6">
+            {card.type === 'dosage' ? (
+              // 투약 용량 조정 카드 버튼
+              <>
+                <Button 
+                  variant={selectedDosage[card.id] === '10mg' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleDosageSelect(card.id, '10mg')}
+                  className={`${selectedDosage[card.id] === '10mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
                 >
-                  125 mg
-                </button>
-                <button
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedDose === "250"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => {
-                    setSelectedDose("250");
-                    setSimulationParams({ ...simulationParams, dose: "250 mg" });
-                  }}
+                  10mg
+                </Button>
+                <Button 
+                  variant={selectedDosage[card.id] === '20mg' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleDosageSelect(card.id, '20mg')}
+                  className={`${selectedDosage[card.id] === '20mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
                 >
-                  250 mg
-                </button>
-                <button
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedDose === "500"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => {
-                    setSelectedDose("500");
-                    setSimulationParams({ ...simulationParams, dose: "500 mg" });
-                  }}
+                  20mg
+                </Button>
+                <Button 
+                  variant={selectedDosage[card.id] === '30mg' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleDosageSelect(card.id, '30mg')}
+                  className={`${selectedDosage[card.id] === '30mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
                 >
-                  500 mg
-                </button>
-              </div>
-            </div>
-
-            {/* 예측 약물 농도 카드 */}
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-800 dark:text-white mb-3">예측 약물 농도</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">AUC:</span>
-                  <span className="font-semibold text-gray-800 dark:text-white">335 mg*h/L</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">max 농도:</span>
-                  <span className="font-semibold text-gray-800 dark:text-white">29 mg/L</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">trough 농도:</span>
-                  <span className="font-semibold text-gray-800 dark:text-white">5 mg/L</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 투약 간격 조정 시 카드 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 border-2 border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-12 h-0.5 bg-cyan-500"></div>
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">투약 간격 조정 시</h3>
-            </div>
-            
-            <div className="space-y-3 mb-4">
-              <div className="flex gap-2 mb-3">
-                <button
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedInterval === "6"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => {
-                    setSelectedInterval("6");
-                    setSimulationParams({ ...simulationParams, halfLife: "6" });
-                  }}
+                  30mg
+                </Button>
+                <Button 
+                  variant={selectedDosage[card.id] === '40mg' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleDosageSelect(card.id, '40mg')}
+                  className={`${selectedDosage[card.id] === '40mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
+                >
+                  40mg
+                </Button>
+              </>
+            ) : (
+              // 투약 시간 조정 카드 버튼
+              <>
+                <Button 
+                  variant={selectedIntervalOption[card.id] === '4시간' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleIntervalSelect(card.id, '4시간')}
+                  className={`${selectedIntervalOption[card.id] === '4시간' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
+                >
+                  4시간
+                </Button>
+                <Button 
+                  variant={selectedIntervalOption[card.id] === '6시간' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleIntervalSelect(card.id, '6시간')}
+                  className={`${selectedIntervalOption[card.id] === '6시간' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
                 >
                   6시간
-                </button>
-                <button
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedInterval === "8"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => {
-                    setSelectedInterval("8");
-                    setSimulationParams({ ...simulationParams, halfLife: "8" });
-                  }}
+                </Button>
+                <Button 
+                  variant={selectedIntervalOption[card.id] === '8시간' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleIntervalSelect(card.id, '8시간')}
+                  className={`${selectedIntervalOption[card.id] === '8시간' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
                 >
                   8시간
-                </button>
-                <button
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedInterval === "10"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                  onClick={() => {
-                    setSelectedInterval("10");
-                    setSimulationParams({ ...simulationParams, halfLife: "10" });
-                  }}
+                </Button>
+                <Button 
+                  variant={selectedIntervalOption[card.id] === '10시간' ? 'default' : 'outline'} 
+                  size="default"
+                  onClick={() => handleIntervalSelect(card.id, '10시간')}
+                  className={`${selectedIntervalOption[card.id] === '10시간' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
                 >
                   10시간
-                </button>
-              </div>
+                </Button>
+              </>
+            )}
             </div>
             
-            {/* 예측 약물 농도 카드 */}
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
-              <h4 className="font-semibold text-gray-800 dark:text-white mb-3">예측 약물 농도</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">AUC:</span>
-                  <span className="font-semibold text-gray-800 dark:text-white">335 mg*h/L</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">max 농도:</span>
-                  <span className="font-semibold text-gray-800 dark:text-white">29 mg/L</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">trough 농도:</span>
-                  <span className="font-semibold text-gray-800 dark:text-white">5 mg/L</span>
+          {/* 차트 섹션 */}
+          <div className="mb-8">
+            <DosageChart
+              simulationData={[]}
+              showSimulation={true}
+              currentPatientName={currentPatient?.name}
+              selectedDrug={selectedDrug}
+              chartTitle={`용법 조정 ${card.id}`}
+              targetMin={getTargetBand().min}
+              targetMax={getTargetBand().max}
+              recentAUC={tdmResult?.AUC_before}
+              recentMax={tdmResult?.CMAX_before}
+              recentTrough={tdmResult?.CTROUGH_before}
+              predictedAUC={tdmResult?.AUC_after}
+              predictedMax={tdmResult?.CMAX_after}
+              predictedTrough={tdmResult?.CTROUGH_after}
+              ipredSeries={tdmExtraSeries?.ipredSeries}
+              predSeries={tdmExtraSeries?.predSeries}
+              observedSeries={tdmExtraSeries?.observedSeries}
+              chartColor={card.type === 'dosage' ? 'pink' : 'green'}
+              // TDM 내역 데이터
+              tdmIndication={getTdmData(selectedDrug).indication}
+              tdmTarget={getTdmData(selectedDrug).target}
+              tdmTargetValue={getTdmData(selectedDrug).targetValue}
+              // 투약기록 데이터
+              currentDosage={getTdmData(selectedDrug).dosage}
+              currentUnit={getTdmData(selectedDrug).unit}
+              currentFrequency={getTdmData(selectedDrug).frequency}
+              // 빈 차트 상태 관리
+              isEmptyChart={!cardChartData[card.id]}
+              selectedButton={card.type === 'dosage' ? selectedDosage[card.id] : selectedIntervalOption[card.id]}
+            />
                 </div>
               </div>
+      ))}
+
+      {/* 용법 조정 시뮬레이션 영역 */}
+      <div className="bg-white dark:bg-slate-900 rounded-lg p-6 mt-6">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">용법 조정 시뮬레이션을 진행하시겠습니까?</h2>
+          
+          <div className="flex justify-center gap-4">
+            <Button 
+              onClick={handleDosageAdjustment}
+              className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+            >
+              투약 용량 조정
+            </Button>
+            <Button 
+              onClick={handleIntervalAdjustment}
+              className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+            >
+              투약 시간 조정
+            </Button>
             </div>
-          </div>
-        </div>
-        
-        <div className="w-full">
-          <DosageChart
-            simulationData={generateSimulationData()}
-            showSimulation={true}
-            currentPatientName={currentPatient.name}
-            selectedDrug={selectedDrug}
-            chartTitle="용법 조정 시뮬레이션"
-          />
         </div>
       </div>
 
-      {/* PDF 보고서 생성 버튼 (하단 우측, 문서 아이콘 포함) */}
-      <div className="flex justify-end">
-        <button
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow mt-4"
-          onClick={handleDownloadPDF}
-        >
-          <FileText className="h-5 w-5" />
-          약물등록학 해석 보고서 생성
-        </button>
-      </div>
+
+      {/* 카드 삭제 확인 다이얼로그 */}
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              용법조정 {cardToDelete} 데이터를 삭제할까요?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              이 작업은 되돌릴 수 없습니다. 용법조정 카드와 관련된 모든 데이터가 영구적으로 삭제됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={handleCancelDelete}
+              className="bg-black text-white hover:bg-gray-800"
+            >
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -1,5 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
+import { useMemo } from "react";
+import { ChartColumnIncreasing } from "lucide-react";
 
 interface SimulationDataPoint {
   time: number;
@@ -14,6 +16,29 @@ interface DosageChartProps {
   currentPatientName?: string;
   selectedDrug?: string;
   chartTitle?: string;
+  targetMin?: number | null;
+  targetMax?: number | null;
+  recentAUC?: number;
+  recentMax?: number;
+  recentTrough?: number;
+  predictedAUC?: number;
+  predictedMax?: number;
+  predictedTrough?: number;
+  ipredSeries?: { time: number; value: number }[];
+  predSeries?: { time: number; value: number }[];
+  observedSeries?: { time: number; value: number }[];
+  chartColor?: 'pink' | 'green';
+  // TDM 내역 데이터
+  tdmIndication?: string;
+  tdmTarget?: string;
+  tdmTargetValue?: string;
+  // 투약기록 데이터
+  currentDosage?: number;
+  currentUnit?: string;
+  currentFrequency?: string;
+  // 빈 차트 상태 관리
+  isEmptyChart?: boolean;
+  selectedButton?: string;
 }
 
 const DosageChart = ({
@@ -21,123 +46,217 @@ const DosageChart = ({
   showSimulation,
   currentPatientName,
   selectedDrug,
-  chartTitle = "용법 조정 시뮬레이션"
+  chartTitle = "용법 조정 시뮬레이션",
+  targetMin,
+  targetMax,
+  recentAUC: propRecentAUC,
+  recentMax: propRecentMax,
+  recentTrough: propRecentTrough,
+  predictedAUC: propPredictedAUC,
+  predictedMax: propPredictedMax,
+  predictedTrough: propPredictedTrough,
+  ipredSeries,
+  predSeries,
+  observedSeries,
+  chartColor = 'pink',
+  // TDM 내역 데이터
+  tdmIndication,
+  tdmTarget,
+  tdmTargetValue,
+  // 투약기록 데이터
+  currentDosage,
+  currentUnit,
+  currentFrequency,
+  // 빈 차트 상태 관리
+  isEmptyChart = false,
+  selectedButton
 }: DosageChartProps) => {
-  // 72시간까지 샘플 데이터 생성 (실제로는 props에서 받아야 함)
-  const generate72HourData = () => {
-    const data = [];
-    for (let t = 0; t <= 72; t += 0.5) {
-      // 24시간 주기로 반복되는 패턴 생성
-      const cycleTime = t % 24;
-      const cycle = Math.floor(t / 24);
-      
-      // 각 주기마다 약간의 변화를 주어 더 현실적으로 만들기
-      const cycleFactor = Math.pow(0.95, cycle); // 각 주기마다 5% 감소
-      
-      let predicted, controlGroup;
-      
-      if (cycleTime <= 8) {
-        // 첫 8시간: 감소 구간
-        predicted = (27 - cycleTime * 2.5) * cycleFactor;
-        controlGroup = (30 - cycleTime * 2.5) * cycleFactor;
-      } else if (cycleTime <= 9) {
-        // 8-9시간: 급상승 (투약)
-        const riseTime = cycleTime - 8;
-        predicted = (5 + riseTime * 23) * cycleFactor;
-        controlGroup = (10 + riseTime * 25) * cycleFactor;
-      } else {
-        // 9-24시간: 감소 구간
-        const decayTime = cycleTime - 9;
-        predicted = (28 - decayTime * 1.4) * cycleFactor;
-        controlGroup = (35 - decayTime * 1.5) * cycleFactor;
-      }
-      
-      // 실제 측정값은 첫 24시간에만 배치
-      let observed = null;
-      if (cycle === 0) {
-        if (Math.abs(cycleTime - 6) < 0.5) observed = 25 * cycleFactor;
-        if (Math.abs(cycleTime - 13) < 0.5) observed = 20 * cycleFactor;
-        if (Math.abs(cycleTime - 18) < 0.5) observed = 25 * cycleFactor;
-      }
-      
-      data.push({
-        time: t,
-        predicted: Math.max(0, predicted),
-        observed,
-        controlGroup: Math.max(0, controlGroup)
-      });
+  // Merge separated series if provided; otherwise fall back to simulationData
+  const data: SimulationDataPoint[] = useMemo(() => {
+    // 빈 차트 상태일 때는 빈 데이터 반환
+    if (isEmptyChart) {
+      return [];
     }
-    return data;
+
+    if ((ipredSeries && ipredSeries.length) || (predSeries && predSeries.length) || (observedSeries && observedSeries.length)) {
+      const map = new Map<number, SimulationDataPoint & { controlGroup?: number }>();
+
+      // helper to get or create point
+      const getPoint = (t: number): SimulationDataPoint & { controlGroup?: number } => {
+        const key = Number(t) || 0;
+        const existing = map.get(key);
+        if (existing) return existing;
+        const created: SimulationDataPoint & { controlGroup?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0 };
+        map.set(key, created);
+        return created;
+      };
+
+      // IPRED_CONC -> predicted (use API unit as-is)
+      for (const p of ipredSeries || []) {
+        const t = Number(p.time) || 0;
+        const y = (Number(p.value) || 0);
+        const pt = getPoint(t);
+        pt.predicted = y;
+      }
+      // Observed from input dataset DV (mg/L -> ng/mL)
+      for (const p of observedSeries || []) {
+        const t = Number(p.time) || 0;
+        const y = Number(p.value);
+        const pt = getPoint(t);
+        pt.observed = y;
+      }
+      const result = Array.from(map.values()).sort((a, b) => a.time - b.time);
+      return result;
+    }
+    return simulationData;
+  }, [simulationData, ipredSeries, predSeries, observedSeries, isEmptyChart]);
+
+  // Calculate recent and predicted values
+  const recentAUC = propRecentAUC ?? 335;
+  const recentMax = propRecentMax ?? 29;
+  const recentTrough = propRecentTrough ?? 5;
+  const predictedAUC = propPredictedAUC ?? 490;
+  const predictedMax = propPredictedMax ?? 38;
+  const predictedTrough = propPredictedTrough ?? 18;
+
+  // Y축 상한: PKCharts와 동일한 로직
+  const yMax = useMemo(() => {
+    const dataMax = (data || []).reduce((m, p) => {
+      const candidates = [p.predicted, p.observed ?? 0].filter(v => typeof v === 'number') as number[];
+      const localMax = candidates.length ? Math.max(...candidates) : 0;
+      return Math.max(m, localMax);
+    }, 0);
+    const targetMaxNum = typeof targetMax === 'number' ? targetMax : 0;
+    
+    // 반코마이신 데이터에 최적화된 Y축 범위 설정
+    const calculatedMax = Math.max(dataMax, targetMaxNum);
+    
+    // 데이터가 0.2 mg/L 이하인 경우 0.2로 고정, 그 이상인 경우 1.2배 여유분 제공
+    if (calculatedMax <= 0.2) {
+      return 0.2;
+    } else {
+      return Math.ceil(calculatedMax * 1.2 * 10) / 10; // 0.1 단위로 반올림
+    }
+  }, [data, targetMax]);
+
+  // 색상 설정
+  const chartColors = {
+    pink: {
+      stroke: '#ec4899',
+      fill: '#ec4899',
+      fillOpacity: 0.3
+    },
+    green: {
+      stroke: '#22c55e',
+      fill: '#22c55e',
+      fillOpacity: 0.3
+    }
   };
 
-  const sampleData = simulationData.length > 0 ? simulationData : generate72HourData();
-
-  // PK 파라미터 계산 (샘플 데이터)
-  const recentAUC = 335;
-  const recentMax = 29;
-  const recentTrough = 5;
-  const predictedAUC = 490;
-  const predictedMax = 38;
-  const predictedTrough = 18;
-  const averageConcentration = 15.9;
+  const selectedColor = chartColors[chartColor];
 
   return (
-    <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow">
+    <div className="w-full">
 
 
-
-      {/* 메인 그래프 - 가로 스크롤 가능 */}
-      <div className="mb-6">
-        <div className="text-sm text-gray-600 mb-2">
-          📊 72시간까지 조회 가능 (가로 스크롤로 24시간 이후 데이터 확인)
-        </div>
-        <div className="h-96 overflow-x-auto overflow-y-hidden">
-          <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
+       {/* 메인 그래프 */}
+       <div className="mb-2">
+         <div className={`h-48 ${isEmptyChart ? '' : 'overflow-x-auto overflow-y-hidden'}`}>
+           <div className={`h-full ${isEmptyChart ? '' : 'min-w-[1800px]'}`} style={isEmptyChart ? {} : { width: '300%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={sampleData}>
+               {selectedDrug === 'Vancomycin' ? (
+                 // 반코마이신: Area Chart
+                 <AreaChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="time" 
                   label={{ value: 'Time(hours)', position: 'insideBottom', offset: -5 }}
                   tick={{ fontSize: 12 }}
-                  domain={[0, 72]}
+                   domain={isEmptyChart ? [0, 24] : [0, 72]}
                   type="number"
                   scale="linear"
-                  ticks={[0, 8, 16, 24, 32, 40, 48, 56, 64, 72]}
+                   ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : [0, 8, 16, 24, 32, 40, 48, 56, 64, 72]}
                   tickFormatter={(value) => `${value}h`}
+                   interval="preserveStartEnd"
                 />
                 <YAxis 
-                  label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'insideLeft' }}
+                   label={{ value: 'Concentration(mg/L)', angle: -90, position: 'insideLeft' }}
                   tick={{ fontSize: 12 }}
-                  domain={[0, 36]}
+                   domain={[0, yMax]}
+                   tickCount={6}
+                   tickFormatter={(value) => `${value.toFixed(2)}`}
                 />
                 {/* 목표 범위 (파란색 영역) */}
-                <ReferenceArea y1={12} y2={24} fill="#3b82f6" fillOpacity={0.1} />
-                {/* 평균 약물 농도 점선 */}
-                <ReferenceLine y={averageConcentration} stroke="#3b82f6" strokeDasharray="5 5" />
+                 {targetMin !== null && targetMax !== null && targetMax > targetMin && (
+                   <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
+                 )}
                 <Tooltip 
                   formatter={(value: any, name: string) => [
                     typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', 
-                    name === 'predicted' ? '투약시간 조정시' : name === 'controlGroup' ? '용량조정시' : '실제값'
+                     name === 'predicted' ? '현용법' : '실제값'
                   ]}
                   labelFormatter={(value) => `Time: ${value} hours`}
                 />
-                {/* 용량조정시 (핑크색) */}
+                 {/* 현용법 */}
+                 <Area 
+                   type="monotone" 
+                   dataKey="predicted" 
+                   stroke={selectedColor.stroke}
+                   fill={selectedColor.fill}
+                   fillOpacity={selectedColor.fillOpacity}
+                   strokeWidth={2}
+                   name="현용법"
+                 />
+                 {/* 실제 측정값 (빨간 점) */}
                 <Line 
                   type="monotone" 
-                  dataKey="controlGroup" 
-                  stroke="#ec4899" 
-                  strokeWidth={2}
-                  name="용량조정시"
-                  dot={false}
-                />
-                {/* 투약시간 조정시 (시안색) */}
+                   dataKey="observed" 
+                   stroke="#dc2626" 
+                   strokeWidth={0}
+                   dot={{ fill: "#dc2626", r: 4 }}
+                   name="실제값"
+                 />
+               </AreaChart>
+               ) : (
+                 // 기타 약물: Line Chart
+                 <LineChart data={data}>
+                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                 <XAxis 
+                   dataKey="time" 
+                   label={{ value: 'Time(hours)', position: 'insideBottom', offset: -5 }}
+                   tick={{ fontSize: 12 }}
+                   domain={isEmptyChart ? [0, 24] : [0, 72]}
+                   type="number"
+                   scale="linear"
+                   ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : [0, 8, 16, 24, 32, 40, 48, 56, 64, 72]}
+                   tickFormatter={(value) => `${value}h`}
+                   interval="preserveStartEnd"
+                 />
+                 <YAxis 
+                   label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'insideLeft' }}
+                   tick={{ fontSize: 12 }}
+                   domain={[0, yMax]}
+                   tickCount={6}
+                   tickFormatter={(value) => `${Math.round(value)}`}
+                 />
+                 {/* 목표 범위 (파란색 영역) */}
+                 {targetMin !== null && targetMax !== null && targetMax > targetMin && (
+                   <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
+                 )}
+                 <Tooltip 
+                   formatter={(value: any, name: string) => [
+                     typeof value === 'number' ? `${value.toFixed(2)} ng/mL` : 'N/A', 
+                     name === 'predicted' ? '현용법' : '실제값'
+                   ]}
+                   labelFormatter={(value) => `Time: ${value} hours`}
+                 />
+                 {/* 현용법 */}
                 <Line 
                   type="monotone" 
                   dataKey="predicted" 
-                  stroke="#06b6d4" 
+                   stroke={selectedColor.stroke}
                   strokeWidth={2}
-                  name="투약시간 조정시"
+                   name="현용법"
                   dot={false}
                 />
                 {/* 실제 측정값 (빨간 점) */}
@@ -150,11 +269,95 @@ const DosageChart = ({
                   name="실제값"
                 />
               </LineChart>
+               )}
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
+      {/* 구분선 - 빈 차트일 때는 숨김 */}
+      {!isEmptyChart && <div className="border-t border-gray-200 dark:border-gray-700 my-8"></div>}
+
+      {/* TDM Summary division - 빈 차트일 때는 숨김 */}
+      {!isEmptyChart && (
+        <div className="bg-slate-50 dark:bg-slate-800/30 rounded-lg p-6 mb-6 border border-slate-200 dark:border-slate-700 mt-4">
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+            TDM Summary
+          </h2>
+          
+          {/* 요약 카드 섹션 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* 최근 혈중 약물 농도 */}
+            <Card className="bg-white border-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg text-gray-800">최근 혈중 약물 농도</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">AUC:</span>
+                  <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">max 농도:</span>
+                  <span className="font-semibold">{recentMax != null ? `${recentMax} mg/L` : '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">trough 농도:</span>
+                  <span className="font-semibold">{recentTrough != null ? `${recentTrough} mg/L` : '-'}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 예측 약물 농도 */}
+            <Card className="bg-white border-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg text-gray-800">예측 약물 농도</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">AUC:</span>
+                  <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">max 농도:</span>
+                  <span className="font-semibold">{predictedMax != null ? `${predictedMax} mg/L` : '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">trough 농도:</span>
+                  <span className="font-semibold">{predictedTrough != null ? `${predictedTrough} mg/L` : '-'}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 용법 조정 결과 */}
+          <Card className="bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                용법 조정 결과
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+                <p className="leading-relaxed">
+                  {tdmIndication || '적응증'}의 {selectedDrug || '약물명'} 처방 시 TDM 목표는 
+                  <span className="font-semibold text-blue-600 dark:text-blue-400"> {tdmTarget || '목표 유형'} ({tdmTargetValue || '목표값'})</span>입니다.
+                </p>
+        </div>
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+                  <p className="leading-relaxed">
+                    현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시 Steady State까지 
+                    <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {predictedAUC || 0}mg*h/L</span>으로 
+                    치료 범위 이하로 떨어질 수 있습니다.
+                  </p>
+      </div>
+
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

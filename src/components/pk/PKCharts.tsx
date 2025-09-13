@@ -26,6 +26,14 @@ interface PKChartsProps {
   ipredSeries?: { time: number; value: number }[];
   predSeries?: { time: number; value: number }[];
   observedSeries?: { time: number; value: number }[];
+  // TDM 내역 데이터
+  tdmIndication?: string;
+  tdmTarget?: string;
+  tdmTargetValue?: string;
+  // 투약기록 데이터
+  currentDosage?: number;
+  currentUnit?: string;
+  currentFrequency?: string;
 }
 
 const PKCharts = ({
@@ -42,7 +50,15 @@ const PKCharts = ({
   predictedTrough: propPredictedTrough,
   ipredSeries,
   predSeries,
-  observedSeries
+  observedSeries,
+  // TDM 내역 데이터
+  tdmIndication,
+  tdmTarget,
+  tdmTargetValue,
+  // 투약기록 데이터
+  currentDosage,
+  currentUnit,
+  currentFrequency
 }: PKChartsProps) => {
   // Merge separated series if provided; otherwise fall back to simulationData
   const data: SimulationDataPoint[] = useMemo(() => {
@@ -162,22 +178,21 @@ const PKCharts = ({
 
       {/* 범례 */}
       <div className="flex justify-center gap-6 mb-4">
+      <div className="flex items-center gap-2">
+          <div className="w-4 h-0.5 bg-blue-500"></div>
+          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
+        </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-0.5 bg-orange-500"></div>
           <span className="text-sm text-gray-600">일반 대조군 결과</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
-        </div>
+
       </div>
 
       {/* 메인 그래프 - 가로 스크롤 가능 */}
       <div className="mb-2">
-        <div className="text-sm text-gray-600 mb-2">
-          📊 72시간까지 조회 가능 (가로 스크롤로 24시간 이후 데이터 확인)
-        </div>
-        <div className="h-96 overflow-x-auto overflow-y-hidden">
+
+        <div className="h-48 overflow-x-auto overflow-y-hidden">
           <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
             <ResponsiveContainer width="100%" height="100%">
               {selectedDrug === 'Vancomycin' ? (
@@ -321,7 +336,7 @@ const PKCharts = ({
             <CardHeader className="pb-2">
               <CardTitle className="text-lg text-gray-800">최근 혈중 약물 농도</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-gray-600">AUC:</span>
                 <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
@@ -342,7 +357,7 @@ const PKCharts = ({
             <CardHeader className="pb-2">
               <CardTitle className="text-lg text-gray-800">예측 약물 농도</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-gray-600">AUC:</span>
                 <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
@@ -359,33 +374,34 @@ const PKCharts = ({
           </Card>
         </div>
 
-        {/* TDM friends Comments */}
+        {/* 용법 조정 결과 */}
         <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg text-blue-800 dark:text-blue-200 flex items-center gap-2">
               TDM friends Comments
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+          <CardContent className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
             <div className="flex items-start gap-2">
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
-                <span className="font-semibold text-blue-700 dark:text-blue-300">투약 조건</span>(Vancomycin/폐혈증)의 TDM 목표는 
-                <span className="font-semibold text-blue-600 dark:text-blue-400"> AUC (400~600 mg*h/L)</span>입니다.
+                {tdmIndication || '적응증'}의 {selectedDrug || '약물명'} 처방 시 TDM 목표는 
+                <span className="font-semibold text-blue-600 dark:text-blue-400"> {tdmTarget || '목표 유형'} ({tdmTargetValue || '목표값'})</span>입니다.
               </p>
             </div>
             <div className="flex items-start gap-2">
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
-                현 용법 (Vancomycin/125mg/8시간 간격)으로 Steady State까지 
-                <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 340mg*h/L</span>으로 
-                투약 6시간 이후 약물 누적 노출 농도가 치료 범위 이하로 떨어질 수 있습니다.
+                현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시 Steady State까지 
+                <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {predictedAUC || 0}mg*h/L</span>으로 
+                치료 범위 이하로 떨어질 수 있습니다.
               </p>
             </div>
             <div className="flex items-start gap-2">
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
-                김아무개 환자의 경우 <span className="font-semibold text-red-600 dark:text-red-400">투약 용량 증량</span>을 권장합니다.
+                
+                <span className="font-semibold text-red-600 dark:text-red-400">투약 용량 조정(증량)</span>을 권장합니다.
               </p>
             </div>
           </CardContent>

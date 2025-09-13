@@ -1,9 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
-import { Activity, ArrowLeft, CheckCircle } from "lucide-react";
+import { Activity, ArrowLeft, CheckCircle, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import PKSimulation from "../PKSimulation";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 interface SimulationStepProps {
   patients: Patient[];
@@ -23,6 +26,8 @@ const SimulationStep = ({
   onPrev
 }: SimulationStepProps) => {
   const [tdmResult, setTdmResult] = useState<unknown | null>(null);
+  const [showReportAlert, setShowReportAlert] = useState(false);
+  
   useEffect(() => {
     if (!selectedPatient) { setTdmResult(null); return; }
     try {
@@ -30,6 +35,33 @@ const SimulationStep = ({
       if (raw) setTdmResult(JSON.parse(raw)); else setTdmResult(null);
     } catch { setTdmResult(null); }
   }, [selectedPatient?.id]);
+
+  // PDF 저장 함수
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('pk-simulation-content');
+    if (!element) return;
+    const canvas = await html2canvas(element);
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [canvas.width, canvas.height] });
+    pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+    pdf.save("PK_simulation_report.pdf");
+  };
+
+  // 보고서 생성 버튼 클릭 핸들러
+  const handleReportButtonClick = () => {
+    setShowReportAlert(true);
+  };
+
+  // 보고서 생성 확인 핸들러
+  const handleConfirmReport = () => {
+    setShowReportAlert(false);
+    handleDownloadPDF();
+  };
+
+  // 보고서 생성 취소 핸들러
+  const handleCancelReport = () => {
+    setShowReportAlert(false);
+  };
   if (!selectedPatient) {
     return (
       <Card>
@@ -62,13 +94,16 @@ const SimulationStep = ({
         </CardHeader>
         <CardContent>
           {/* PK Simulation Component */}
-          <PKSimulation
-            patients={patients}
-            prescriptions={prescriptions}
-            bloodTests={bloodTests}
-            selectedPatient={selectedPatient}
-            drugAdministrations={patientDrugAdministrations}
-          />
+          <div id="pk-simulation-content">
+            <PKSimulation
+              patients={patients}
+              prescriptions={prescriptions}
+              bloodTests={bloodTests}
+              selectedPatient={selectedPatient}
+              drugAdministrations={patientDrugAdministrations}
+              onDownloadPDF={handleDownloadPDF}
+            />
+          </div>
 
           {/* Navigation */}
           <div className="flex justify-between mt-6">
@@ -76,12 +111,37 @@ const SimulationStep = ({
               <ArrowLeft className="h-4 w-4" />
               투약 기록
             </Button>
-            <div className="text-sm text-muted-foreground">
-              Analysis complete! You can modify data by going back to previous steps.
-            </div>
+            <Button onClick={handleReportButtonClick} className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              TDM 분석 보고서 생성
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* 보고서 생성 확인 다이얼로그 */}
+      <AlertDialog open={showReportAlert} onOpenChange={setShowReportAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selectedPatient.name} 환자의 TDM을 종료할까요?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              분석을 종료하고 보고서를 생성합니다.
+              <br />
+              보고서 생성 후에는 데이터를 수정할 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelReport}>
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmReport} className="bg-black text-white hover:bg-gray-800">
+              보고서 생성
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
