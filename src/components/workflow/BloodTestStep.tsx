@@ -153,6 +153,20 @@ const BloodTestStep = ({
     return `eGFR-CKD-EPI = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
   };
 
+  // BMI 계산
+  const calculateBMI = (): string => {
+    if (!selectedPatient?.weight || !selectedPatient?.height) return "N/A";
+    const bmi = selectedPatient.weight / Math.pow(selectedPatient.height / 100, 2);
+    return bmi.toFixed(1);
+  };
+
+  // BSA 계산 (Mosteller 공식)
+  const calculateBSA = (): string => {
+    if (!selectedPatient?.weight || !selectedPatient?.height) return "N/A";
+    const bsa = Math.sqrt((selectedPatient.height * selectedPatient.weight) / 3600);
+    return bsa.toFixed(2);
+  };
+
   // Persist renal info list per patient in localStorage
   useEffect(() => {
     if (!selectedPatient) return;
@@ -321,32 +335,45 @@ const BloodTestStep = ({
             {isCompleted && <CheckCircle className="h-5 w-5 text-green-600" />}
           </CardTitle>
           <CardDescription>
-            신기능(혈청 크레아티닌)과 혈중 약물 농도 정보를 입력하세요.
+            {selectedPatient ? `${selectedPatient.name} 환자의 신기능(혈청 크레아티닌)과 혈중 약물 농도 정보를 입력하세요.` : '신기능(혈청 크레아티닌)과 혈중 약물 농도 정보를 입력하세요.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* 2단계에서 선택한 TDM 내역 표시 */}
-          {tdmDrug && (
+          {/* TDM 선택 정보 영역 */}
+          {tdmDrug && selectedPatient && (
             <div className="py-3 px-4 rounded bg-muted dark:bg-slate-800 mb-4">
-              <div className="text-base font-semibold mb-2">
-                TDM 선택 정보: {tdmDrug.drugName}
+              {/* 1행: 환자 기본 정보 */}
+              <div className="grid grid-cols-6 gap-4 mb-3">
+                <div className="text-sm">
+                  <span className="font-medium">나이:</span> {selectedPatient.age}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">성별:</span> {selectedPatient.gender}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">몸무게:</span> {selectedPatient.weight}kg
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">키:</span> {selectedPatient.height}cm
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">BMI:</span> {calculateBMI()}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">BSA:</span> {calculateBSA()}
+                </div>
               </div>
-              <div className="space-y-1 text-sm">
-                {tdmDrug.indication && (
-                  <div>
-                    <span className="font-medium">적응증:</span> {tdmDrug.indication}
-                  </div>
-                )}
-                {tdmDrug.additionalInfo && (
-                  <div>
-                    <span className="font-medium">추가정보:</span> {tdmDrug.additionalInfo}
-                  </div>
-                )}
-                {tdmDrug.tdmTarget && tdmDrug.tdmTargetValue && (
-                  <div>
-                    <span className="font-medium">TDM목표치:</span> {tdmDrug.tdmTarget} {tdmDrug.tdmTargetValue}
-                  </div>
-                )}
+              
+              {/* 2행: TDM 정보 */}
+              <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                <div className="text-sm">
+                  <span className="font-medium text-gray-600 dark:text-gray-400">약품명:</span> 
+                  <span className="ml-2 font-semibold">{tdmDrug.drugName}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-600 dark:text-gray-400">적응증:</span> 
+                  <span className="ml-2">{tdmDrug.indication}</span>
+                </div>
               </div>
             </div>
           )}
