@@ -43,6 +43,106 @@ const mostellerBsa = (heightCm: number, weightKg: number): number => {
   return Math.sqrt((weightKg * heightCm) / 3600);
 };
 
+// Normalize model code per requirement: first letter lowercase, '-' -> '_'
+const normalizeModelCode = (code: string): string => {
+  if (!code) return code;
+  const firstLower = code.charAt(0).toLowerCase() + code.slice(1);
+  return firstLower.replace(/-/g, "_");
+};
+
+// Mapping table from drug/indication/(optional) additional info to model code
+// Codes are taken from the provided spec image. We normalize on return.
+const MODEL_CODE_TABLE = {
+  Vancomycin: {
+    "Not specified/Korean": {
+      default: "Vancomycin1-1",
+      CRRT: "Vancomycin1-2",
+    },
+    "Neurosurgical patients/Korean": {
+      default: "Vancomycin2-1",
+      within72h: "Vancomycin2-2", // within 72h of last dosing time
+    },
+  },
+  Cyclosporin: {
+    "Renal transplant recipients/Korean": {
+      "POD ~2": "Cyclosporin1-1",
+      "POD 3~6": "Cyclosporin1-2",
+      "POD 7~": "Cyclosporin1-3",
+      default: "Cyclosporin1-1",
+    },
+    "Allo-HSCT/Korean": "Cyclosporin2",
+    "Thoracic transplant recipients/European": "Cyclosporin3",
+  },
+  // Accept alternate spelling
+  Cyclosporine: {
+    "Renal transplant recipients/Korean": {
+      "POD ~2": "Cyclosporin1-1",
+      "POD 3~6": "Cyclosporin1-2",
+      "POD 7~": "Cyclosporin1-3",
+      default: "Cyclosporin1-1",
+    },
+    "Allo-HSCT/Korean": "Cyclosporin2",
+    "Thoracic transplant recipients/European": "Cyclosporin3",
+  },
+} as const;
+
+const inferModelName = (args: {
+  patientId: string;
+  drugName?: string;
+  indication?: string;
+  additionalInfo?: string;
+  lastDoseDate?: Date | undefined;
+}): string | undefined => {
+  const { patientId, drugName, indication, additionalInfo, lastDoseDate } = args;
+  if (!drugName || !indication) return undefined;
+  const table: any = (MODEL_CODE_TABLE as any)[drugName];
+  if (!table) return undefined;
+
+  // Detect CRRT from saved renal info
+  const renal = getSelectedRenalInfo(patientId);
+  const isCRRT = /crrt/i.test(renal?.renalReplacement || "");
+
+  // Compute within 72h from last dosing time
+  const within72h = lastDoseDate
+    ? (new Date().getTime() - lastDoseDate.getTime()) / 36e5 <= 72
+    : false;
+
+  const entry = table[indication];
+  if (!entry) return undefined;
+
+  // If entry is a string, return it
+  if (typeof entry === "string") {
+    return normalizeModelCode(entry);
+  }
+
+  // Vancomycin branches
+  if (drugName === "Vancomycin") {
+    if (isCRRT && entry.CRRt) {
+      // keep for robustness if case differs
+      return normalizeModelCode(entry.CRRt);
+    }
+    if (isCRRT && entry.CRRT) {
+      return normalizeModelCode(entry.CRRT);
+    }
+    if (within72h && entry.within72h) {
+      return normalizeModelCode(entry.within72h);
+    }
+    return normalizeModelCode(entry.default);
+  }
+
+  // Cyclosporin(e) POD branches
+  if (drugName === "Cyclosporin" || drugName === "Cyclosporine") {
+    const podKey = additionalInfo?.trim();
+    const podMapped = (podKey && entry[podKey]) || entry.default;
+    return podMapped ? normalizeModelCode(podMapped) : undefined;
+  }
+
+  // Fallback if structure unknown
+  return typeof entry.default === "string"
+    ? normalizeModelCode(entry.default)
+    : undefined;
+};
+
 export const computeCRCL = (
   selectedPatientId: string | null | undefined,
   weightKg: number,
@@ -146,8 +246,9 @@ export const buildTdmRequestBody = (args: {
   } = args;
   const patient = patients.find((p) => p.id === selectedPatientId);
   const tdmPrescription = prescriptions.find(
-    (p) => p.patientId === selectedPatientId
-  );
+    (p) => p.patientId === selectedPatientId &&
+      (selectedDrugName ? p.drugName === selectedDrugName : true)
+  ) || prescriptions.find((p) => p.patientId === selectedPatientId);
   if (!patient || !tdmPrescription) return null;
 
   const weight = patient.weight;
@@ -272,6 +373,15 @@ export const buildTdmRequestBody = (args: {
     });
   }
 
+  // Infer model name from drug/indication and context
+  const modelName = inferModelName({
+    patientId: selectedPatientId,
+    drugName: tdmPrescription.drugName,
+    indication: tdmPrescription.indication,
+    additionalInfo: tdmPrescription.additionalInfo as string | undefined,
+    lastDoseDate: lastDose ? toDate(lastDose.date, lastDose.time) : undefined,
+  });
+
   return {
     input_tau: tau ?? 12,
     input_amount: amount ?? 100,
@@ -282,6 +392,7 @@ export const buildTdmRequestBody = (args: {
     input_TOXI: toxi,
     input_AUC: aucTarget ?? undefined,
     input_CTROUGH: cTroughTarget ?? undefined,
+    model_name: modelName,
     dataset,
   };
 };

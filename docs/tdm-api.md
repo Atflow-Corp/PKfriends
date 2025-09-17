@@ -7,7 +7,7 @@ TDM 시뮬레이션 API 통합 가이드
 - POST `http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm`
 
 요청 본문
-- 전역 파라미터: `input_tau`, `input_amount`, `input_WT`, `input_CRCL`, `input_AGE`, `input_SEX`, `input_TOXI`, `input_AUC`, `input_CTROUGH`
+- 전역 파라미터: `input_tau`, `input_amount`, `input_WT`, `input_CRCL`, `input_AGE`, `input_SEX`, `input_TOXI`, `input_AUC`, `input_CTROUGH`, `model_name`
 - dataset: 최소 1개의 투여 이벤트(EVID:1)와 1개의 관찰 이벤트(EVID:0) 포함
 
 예시
@@ -22,6 +22,7 @@ TDM 시뮬레이션 API 통합 가이드
   "input_TOXI": 1,
   "input_AUC": 400,
   "input_CTROUGH": 10,
+  "model_name": "vancomycin1_1",
   "dataset": [
     { "ID": "1", "TIME": 0.0, "DV": null, "AMT": 1000, "RATE": 500, "CMT": 1, "WT": 70, "SEX": 1, "AGE": 65, "CRCL": 90, "TOXI": 1, "EVID": 1 },
     { "ID": "1", "TIME": 2.0, "DV": 25.3, "AMT": 0, "RATE": 0, "CMT": 1, "WT": 70, "SEX": 1, "AGE": 65, "CRCL": 90, "TOXI": 1, "EVID": 0 }
