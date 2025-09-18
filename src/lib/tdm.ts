@@ -73,17 +73,6 @@ const MODEL_CODE_TABLE = {
     "Allo-HSCT/Korean": "Cyclosporin2",
     "Thoracic transplant recipients/European": "Cyclosporin3",
   },
-  // Accept alternate spelling
-  Cyclosporine: {
-    "Renal transplant recipients/Korean": {
-      "POD ~2": "Cyclosporin1-1",
-      "POD 3~6": "Cyclosporin1-2",
-      "POD 7~": "Cyclosporin1-3",
-      default: "Cyclosporin1-1",
-    },
-    "Allo-HSCT/Korean": "Cyclosporin2",
-    "Thoracic transplant recipients/European": "Cyclosporin3",
-  },
 } as const;
 
 const inferModelName = (args: {
@@ -93,9 +82,10 @@ const inferModelName = (args: {
   additionalInfo?: string;
   lastDoseDate?: Date | undefined;
 }): string | undefined => {
-  const { patientId, drugName, indication, additionalInfo, lastDoseDate } = args;
+  const { patientId, drugName, indication, additionalInfo, lastDoseDate } =
+    args;
   if (!drugName || !indication) return undefined;
-  const table: any = (MODEL_CODE_TABLE as any)[drugName];
+  const table: unknown = (MODEL_CODE_TABLE as unknown)[drugName];
   if (!table) return undefined;
 
   // Detect CRRT from saved renal info
@@ -131,7 +121,7 @@ const inferModelName = (args: {
   }
 
   // Cyclosporin(e) POD branches
-  if (drugName === "Cyclosporin" || drugName === "Cyclosporine") {
+  if (drugName === "Cyclosporin") {
     const podKey = additionalInfo?.trim();
     const podMapped = (podKey && entry[podKey]) || entry.default;
     return podMapped ? normalizeModelCode(podMapped) : undefined;
@@ -245,10 +235,12 @@ export const buildTdmRequestBody = (args: {
     overrides,
   } = args;
   const patient = patients.find((p) => p.id === selectedPatientId);
-  const tdmPrescription = prescriptions.find(
-    (p) => p.patientId === selectedPatientId &&
-      (selectedDrugName ? p.drugName === selectedDrugName : true)
-  ) || prescriptions.find((p) => p.patientId === selectedPatientId);
+  const tdmPrescription =
+    prescriptions.find(
+      (p) =>
+        p.patientId === selectedPatientId &&
+        (selectedDrugName ? p.drugName === selectedDrugName : true)
+    ) || prescriptions.find((p) => p.patientId === selectedPatientId);
   if (!patient || !tdmPrescription) return null;
 
   const weight = patient.weight;

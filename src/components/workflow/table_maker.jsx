@@ -169,7 +169,7 @@ function TablePage(props) {
     
     if (drug === "vancomycin") {
       if (routeLower === "정맥" || routeLower === "iv") return "10";
-    } else if (drug === "cyclosporin" || drug === "cyclosporine") {
+    } else if (drug === "cyclosporin") {
       if (routeLower === "정맥" || routeLower === "iv") return "10";
       else if (routeLower === "경구" || routeLower === "oral") return "25";
     }
@@ -186,7 +186,7 @@ function TablePage(props) {
     
     if (drug === "vancomycin") {
       return "mg";
-    } else if (drug === "cyclosporin" || drug === "cyclosporine") {
+    } else if (drug === "cyclosporin") {
       if (routeLower === "정맥" || routeLower === "iv") return "mg";
       else if (routeLower === "경구" || routeLower === "oral") return "mg";
     }

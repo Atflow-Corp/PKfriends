@@ -53,7 +53,7 @@ const TDM_DRUGS: TdmDrug[] = [
         "Antiviral agents (acyclovir, famciclovir and ganciclovir)",
         "Colistimethate",
         "Cytotoxic agents (cytosine arabinoside, fludarabine and idarubicin)",
-        "Cyclosporine",
+        "Cyclosporin",
         "Tacrolimus",
         "Non-steroidal anti-inflammatory agents (aceclofenac, ibuprofen, ketoprofen, ketorolac and zaltoprofen)",
         "Trimethoprim/sulfamethoxazole"
@@ -279,7 +279,7 @@ const PrescriptionStep = ({
     }
   }, [prescriptions, newlyAddedTdmId, selectedPatient?.id, selectedTdmId]);
 
-  // 테스트를 위한 임시 데이터이므로 추후 삭제해 주세요.
+  // TODO: 테스트를 위한 임시 데이터이므로 추후 삭제해 주세요.
   const tempPrescriptions: Prescription[] = [
     {
       id: "temp1",
