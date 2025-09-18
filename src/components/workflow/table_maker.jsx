@@ -16,6 +16,7 @@ function TablePage(props) {
     unit: "mg",
     intervalHours: "",
     injectionTime: "",
+    dosageForm: "",
     firstDoseDate: "",
     firstDoseTime: "",
     totalDoses: ""
@@ -161,7 +162,7 @@ function TablePage(props) {
   ];
 
   // 약물별 기본 투약용량 정의
-  const getDefaultDosage = (drugName, route) => {
+  const getDefaultDosage = (drugName, route, dosageForm) => {
     if (!drugName || !route) return "";
     
     const drug = drugName.toLowerCase();
@@ -171,7 +172,11 @@ function TablePage(props) {
       if (routeLower === "정맥" || routeLower === "iv") return "10";
     } else if (drug === "cyclosporin") {
       if (routeLower === "정맥" || routeLower === "iv") return "10";
-      else if (routeLower === "경구" || routeLower === "oral") return "25";
+      else if (routeLower === "경구" || routeLower === "oral") {
+        const form = (dosageForm || "capsule/tablet").toLowerCase();
+        if (form === "oral liquid") return "10";
+        return "25";
+      }
     }
     
     return "";
@@ -213,12 +218,25 @@ function TablePage(props) {
       
       // 투약 경로가 변경되면 기본 투약용량과 단위 설정
       if (field === "route" && props.tdmDrug?.drugName) {
-        const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, value);
+        // Cyclosporin 경구일 때 제형 기본값 지정
+        if ((props.tdmDrug.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName?.toLowerCase() === "cyclosporine") && (value === "경구" || value === "oral")) {
+          if (!newCondition.dosageForm) newCondition.dosageForm = "capsule/tablet";
+        } else {
+          newCondition.dosageForm = "";
+        }
+        const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, value, newCondition.dosageForm);
         const defaultUnit = getDefaultUnit(props.tdmDrug.drugName, value);
         
         if (defaultDosage) {
           newCondition.dosage = defaultDosage;
           newCondition.unit = defaultUnit;
+        }
+      }
+      // 제형이 변경되면 (Cyclosporin 경구) 기본 투약용량 갱신
+      if (field === "dosageForm" && props.tdmDrug?.drugName) {
+        const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, newCondition.route, value);
+        if (defaultDosage) {
+          newCondition.dosage = defaultDosage;
         }
       }
       
@@ -450,7 +468,11 @@ function TablePage(props) {
           
           // 투약 경로가 변경되면 기본 투약용량과 단위 설정
           if (field === "route" && props.tdmDrug?.drugName) {
-            const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, value);
+            const defaultDosage = getDefaultDosage(
+              props.tdmDrug.drugName,
+              value,
+              (row.dosageForm) || (currentCondition && currentCondition.dosageForm)
+            );
             const defaultUnit = getDefaultUnit(props.tdmDrug.drugName, value);
             
             if (defaultDosage) {
@@ -628,6 +650,33 @@ function TablePage(props) {
                     ))}
                   </select>
                 </div>
+
+            {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  제형
+                </label>
+                <select
+                  value={currentCondition.dosageForm}
+                  onChange={(e) => handleCurrentConditionChange("dosageForm", e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid #ced4da",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    backgroundColor: "#fff",
+                    height: "40px",
+                    boxSizing: "border-box",
+                    color: "#495057"
+                  }}
+                >
+                  <option value="">제형을 선택해주세요</option>
+                  <option value="capsule/tablet">캡슐/정제 (25 mg)</option>
+                  <option value="oral liquid">경구현탁/액제 (10 mg)</option>
+                </select>
+              </div>
+            )}
 
                 <div style={{ flex: 1 }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
