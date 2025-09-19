@@ -295,7 +295,7 @@ const DosageChart = ({
               <CardContent className="space-y-1">
                 <div className="flex justify-between">
                   <span className="text-gray-600">AUC:</span>
-                  <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
+                  <span className="font-semibold">{recentAUC != null ? `${Math.round(recentAUC).toLocaleString()} mg*h/L` : '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">max 농도:</span>
@@ -316,7 +316,7 @@ const DosageChart = ({
               <CardContent className="space-y-1">
                 <div className="flex justify-between">
                   <span className="text-gray-600">AUC:</span>
-                  <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
+                  <span className="font-semibold">{predictedAUC != null ? `${Math.round(predictedAUC).toLocaleString()} mg*h/L` : '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">max 농도:</span>
@@ -349,7 +349,7 @@ const DosageChart = ({
                 <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
                   <p className="leading-relaxed">
                     현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시 Steady State까지 
-                    <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {predictedAUC || 0}mg*h/L</span>으로 
+                  <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {Math.round(predictedAUC || 0).toLocaleString()}mg*h/L</span>으로 
                     치료 범위 이하로 떨어질 수 있습니다.
                   </p>
       </div>

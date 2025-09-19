@@ -605,6 +605,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             predSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
             observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
           });
+          setCardChartData(prev => ({ ...prev, [cardId]: true }));
         }
       }
     } catch (e) {
@@ -957,36 +958,36 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             
           {/* 차트 섹션 */}
           <div className="mb-8">
-            <DosageChart
-              simulationData={[]}
-              showSimulation={true}
-              currentPatientName={currentPatient?.name}
-              selectedDrug={selectedDrug}
-              chartTitle={`용법 조정 ${card.id}`}
-              targetMin={getTargetBand().min}
-              targetMax={getTargetBand().max}
-              recentAUC={tdmResult?.AUC_before}
-              recentMax={tdmResult?.CMAX_before}
-              recentTrough={tdmResult?.CTROUGH_before}
-              predictedAUC={tdmResult?.AUC_after}
-              predictedMax={tdmResult?.CMAX_after}
-              predictedTrough={tdmResult?.CTROUGH_after}
-              ipredSeries={tdmExtraSeries?.ipredSeries}
-              predSeries={tdmExtraSeries?.predSeries}
-              observedSeries={tdmExtraSeries?.observedSeries}
-              chartColor={card.type === 'dosage' ? 'pink' : 'green'}
-              // TDM 내역 데이터
-              tdmIndication={getTdmData(selectedDrug).indication}
-              tdmTarget={getTdmData(selectedDrug).target}
-              tdmTargetValue={getTdmData(selectedDrug).targetValue}
-              // 투약기록 데이터
-              currentDosage={getTdmData(selectedDrug).dosage}
-              currentUnit={getTdmData(selectedDrug).unit}
-              currentFrequency={getTdmData(selectedDrug).frequency}
-              // 빈 차트 상태 관리
-              isEmptyChart={!cardChartData[card.id]}
-              selectedButton={card.type === 'dosage' ? selectedDosage[card.id] : selectedIntervalOption[card.id]}
-            />
+              <DosageChart
+                simulationData={[]}
+                showSimulation={true}
+                currentPatientName={currentPatient?.name}
+                selectedDrug={selectedDrug}
+                chartTitle={`용법 조정 ${card.id}`}
+                targetMin={getTargetBand().min}
+                targetMax={getTargetBand().max}
+                recentAUC={tdmResult?.AUC_before}
+                recentMax={tdmResult?.CMAX_before}
+                recentTrough={tdmResult?.CTROUGH_before}
+                predictedAUC={tdmResult?.AUC_after}
+                predictedMax={tdmResult?.CMAX_after}
+                predictedTrough={tdmResult?.CTROUGH_after}
+                ipredSeries={tdmExtraSeries?.ipredSeries}
+                predSeries={tdmExtraSeries?.predSeries}
+                observedSeries={tdmExtraSeries?.observedSeries}
+                chartColor={card.type === 'dosage' ? 'pink' : 'green'}
+                // TDM 내역 데이터
+                tdmIndication={getTdmData(selectedDrug).indication}
+                tdmTarget={getTdmData(selectedDrug).target}
+                tdmTargetValue={getTdmData(selectedDrug).targetValue}
+                // 투약기록 데이터
+                currentDosage={getTdmData(selectedDrug).dosage}
+                currentUnit={getTdmData(selectedDrug).unit}
+                currentFrequency={getTdmData(selectedDrug).frequency}
+                // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
+                isEmptyChart={!cardChartData[card.id] || (dosageLoading[card.id] && (!dosageSuggestions[card.id] || dosageSuggestions[card.id].length === 0))}
+                selectedButton={card.type === 'dosage' ? selectedDosage[card.id] : selectedIntervalOption[card.id]}
+              />
                 </div>
               </div>
       ))}
