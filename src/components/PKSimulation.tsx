@@ -386,6 +386,33 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     return tauHours > 0 ? tauHours : undefined;
   }, []);
 
+  // 선택한 용량으로 메인 차트/요약 업데이트
+  const applyDoseScenario = useCallback(async (amountMg: number) => {
+    try {
+      if (!selectedPatientId || !selectedDrug) return;
+      const body = buildTdmBody({
+        patients,
+        prescriptions,
+        bloodTests,
+        drugAdministrations,
+        selectedPatientId,
+        selectedDrugName: selectedDrug,
+        overrides: { amount: amountMg }
+      });
+      if (!body) return;
+      const data = (await runTdm({ body })) as TdmApiResponse;
+      setTdmResult(data);
+      setTdmChartDataMain(toChartData(data, (body.dataset as TdmDatasetRow[]) || []));
+      setTdmExtraSeries({
+        ipredSeries: (data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
+        predSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
+        observedSeries: ((body.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+      });
+    } catch (e) {
+      console.warn('Failed to apply dose scenario', e);
+    }
+  }, [patients, prescriptions, bloodTests, drugAdministrations, selectedPatientId, selectedDrug, toChartData]);
+
   // Helper: compute 6 dosage suggestions by sampling around current/last dose and scoring via API
   const computeDosageSuggestions = useCallback(async (cardId: number) => {
     try {
@@ -504,32 +531,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     }
   }, [computeDosageSuggestions]);
 
-  // 선택한 용량으로 메인 차트/요약 업데이트
-  const applyDoseScenario = useCallback(async (amountMg: number) => {
-    try {
-      if (!selectedPatientId || !selectedDrug) return;
-      const body = buildTdmBody({
-        patients,
-        prescriptions,
-        bloodTests,
-        drugAdministrations,
-        selectedPatientId,
-        selectedDrugName: selectedDrug,
-        overrides: { amount: amountMg }
-      });
-      if (!body) return;
-      const data = (await runTdm({ body })) as TdmApiResponse;
-      setTdmResult(data);
-      setTdmChartDataMain(toChartData(data, (body.dataset as TdmDatasetRow[]) || []));
-      setTdmExtraSeries({
-        ipredSeries: (data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
-        predSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
-        observedSeries: ((body.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
-      });
-    } catch (e) {
-      console.warn('Failed to apply dose scenario', e);
-    }
-  }, [patients, prescriptions, bloodTests, drugAdministrations, selectedPatientId, selectedDrug, toChartData]);
+  // 선택한 용량으로 메인 차트/요약 업데이트 (정의 위치: toChartData 이후)
 
   // TDM API integration
   const buildTdmRequestBody = useCallback((overrides?: { amount?: number; tau?: number }) => {
