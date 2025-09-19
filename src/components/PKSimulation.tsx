@@ -119,6 +119,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [dosageSuggestions, setDosageSuggestions] = useState<{ [cardId: number]: number[] }>({});
   const [dosageLoading, setDosageLoading] = useState<{ [cardId: number]: boolean }>({});
   const suggestTimersRef = useRef<{ [cardId: number]: number }>({});
+  const [dosageSuggestionResults, setDosageSuggestionResults] = useState<{ [cardId: number]: { [amount: number]: { data: TdmApiResponse; dataset: TdmDatasetRow[] } } }>({});
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = useMemo(() => (
@@ -289,8 +290,20 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     }));
     // 버튼 선택 시 차트 그리기 활성화
     setCardChartData(prev => ({ ...prev, [cardId]: true }));
-    // 시나리오 적용 (API 호출로 예측값 갱신)
+    // 캐시가 있다면 재호출 없이 반영
     const amountMg = parseFloat(dosage.replace(/[^0-9.]/g, ''));
+    const cached = dosageSuggestionResults?.[cardId]?.[amountMg];
+    if (cached && cached.data) {
+      setTdmResult(cached.data);
+      setTdmChartDataMain(toChartData(cached.data, cached.dataset || []));
+      setTdmExtraSeries({
+        ipredSeries: (cached.data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+        predSeries: (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+        observedSeries: (cached.dataset || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+      });
+      return;
+    }
+    // 캐시가 없으면 기존 로직으로 API 호출
     void applyDoseScenario(amountMg);
   };
 
@@ -538,7 +551,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             overrides: { amount: amt }
           });
           try {
-            const resp = (await runTdm({ body })) as TdmApiResponse;
+            const resp = (await runTdm({ body })) as any;
             const trough = Number(((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0);
             const auc = Number(((resp?.AUC_after ?? resp?.AUC_before) as number) || 0);
             // score: distance to target range (prefer within range)
@@ -555,9 +568,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
               // fallback to smaller predicted trough distance to previous result
               value = Math.abs((trough || 0) - (tdmResult?.CTROUGH_before || 0));
             }
-            return { amt, score: value };
+            return { amt, score: value, resp, dataset: (body?.dataset as TdmDatasetRow[]) || [] };
           } catch {
-            return { amt, score: Number.POSITIVE_INFINITY };
+            return { amt, score: Number.POSITIVE_INFINITY, resp: null, dataset: (body?.dataset as TdmDatasetRow[]) || [] } as any;
           }
         })
       );
@@ -568,6 +581,17 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         .map(r => r.amt)
         .sort((a,b) => a - b); // 오름차순 정렬
       setDosageSuggestions(prev => ({ ...prev, [cardId]: top }));
+      // 결과 캐싱
+      setDosageSuggestionResults(prev => {
+        const next = { ...(prev || {}) } as any;
+        next[cardId] = next[cardId] || {};
+        for (const r of results) {
+          if (r && r.resp) {
+            next[cardId][r.amt] = { data: r.resp as TdmApiResponse, dataset: r.dataset as TdmDatasetRow[] };
+          }
+        }
+        return next;
+      });
     } catch (e) {
       console.warn('computeDosageSuggestions failed', e);
     }
