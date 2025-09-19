@@ -160,62 +160,10 @@ const PrescriptionStep = ({
           setSelectedTdmId(parsed.selectedTdmId);
           
           // selectedTdmId가 복원되면 해당 prescription을 찾아서 폼 데이터 설정
-          // 이 시점에서는 아직 tempPrescriptions가 정의되지 않았으므로 직접 계산
           const currentPatientPrescriptions = selectedPatient 
             ? prescriptions.filter(p => p.patientId === selectedPatient.id)
             : [];
-          
-          // tempPrescriptions를 직접 정의 (중복 방지)
-          const currentTempPrescriptions: Prescription[] = [
-            {
-              id: "temp1",
-              patientId: selectedPatient?.id || "",
-              drugName: "Vancomycin",
-              dosage: 1000,
-              unit: "mg",
-              frequency: "q12h",
-              startDate: new Date('2024-01-15'),
-              route: "IV",
-              prescribedBy: "Dr. Kim",
-              indication: "패혈증(Sepsis)",
-              tdmTarget: "Trough Concentration",
-              tdmTargetValue: "10-20 mg/L",
-              additionalInfo: ""
-            },
-            {
-              id: "temp2",
-              patientId: selectedPatient?.id || "",
-              drugName: "Cyclosporin",
-              dosage: 200,
-              unit: "mg",
-              frequency: "q12h",
-              startDate: new Date('2024-01-20'),
-              route: "oral",
-              prescribedBy: "Dr. Lee",
-              indication: "장기이식",
-              tdmTarget: "Trough Concentration",
-              tdmTargetValue: "100-400 ng/mL",
-              additionalInfo: ""
-            },
-            {
-              id: "temp3",
-              patientId: selectedPatient?.id || "",
-              drugName: "Vancomycin",
-              dosage: 750,
-              unit: "mg",
-              frequency: "q8h",
-              startDate: new Date('2024-02-01'),
-              route: "IV",
-              prescribedBy: "Dr. Park",
-              indication: "심내막염",
-              tdmTarget: "Peak Concentration",
-              tdmTargetValue: "25-40 mg/L",
-              additionalInfo: ""
-            }
-          ];
-          
-          const allPrescriptions = [...currentPatientPrescriptions, ...currentTempPrescriptions];
-          const selectedPrescription = allPrescriptions.find(p => p.id === parsed.selectedTdmId);
+          const selectedPrescription = currentPatientPrescriptions.find(p => p.id === parsed.selectedTdmId);
           if (selectedPrescription) {
             const formDataFromPrescription = {
               drugName: selectedPrescription.drugName || "",
@@ -274,61 +222,11 @@ const PrescriptionStep = ({
     }
   }, [prescriptions, newlyAddedTdmId, selectedPatient, selectedPatient?.id, selectedTdmId]);
 
-  // TODO: 테스트를 위한 임시 데이터이므로 추후 삭제해 주세요.
-  const tempPrescriptions: Prescription[] = [
-    {
-      id: "temp1",
-      patientId: selectedPatient?.id || "",
-      drugName: "Vancomycin",
-      dosage: 1000,
-      unit: "mg",
-      frequency: "q12h",
-      startDate: new Date('2024-01-15'),
-      route: "IV",
-      prescribedBy: "Dr. Kim",
-      indication: "Neurosurgical patients/Korean",
-      tdmTarget: "Trough Concentration",
-      tdmTargetValue: "10-20 mg/L",
-      additionalInfo: ""
-    },
-    {
-      id: "temp2",
-      patientId: selectedPatient?.id || "",
-      drugName: "Cyclosporin",
-      dosage: 200,
-      unit: "mg",
-      frequency: "q12h",
-      startDate: new Date('2024-01-20'),
-      route: "oral",
-      prescribedBy: "Dr. Lee",
-      indication: "Allo-HSCT/Korean",
-      tdmTarget: "Trough Concentration",
-      tdmTargetValue: "100-400 ng/mL",
-      additionalInfo: ""
-    },
-    {
-      id: "temp3",
-      patientId: selectedPatient?.id || "",
-      drugName: "Vancomycin",
-      dosage: 750,
-      unit: "mg",
-      frequency: "q8h",
-      startDate: new Date('2024-02-01'),
-      route: "IV",
-      prescribedBy: "Dr. Park",
-      indication: "Not specified/Korean",
-      tdmTarget: "Peak Concentration",
-      tdmTargetValue: "25-40 mg/L",
-      additionalInfo: ""
-    }
-  ];
-
   const patientPrescriptions = selectedPatient 
     ? prescriptions.filter(p => p.patientId === selectedPatient.id)
     : [];
 
-  // 실제 처방전과 임시 데이터를 합침
-  const allPrescriptions = [...patientPrescriptions, ...tempPrescriptions];
+  const allPrescriptions = patientPrescriptions;
 
   // TDM 내역 선택 시 폼에 자동 기입
   const handleTdmSelect = (prescription: Prescription) => {
@@ -593,10 +491,10 @@ const PrescriptionStep = ({
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Existing Prescriptions */}
-          {allPrescriptions.length > 0 && (
+          {patientPrescriptions.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>TDM 내역 ({allPrescriptions.length})</CardTitle>
+                <CardTitle>TDM 내역 ({patientPrescriptions.length})</CardTitle>
                 <CardDescription>기 수행된 TDM의 F/U TDM을 진행하신다면 아래 내역 중 선택해 주세요.</CardDescription>
               </CardHeader>
               <CardContent>
@@ -613,7 +511,7 @@ const PrescriptionStep = ({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allPrescriptions.map((prescription) => (
+                      {patientPrescriptions.map((prescription) => (
                           <TableRow 
                             key={prescription.id} 
                             className={`cursor-pointer hover:bg-blue-50/50 ${selectedTdmId === prescription.id ? "bg-blue-50" : ""}`}
@@ -660,7 +558,7 @@ const PrescriptionStep = ({
                 <Plus className="h-4 w-4" />
                 신규 TDM 추가
                 {selectedTdmId && (() => {
-                  const selectedPrescription = allPrescriptions.find(p => p.id === selectedTdmId);
+                  const selectedPrescription = patientPrescriptions.find(p => p.id === selectedTdmId);
                   if (!selectedPrescription) return null;
                   
                   const tdmType = getTdmType(selectedPrescription);
