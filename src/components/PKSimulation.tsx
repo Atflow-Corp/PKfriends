@@ -386,6 +386,55 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     return tauHours > 0 ? tauHours : undefined;
   }, []);
 
+  // 차트 데이터로 변환 (API 응답 -> 시계열)
+  const toChartData = useCallback((apiData: TdmApiResponse | null | undefined, obsDataset?: TdmDatasetRow[] | null): ChartPoint[] => {
+    try {
+      const ipred = apiData?.IPRED_CONC || [];
+      const pred = apiData?.PRED_CONC || [];
+      const pointMap = new Map<number, (ChartPoint & { controlGroup?: number })>();
+
+      // helper to get or create point
+      const getPoint = (t: number): ChartPoint & { controlGroup?: number } => {
+        const key = Number(t) || 0;
+        const existing = pointMap.get(key);
+        if (existing) return existing;
+        const created: ChartPoint & { controlGroup?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0 };
+        pointMap.set(key, created);
+        return created;
+      };
+
+      // IPRED_CONC -> predicted (use API unit as-is)
+      for (const p of ipred as Array<{ time: number; IPRED?: number }>) {
+        const t = Number(p.time) || 0;
+        const y = (Number((p.IPRED ?? 0)) || 0);
+        const pt = getPoint(t);
+        pt.predicted = y;
+      }
+      // PRED_CONC -> controlGroup
+      for (const p of pred as Array<{ time: number; IPRED?: number }>) {
+        const t = Number(p.time) || 0;
+        const y = (Number((p.IPRED ?? 0)) || 0);
+        const pt = getPoint(t);
+        pt.controlGroup = y;
+      }
+      // Observed from input dataset DV (mg/L -> ng/mL)
+      if (obsDataset && obsDataset.length > 0) {
+        for (const row of obsDataset) {
+          if (row.EVID === 0 && row.DV != null) {
+            const t = Number(row.TIME) || 0;
+            const y = Number(row.DV);
+            const pt = getPoint(t);
+            pt.observed = y;
+          }
+        }
+      }
+      const result = Array.from(pointMap.values()).sort((a, b) => a.time - b.time);
+      return result;
+    } catch {
+      return [];
+    }
+  }, []);
+
   // 선택한 용량으로 메인 차트/요약 업데이트
   const applyDoseScenario = useCallback(async (amountMg: number) => {
     try {
