@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Patient, Prescription } from "@/pages/Index";
+import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { Pill, ArrowRight, ArrowLeft, CheckCircle, Plus } from "lucide-react";
 
 interface TdmDrug {
@@ -35,8 +35,8 @@ interface PrescriptionStepProps {
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
-  bloodTests: any[];
-  drugAdministrations: any[];
+  bloodTests: BloodTest[];
+  drugAdministrations: DrugAdministration[];
   onClearLaterStepData: () => void;
 }
 

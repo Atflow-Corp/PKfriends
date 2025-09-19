@@ -118,7 +118,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [cardChartData, setCardChartData] = useState<{ [cardId: number]: boolean }>({});
   const [dosageSuggestions, setDosageSuggestions] = useState<{ [cardId: number]: number[] }>({});
   const [dosageLoading, setDosageLoading] = useState<{ [cardId: number]: boolean }>({});
-  const suggestTimersRef = useRef<{ [cardId: number]: number }>(() => ({} as any)) as any;
+  const suggestTimersRef = useRef<{ [cardId: number]: number }>({});
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = useMemo(() => (
@@ -453,9 +453,16 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       setTdmResult(data);
       setTdmChartDataMain(toChartData(data, (body.dataset as TdmDatasetRow[]) || []));
       setTdmExtraSeries({
-        ipredSeries: (data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
-        predSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
-        observedSeries: ((body.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+        ipredSeries: ((data?.IPRED_CONC || []) as ConcentrationPoint[])
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+          .filter((p) => p.time >= 0 && p.time <= 72),
+        predSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+          .filter((p) => p.time >= 0 && p.time <= 72),
+        observedSeries: (((body.dataset as TdmDatasetRow[]) || [])
+          .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+          .map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+          .filter((p) => p.time >= 0 && p.time <= 72))
       });
     } catch (e) {
       console.warn('Failed to apply dose scenario', e);
@@ -487,7 +494,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
               form = oral?.dosageForm || null;
             }
           }
-        } catch {}
+        } catch (e) {
+          console.warn('Failed to infer dosage form from localStorage', e);
+        }
         if (form && form.toLowerCase() === "capsule/tablet") step = 25; else step = 10;
       }
 
@@ -529,7 +538,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             overrides: { amount: amt }
           });
           try {
-            const resp = (await runTdm({ body })) as any;
+            const resp = (await runTdm({ body })) as TdmApiResponse;
             const trough = Number(((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0);
             const auc = Number(((resp?.AUC_after ?? resp?.AUC_before) as number) || 0);
             // score: distance to target range (prefer within range)
@@ -559,7 +568,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         .map(r => r.amt)
         .sort((a,b) => a - b); // 오름차순 정렬
       setDosageSuggestions(prev => ({ ...prev, [cardId]: top }));
-    } catch {}
+    } catch (e) {
+      console.warn('computeDosageSuggestions failed', e);
+    }
     finally {
       setDosageLoading(prev => ({ ...prev, [cardId]: false }));
     }
@@ -702,53 +713,6 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     };
   }, [patients, selectedPatientId, prescriptions, drugAdministrations, simulationParams, selectedDrug, patientBloodTests, computeCRCL, computeTauFromAdministrations]);
 
-  const toChartData = useCallback((apiData: TdmApiResponse | null | undefined, obsDataset?: TdmDatasetRow[] | null): ChartPoint[] => {
-    try {
-      const ipred = apiData?.IPRED_CONC || [];
-      const pred = apiData?.PRED_CONC || [];
-      const pointMap = new Map<number, (ChartPoint & { controlGroup?: number })>();
-
-      // helper to get or create point
-      const getPoint = (t: number): ChartPoint & { controlGroup?: number } => {
-        const key = Number(t) || 0;
-        const existing = pointMap.get(key);
-        if (existing) return existing;
-        const created: ChartPoint & { controlGroup?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0 };
-        pointMap.set(key, created);
-        return created;
-      };
-
-      // IPRED_CONC -> predicted (use API unit as-is)
-      for (const p of ipred as Array<{ time: number; IPRED?: number }>) {
-        const t = Number(p.time) || 0;
-        const y = (Number((p.IPRED ?? 0)) || 0);
-        const pt = getPoint(t);
-        pt.predicted = y;
-      }
-      // PRED_CONC -> controlGroup
-      for (const p of pred as Array<{ time: number; IPRED?: number }>) {
-        const t = Number(p.time) || 0;
-        const y = (Number((p.IPRED ?? 0)) || 0);
-        const pt = getPoint(t);
-        pt.controlGroup = y;
-      }
-      // Observed from input dataset DV (mg/L -> ng/mL)
-      if (obsDataset && obsDataset.length > 0) {
-        for (const row of obsDataset) {
-          if (row.EVID === 0 && row.DV != null) {
-            const t = Number(row.TIME) || 0;
-            const y = Number(row.DV);
-            const pt = getPoint(t);
-            pt.observed = y;
-          }
-        }
-      }
-      const result = Array.from(pointMap.values()).sort((a, b) => a.time - b.time);
-      return result;
-    } catch {
-      return [];
-    }
-  }, []);
 
 
   // Load persisted TDM result upon entering Let's TDM
