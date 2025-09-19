@@ -8,7 +8,7 @@ import dayjs from "dayjs";
 import { ArrowLeft, ArrowRight, History, CheckCircle } from "lucide-react";
 import TablePage from "./table_maker.jsx";
 import "./table_maker.css";
-import { buildTdmRequestBody, runTdmAndPersist } from "@/lib/tdm";
+import { buildTdmRequestBody, runTdmApi } from "@/lib/tdm";
 
 interface DrugAdministrationStepProps {
   patients: Patient[];
@@ -227,7 +227,7 @@ const DrugAdministrationStep = ({
                     selectedDrugName: tdmDrug?.drugName,
                   });
                   if (body) {
-                    await runTdmAndPersist({ body, patientId: selectedPatient.id });
+                    await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
                   }
                 } catch (e) {
                   console.error(e);

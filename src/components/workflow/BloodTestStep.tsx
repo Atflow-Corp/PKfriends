@@ -68,6 +68,7 @@ const BloodTestStep = ({
     isBlack: false // 인종정보 필요 시 추가하며 임의로 흑인 아님으로 처리한다.
   });
   const [renalInfoList, setRenalInfoList] = useState<RenalInfo[]>([]);
+  const [renalHydrated, setRenalHydrated] = useState(false);
 
   // 신기능 계산 함수들
   const calculateRenalFunction = (creatinine: number, formula: string, patient: Patient, isBlack: boolean = false): string => {
@@ -167,24 +168,31 @@ const BloodTestStep = ({
     return bsa.toFixed(2);
   };
 
-  // Persist renal info list per patient in localStorage
+  // Persist renal info list per patient in localStorage (hydrate first, then allow writes)
   useEffect(() => {
     if (!selectedPatient) return;
+    setRenalHydrated(false);
     try {
       const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}`);
       if (raw) {
         const parsed = JSON.parse(raw) as RenalInfo[];
         setRenalInfoList(parsed);
+      } else {
+        setRenalInfoList([]);
       }
-    } catch (_err) { /* no-op */ }
+    } catch (_err) {
+      // no-op
+    } finally {
+      setRenalHydrated(true);
+    }
   }, [selectedPatient?.id]);
 
   useEffect(() => {
-    if (!selectedPatient) return;
+    if (!selectedPatient || !renalHydrated) return;
     try {
       window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}`, JSON.stringify(renalInfoList));
     } catch (_err) { /* no-op */ }
-  }, [selectedPatient?.id, renalInfoList]);
+  }, [selectedPatient?.id, renalInfoList, renalHydrated]);
 
   // 혈중 약물 농도 입력 상태
   const [formData, setFormData] = useState({

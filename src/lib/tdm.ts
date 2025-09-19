@@ -43,6 +43,96 @@ const mostellerBsa = (heightCm: number, weightKg: number): number => {
   return Math.sqrt((weightKg * heightCm) / 3600);
 };
 
+// Normalize model code per requirement: first letter lowercase, '-' -> '_'
+const normalizeModelCode = (code: string): string => {
+  if (!code) return code;
+  const firstLower = code.charAt(0).toLowerCase() + code.slice(1);
+  return firstLower.replace(/-/g, "_");
+};
+
+// Mapping table from drug/indication/(optional) additional info to model code
+// Codes are taken from the provided spec image. We normalize on return.
+const MODEL_CODE_TABLE = {
+  Vancomycin: {
+    "Not specified/Korean": {
+      default: "Vancomycin1-1",
+      CRRT: "Vancomycin1-2",
+    },
+    "Neurosurgical patients/Korean": {
+      default: "Vancomycin2-1",
+      within72h: "Vancomycin2-2", // within 72h of last dosing time
+    },
+  },
+  Cyclosporin: {
+    "Renal transplant recipients/Korean": {
+      "POD ~2": "Cyclosporin1-1",
+      "POD 3~6": "Cyclosporin1-2",
+      "POD 7~": "Cyclosporin1-3",
+      default: "Cyclosporin1-1",
+    },
+    "Allo-HSCT/Korean": "Cyclosporin2",
+    "Thoracic transplant recipients/European": "Cyclosporin3",
+  },
+} as const;
+
+const inferModelName = (args: {
+  patientId: string;
+  drugName?: string;
+  indication?: string;
+  additionalInfo?: string;
+  lastDoseDate?: Date | undefined;
+}): string | undefined => {
+  const { patientId, drugName, indication, additionalInfo, lastDoseDate } =
+    args;
+  if (!drugName || !indication) return undefined;
+  const table: unknown = (MODEL_CODE_TABLE as unknown)[drugName];
+  if (!table) return undefined;
+
+  // Detect CRRT from saved renal info
+  const renal = getSelectedRenalInfo(patientId);
+  const isCRRT = /crrt/i.test(renal?.renalReplacement || "");
+
+  // Compute within 72h from last dosing time
+  const within72h = lastDoseDate
+    ? (new Date().getTime() - lastDoseDate.getTime()) / 36e5 <= 72
+    : false;
+
+  const entry = table[indication];
+  if (!entry) return undefined;
+
+  // If entry is a string, return it
+  if (typeof entry === "string") {
+    return normalizeModelCode(entry);
+  }
+
+  // Vancomycin branches
+  if (drugName === "Vancomycin") {
+    if (isCRRT && entry.CRRt) {
+      // keep for robustness if case differs
+      return normalizeModelCode(entry.CRRt);
+    }
+    if (isCRRT && entry.CRRT) {
+      return normalizeModelCode(entry.CRRT);
+    }
+    if (within72h && entry.within72h) {
+      return normalizeModelCode(entry.within72h);
+    }
+    return normalizeModelCode(entry.default);
+  }
+
+  // Cyclosporin(e) POD branches
+  if (drugName === "Cyclosporin") {
+    const podKey = additionalInfo?.trim();
+    const podMapped = (podKey && entry[podKey]) || entry.default;
+    return podMapped ? normalizeModelCode(podMapped) : undefined;
+  }
+
+  // Fallback if structure unknown
+  return typeof entry.default === "string"
+    ? normalizeModelCode(entry.default)
+    : undefined;
+};
+
 export const computeCRCL = (
   selectedPatientId: string | null | undefined,
   weightKg: number,
@@ -145,9 +235,12 @@ export const buildTdmRequestBody = (args: {
     overrides,
   } = args;
   const patient = patients.find((p) => p.id === selectedPatientId);
-  const tdmPrescription = prescriptions.find(
-    (p) => p.patientId === selectedPatientId
-  );
+  const tdmPrescription =
+    prescriptions.find(
+      (p) =>
+        p.patientId === selectedPatientId &&
+        (selectedDrugName ? p.drugName === selectedDrugName : true)
+    ) || prescriptions.find((p) => p.patientId === selectedPatientId);
   if (!patient || !tdmPrescription) return null;
 
   const weight = patient.weight;
@@ -272,6 +365,15 @@ export const buildTdmRequestBody = (args: {
     });
   }
 
+  // Infer model name from drug/indication and context
+  const modelName = inferModelName({
+    patientId: selectedPatientId,
+    drugName: tdmPrescription.drugName,
+    indication: tdmPrescription.indication,
+    additionalInfo: tdmPrescription.additionalInfo as string | undefined,
+    lastDoseDate: lastDose ? toDate(lastDose.date, lastDose.time) : undefined,
+  });
+
   return {
     input_tau: tau ?? 12,
     input_amount: amount ?? 100,
@@ -282,15 +384,14 @@ export const buildTdmRequestBody = (args: {
     input_TOXI: toxi,
     input_AUC: aucTarget ?? undefined,
     input_CTROUGH: cTroughTarget ?? undefined,
+    model_name: modelName,
     dataset,
   };
 };
 
-export const runTdmAndPersist = async (args: {
-  body: unknown;
-  patientId: string;
-}): Promise<unknown> => {
-  const { body, patientId } = args;
+// Unified TDM API caller. If persist=true and patientId provided, the result is saved to localStorage.
+export const runTdmApi = async (args: { body: unknown; persist?: boolean; patientId?: string }): Promise<unknown> => {
+  const { body, persist, patientId } = args;
   const response = await fetch(
     "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
     {
@@ -301,13 +402,15 @@ export const runTdmAndPersist = async (args: {
   );
   if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
   const data = await response.json();
-  try {
-    window.localStorage.setItem(
-      `tdmfriends:tdmResult:${patientId}`,
-      JSON.stringify(data)
-    );
-  } catch (e) {
-    console.error("Failed to save TDM result to localStorage", e);
+  if (persist && patientId) {
+    try {
+      window.localStorage.setItem(
+        `tdmfriends:tdmResult:${patientId}`,
+        JSON.stringify(data)
+      );
+    } catch (e) {
+      console.error("Failed to save TDM result to localStorage", e);
+    }
   }
   return data;
 };
