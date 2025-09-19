@@ -117,6 +117,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [cardToDelete, setCardToDelete] = useState<number | null>(null);
   const [cardChartData, setCardChartData] = useState<{ [cardId: number]: boolean }>({});
   const [dosageSuggestions, setDosageSuggestions] = useState<{ [cardId: number]: number[] }>({});
+  const [dosageLoading, setDosageLoading] = useState<{ [cardId: number]: boolean }>({});
+  const suggestTimersRef = useRef<{ [cardId: number]: number }>(() => ({} as any)) as any;
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = useMemo(() => (
@@ -232,8 +234,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     const newCardNumber = adjustmentCards.length + 1;
     setAdjustmentCards(prev => [...prev, { id: newCardNumber, type: 'dosage' }]);
     setCardChartData(prev => ({ ...prev, [newCardNumber]: false })); // 빈 차트로 초기화
-    // compute suggestions asynchronously
-    void computeDosageSuggestions(newCardNumber);
+    // compute suggestions asynchronously (debounced)
+    triggerDosageSuggestions(newCardNumber);
   };
 
   const handleIntervalAdjustment = () => {
@@ -384,6 +386,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   // Helper: compute 6 dosage suggestions by sampling around current/last dose and scoring via API
   const computeDosageSuggestions = useCallback(async (cardId: number) => {
     try {
+      setDosageLoading(prev => ({ ...prev, [cardId]: true }));
       const patient = currentPatient;
       if (!patient) return;
       const prescription = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
@@ -474,7 +477,25 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       const top = results.sort((a,b) => a.score - b.score).slice(0, 3).map(r => r.amt);
       setDosageSuggestions(prev => ({ ...prev, [cardId]: top }));
     } catch {}
+    finally {
+      setDosageLoading(prev => ({ ...prev, [cardId]: false }));
+    }
   }, [patients, prescriptions, bloodTests, drugAdministrations, currentPatient, selectedDrug, patientPrescriptions, tdmResult]);
+
+  // Debounced trigger for dosage suggestions to avoid redundant API calls
+  const triggerDosageSuggestions = useCallback((cardId: number) => {
+    try {
+      if (suggestTimersRef.current?.[cardId]) {
+        window.clearTimeout(suggestTimersRef.current[cardId]);
+      }
+      const timer = window.setTimeout(() => {
+        void computeDosageSuggestions(cardId);
+      }, 250);
+      suggestTimersRef.current[cardId] = timer as unknown as number;
+    } catch {
+      void computeDosageSuggestions(cardId);
+    }
+  }, [computeDosageSuggestions]);
 
   // TDM API integration
   const buildTdmRequestBody = useCallback((overrides?: { amount?: number; tau?: number }) => {
@@ -801,7 +822,10 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                   );
                 })}
                 {(!dosageSuggestions[card.id] || dosageSuggestions[card.id].length === 0) && (
-                  <span className="text-sm text-muted-foreground">제안을 계산 중...</span>
+                  <span className="text-sm text-muted-foreground flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+                    제안을 계산 중...
+                  </span>
                 )}
               </>
             ) : (
