@@ -7,7 +7,7 @@ import DosageChart from "./pk/DosageChart";
 import PKDataSummary from "./pk/PKDataSummary";
 import TDMPatientDetails from "./TDMPatientDetails";
 import { Button } from "@/components/ui/button";
-import { runTdm, buildTdmRequestBody as buildTdmBody } from "@/lib/tdm";
+import { runTdmApi, buildTdmRequestBody as buildTdmBody } from "@/lib/tdm";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 // TDM 약물 기본 데이터 (PrescriptionStep에서 가져옴)
@@ -462,7 +462,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         overrides: { amount: amountMg }
       });
       if (!body) return;
-      const data = (await runTdm({ body })) as TdmApiResponse;
+      const data = (await runTdmApi({ body })) as TdmApiResponse;
       setTdmResult(data);
       setTdmChartDataMain(toChartData(data, (body.dataset as TdmDatasetRow[]) || []));
       setTdmExtraSeries({
@@ -551,7 +551,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             overrides: { amount: amt }
           });
           try {
-            const resp = (await runTdm({ body })) as any;
+            const resp = (await runTdmApi({ body })) as any;
             const trough = Number(((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0);
             const auc = Number(((resp?.AUC_after ?? resp?.AUC_before) as number) || 0);
             // score: distance to target range (prefer within range)
@@ -586,12 +586,27 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         const next = { ...(prev || {}) } as any;
         next[cardId] = next[cardId] || {};
         for (const r of results) {
-          if (r && r.resp) {
+          if (r && r.resp && top.includes(r.amt)) {
             next[cardId][r.amt] = { data: r.resp as TdmApiResponse, dataset: r.dataset as TdmDatasetRow[] };
           }
         }
         return next;
       });
+      // 최초 자동 선택: 첫 번째 추천 용량을 활성화하여 즉시 반영
+      if (top.length > 0) {
+        const first = top[0];
+        setSelectedDosage(prev => ({ ...prev, [cardId]: `${first}mg` }));
+        const cached = results.find(r => r.amt === first);
+        if (cached && cached.resp) {
+          setTdmResult(cached.resp as TdmApiResponse);
+          setTdmChartDataMain(toChartData(cached.resp as TdmApiResponse, (cached.dataset as TdmDatasetRow[]) || []));
+          setTdmExtraSeries({
+            ipredSeries: ((cached.resp as any)?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+            predSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+            observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+          });
+        }
+      }
     } catch (e) {
       console.warn('computeDosageSuggestions failed', e);
     }

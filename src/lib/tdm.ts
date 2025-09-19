@@ -389,11 +389,9 @@ export const buildTdmRequestBody = (args: {
   };
 };
 
-export const runTdmAndPersist = async (args: {
-  body: unknown;
-  patientId: string;
-}): Promise<unknown> => {
-  const { body, patientId } = args;
+// Unified TDM API caller. If persist=true and patientId provided, the result is saved to localStorage.
+export const runTdmApi = async (args: { body: unknown; persist?: boolean; patientId?: string }): Promise<unknown> => {
+  const { body, persist, patientId } = args;
   const response = await fetch(
     "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
     {
@@ -404,28 +402,15 @@ export const runTdmAndPersist = async (args: {
   );
   if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
   const data = await response.json();
-  try {
-    window.localStorage.setItem(
-      `tdmfriends:tdmResult:${patientId}`,
-      JSON.stringify(data)
-    );
-  } catch (e) {
-    console.error("Failed to save TDM result to localStorage", e);
+  if (persist && patientId) {
+    try {
+      window.localStorage.setItem(
+        `tdmfriends:tdmResult:${patientId}`,
+        JSON.stringify(data)
+      );
+    } catch (e) {
+      console.error("Failed to save TDM result to localStorage", e);
+    }
   }
   return data;
-};
-
-// Fire-and-return variant used for what-if simulations (no persistence)
-export const runTdm = async (args: { body: unknown }): Promise<unknown> => {
-  const { body } = args;
-  const response = await fetch(
-    "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
-  if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
-  return response.json();
 };
