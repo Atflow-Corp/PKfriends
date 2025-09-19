@@ -7,6 +7,7 @@ import DosageChart from "./pk/DosageChart";
 import PKDataSummary from "./pk/PKDataSummary";
 import TDMPatientDetails from "./TDMPatientDetails";
 import { Button } from "@/components/ui/button";
+import { runTdm, buildTdmRequestBody as buildTdmBody } from "@/lib/tdm";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 // TDM 약물 기본 데이터 (PrescriptionStep에서 가져옴)
@@ -115,6 +116,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [cardToDelete, setCardToDelete] = useState<number | null>(null);
   const [cardChartData, setCardChartData] = useState<{ [cardId: number]: boolean }>({});
+  const [dosageSuggestions, setDosageSuggestions] = useState<{ [cardId: number]: number[] }>({});
 
   const currentPatient = patients.find(p => p.id === selectedPatientId);
   const patientPrescriptions = useMemo(() => (
@@ -230,6 +232,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     const newCardNumber = adjustmentCards.length + 1;
     setAdjustmentCards(prev => [...prev, { id: newCardNumber, type: 'dosage' }]);
     setCardChartData(prev => ({ ...prev, [newCardNumber]: false })); // 빈 차트로 초기화
+    // compute suggestions asynchronously
+    void computeDosageSuggestions(newCardNumber);
   };
 
   const handleIntervalAdjustment = () => {
@@ -376,6 +380,101 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     const tauHours = hoursDiff(toDate(last.date, last.time), toDate(prev.date, prev.time));
     return tauHours > 0 ? tauHours : undefined;
   }, []);
+
+  // Helper: compute 6 dosage suggestions by sampling around current/last dose and scoring via API
+  const computeDosageSuggestions = useCallback(async (cardId: number) => {
+    try {
+      const patient = currentPatient;
+      if (!patient) return;
+      const prescription = patientPrescriptions.find(p => p.drugName === selectedDrug) || patientPrescriptions[0];
+      if (!prescription) return;
+
+      // Determine step size per drug and route/form
+      const drug = (prescription.drugName || "").toLowerCase();
+      let step = 10; // mg
+      if (drug === "cyclosporin" || drug === "cyclosporine") {
+        // Try to infer form: look for dosageForm in table_maker conditions via localStorage
+        let form: string | null = null;
+        try {
+          const storageKey = patient ? `tdmfriends:conditions:${patient.id}` : null;
+          if (storageKey) {
+            const raw = window.localStorage.getItem(storageKey);
+            if (raw) {
+              const parsed = JSON.parse(raw) as Array<{ route?: string; dosageForm?: string }>;
+              const oral = parsed.find(c => (c.route === "경구" || c.route === "oral"));
+              form = oral?.dosageForm || null;
+            }
+          }
+        } catch {}
+        if (form && form.toLowerCase() === "capsule/tablet") step = 25; else step = 10;
+      }
+
+      // Base dose: last administration dose or prescription.dosage
+      const dosesForPatient = (drugAdministrations || []).filter(d => d.patientId === patient.id && d.drugName === prescription.drugName);
+      const lastDose = dosesForPatient.length > 0 ? [...dosesForPatient].sort((a,b) => toDate(a.date,a.time).getTime() - toDate(b.date,b.time).getTime())[dosesForPatient.length-1] : undefined;
+      const baseDose = Number(lastDose?.dose || prescription.dosage || 100);
+
+      // Build 6 candidates: +/- 3 steps
+      const candidates = [ -3, -2, -1, 1, 2, 3 ].map(k => Math.max(1, baseDose + k * step));
+
+      // Target range for ranking
+      const target = (prescription.tdmTarget || '').toLowerCase();
+      const nums = (prescription.tdmTargetValue || '').match(/\d+\.?\d*/g) || [];
+      const targetMin = nums[0] ? parseFloat(nums[0]) : undefined;
+      const targetMax = nums[1] ? parseFloat(nums[1]) : undefined;
+
+      // quick sanity: ensure we can build a body
+      const bodyBase = buildTdmBody({
+        patients,
+        prescriptions,
+        bloodTests,
+        drugAdministrations,
+        selectedPatientId: patient.id,
+        selectedDrugName: prescription.drugName,
+      });
+      if (!bodyBase) return;
+
+      // For each candidate, call API with override amount
+      const results = await Promise.all(
+        candidates.map(async amt => {
+          const body = buildTdmBody({
+            patients,
+            prescriptions,
+            bloodTests,
+            drugAdministrations,
+            selectedPatientId: patient.id,
+            selectedDrugName: prescription.drugName,
+            overrides: { amount: amt }
+          });
+          try {
+            const resp = (await runTdm({ body })) as any;
+            const trough = Number(((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0);
+            const auc = Number(((resp?.AUC_after ?? resp?.AUC_before) as number) || 0);
+            // score: distance to target range (prefer within range)
+            let value = 0;
+            if (target.includes('auc') && (targetMin || targetMax)) {
+              const mid = (auc || 0);
+              const cmin = targetMin ?? mid; const cmax = targetMax ?? mid;
+              value = mid < cmin ? (cmin - mid) : (mid > cmax ? (mid - cmax) : 0);
+            } else if ((target.includes('trough') || target.includes('cmax')) && (targetMin || targetMax)) {
+              const mid = (trough || 0);
+              const cmin = targetMin ?? mid; const cmax = targetMax ?? mid;
+              value = mid < cmin ? (cmin - mid) : (mid > cmax ? (mid - cmax) : 0);
+            } else {
+              // fallback to smaller predicted trough distance to previous result
+              value = Math.abs((trough || 0) - (tdmResult?.CTROUGH_before || 0));
+            }
+            return { amt, score: value };
+          } catch {
+            return { amt, score: Number.POSITIVE_INFINITY };
+          }
+        })
+      );
+
+      const top = results.sort((a,b) => a.score - b.score).slice(0, 3).map(r => r.amt);
+      setDosageSuggestions(prev => ({ ...prev, [cardId]: top }));
+    } catch {}
+  }, [patients, prescriptions, bloodTests, drugAdministrations, currentPatient, selectedDrug, patientPrescriptions, tdmResult]);
 
   // TDM API integration
   const buildTdmRequestBody = useCallback((overrides?: { amount?: number; tau?: number }) => {
@@ -685,40 +784,25 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
           {/* 버튼 섹션 */}
           <div className="flex justify-center gap-4 mb-6">
             {card.type === 'dosage' ? (
-              // 투약 용량 조정 카드 버튼
+              // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (최대 3개)
               <>
-                <Button 
-                  variant={selectedDosage[card.id] === '10mg' ? 'default' : 'outline'} 
-                  size="default"
-                  onClick={() => handleDosageSelect(card.id, '10mg')}
-                  className={`${selectedDosage[card.id] === '10mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
-                >
-                  10mg
-                </Button>
-                <Button 
-                  variant={selectedDosage[card.id] === '20mg' ? 'default' : 'outline'} 
-                  size="default"
-                  onClick={() => handleDosageSelect(card.id, '20mg')}
-                  className={`${selectedDosage[card.id] === '20mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
-                >
-                  20mg
-                </Button>
-                <Button 
-                  variant={selectedDosage[card.id] === '30mg' ? 'default' : 'outline'} 
-                  size="default"
-                  onClick={() => handleDosageSelect(card.id, '30mg')}
-                  className={`${selectedDosage[card.id] === '30mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
-                >
-                  30mg
-                </Button>
-                <Button 
-                  variant={selectedDosage[card.id] === '40mg' ? 'default' : 'outline'} 
-                  size="default"
-                  onClick={() => handleDosageSelect(card.id, '40mg')}
-                  className={`${selectedDosage[card.id] === '40mg' ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
-                >
-                  40mg
-                </Button>
+                {(dosageSuggestions[card.id] || []).map((amt) => {
+                  const label = `${amt}mg`;
+                  return (
+                    <Button
+                      key={`${card.id}-${amt}`}
+                      variant={selectedDosage[card.id] === label ? 'default' : 'outline'}
+                      size="default"
+                      onClick={() => handleDosageSelect(card.id, label)}
+                      className={`${selectedDosage[card.id] === label ? 'bg-black text-white hover:bg-gray-800' : ''} text-base px-6 py-3`}
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+                {(!dosageSuggestions[card.id] || dosageSuggestions[card.id].length === 0) && (
+                  <span className="text-sm text-muted-foreground">제안을 계산 중...</span>
+                )}
               </>
             ) : (
               // 투약 시간 조정 카드 버튼

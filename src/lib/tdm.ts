@@ -414,3 +414,18 @@ export const runTdmAndPersist = async (args: {
   }
   return data;
 };
+
+// Fire-and-return variant used for what-if simulations (no persistence)
+export const runTdm = async (args: { body: unknown }): Promise<unknown> => {
+  const { body } = args;
+  const response = await fetch(
+    "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
+  return response.json();
+};
