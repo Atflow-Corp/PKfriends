@@ -114,9 +114,6 @@ const PrescriptionStep = ({
   const [selectedTdmId, setSelectedTdmId] = useState<string | null>(null);
   const [newlyAddedTdmId, setNewlyAddedTdmId] = useState<string | null>(null);
 
-  // localStorage 키 생성
-  const getStorageKey = () => selectedPatient ? `tdmfriends:prescription:${selectedPatient.id}` : null;
-
   // TDM 타입을 구분하는 헬퍼 함수들
   const isTempTdm = (prescriptionId: string): boolean => {
     return prescriptionId.startsWith('temp');
@@ -153,9 +150,7 @@ const PrescriptionStep = ({
   // 컴포넌트 마운트 시 저장된 데이터 복원
   useEffect(() => {
     if (!selectedPatient) return;
-    
-    const storageKey = getStorageKey();
-    if (!storageKey) return;
+    const storageKey = `tdmfriends:prescription:${selectedPatient.id}`;
 
     try {
       const savedData = localStorage.getItem(storageKey);
@@ -245,7 +240,7 @@ const PrescriptionStep = ({
     } catch (error) {
       console.error('Failed to restore prescription data:', error);
     }
-  }, [selectedPatient?.id, prescriptions.length]);
+  }, [selectedPatient, prescriptions]);
 
   // selectedTdmId나 formData 변경 시 localStorage에 저장
   useEffect(() => {
@@ -263,7 +258,7 @@ const PrescriptionStep = ({
     } catch (error) {
       console.error('Failed to save prescription data:', error);
     }
-  }, [selectedTdmId, newlyAddedTdmId, formData, selectedPatient?.id]);
+  }, [selectedTdmId, newlyAddedTdmId, formData, selectedPatient, selectedPatient?.id]);
 
   // 신규 TDM이 추가되면 자동으로 선택되도록 하는 useEffect
   useEffect(() => {
@@ -277,7 +272,7 @@ const PrescriptionStep = ({
         setSelectedTdmId(newlyAddedTdmId);
       }
     }
-  }, [prescriptions, newlyAddedTdmId, selectedPatient?.id, selectedTdmId]);
+  }, [prescriptions, newlyAddedTdmId, selectedPatient, selectedPatient?.id, selectedTdmId]);
 
   // TODO: 테스트를 위한 임시 데이터이므로 추후 삭제해 주세요.
   const tempPrescriptions: Prescription[] = [
