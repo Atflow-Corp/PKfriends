@@ -137,6 +137,16 @@ const PKCharts = ({
     }
   }, [data, targetMax]);
 
+  const fmtInt = (n: number | null, unit: string) => {
+    if (n == null || Number.isNaN(n)) return '-';
+    return `${Math.round(n).toLocaleString()} ${unit}`;
+  };
+
+  const fmtFixed = (n: number | null, unit: string) => {
+    if (n == null || Number.isNaN(n)) return '-';
+    return `${Number(n.toFixed(2)).toLocaleString()} ${unit}`;
+  };
+
   return (
     <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow">
       {/* TDM Simulator 헤더 */}
@@ -339,15 +349,15 @@ const PKCharts = ({
             <CardContent className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-gray-600">AUC:</span>
-                <span className="font-semibold">{recentAUC != null ? `${recentAUC} mg*h/L` : '-'}</span>
+                <span className="font-semibold">{fmtInt(recentAUC, 'mg*h/L')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">max 농도:</span>
-                <span className="font-semibold">{recentMax != null ? `${recentMax} mg/L` : '-'}</span>
+                <span className="font-semibold">{fmtFixed(recentMax, 'mg/L')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">trough 농도:</span>
-                <span className="font-semibold">{recentTrough != null ? `${recentTrough} mg/L` : '-'}</span>
+                <span className="font-semibold">{fmtFixed(recentTrough, 'mg/L')}</span>
               </div>
             </CardContent>
           </Card>
@@ -360,15 +370,15 @@ const PKCharts = ({
             <CardContent className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-gray-600">AUC:</span>
-                <span className="font-semibold">{predictedAUC != null ? `${predictedAUC} mg*h/L` : '-'}</span>
+                <span className="font-semibold">{fmtInt(predictedAUC, 'mg*h/L')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">max 농도:</span>
-                <span className="font-semibold">{predictedMax != null ? `${predictedMax} mg/L` : '-'}</span>
+                <span className="font-semibold">{fmtFixed(predictedMax, 'mg/L')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">trough 농도:</span>
-                <span className="font-semibold">{predictedTrough != null ? `${predictedTrough} mg/L` : '-'}</span>
+                <span className="font-semibold">{fmtFixed(predictedTrough, 'mg/L')}</span>
               </div>
             </CardContent>
           </Card>

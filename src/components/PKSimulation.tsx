@@ -289,6 +289,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
     }));
     // 버튼 선택 시 차트 그리기 활성화
     setCardChartData(prev => ({ ...prev, [cardId]: true }));
+    // 시나리오 적용 (API 호출로 예측값 갱신)
+    const amountMg = parseFloat(dosage.replace(/[^0-9.]/g, ''));
+    void applyDoseScenario(amountMg);
   };
 
   // 간격 선택 핸들러
@@ -474,7 +477,11 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
         })
       );
 
-      const top = results.sort((a,b) => a.score - b.score).slice(0, 3).map(r => r.amt);
+      const top = results
+        .sort((a,b) => a.score - b.score)
+        .slice(0, 3)
+        .map(r => r.amt)
+        .sort((a,b) => a - b); // 오름차순 정렬
       setDosageSuggestions(prev => ({ ...prev, [cardId]: top }));
     } catch {}
     finally {
@@ -496,6 +503,33 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
       void computeDosageSuggestions(cardId);
     }
   }, [computeDosageSuggestions]);
+
+  // 선택한 용량으로 메인 차트/요약 업데이트
+  const applyDoseScenario = useCallback(async (amountMg: number) => {
+    try {
+      if (!selectedPatientId || !selectedDrug) return;
+      const body = buildTdmBody({
+        patients,
+        prescriptions,
+        bloodTests,
+        drugAdministrations,
+        selectedPatientId,
+        selectedDrugName: selectedDrug,
+        overrides: { amount: amountMg }
+      });
+      if (!body) return;
+      const data = (await runTdm({ body })) as TdmApiResponse;
+      setTdmResult(data);
+      setTdmChartDataMain(toChartData(data, (body.dataset as TdmDatasetRow[]) || []));
+      setTdmExtraSeries({
+        ipredSeries: (data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
+        predSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter(p => p.time >= 0 && p.time <= 72),
+        observedSeries: ((body.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+      });
+    } catch (e) {
+      console.warn('Failed to apply dose scenario', e);
+    }
+  }, [patients, prescriptions, bloodTests, drugAdministrations, selectedPatientId, selectedDrug, toChartData]);
 
   // TDM API integration
   const buildTdmRequestBody = useCallback((overrides?: { amount?: number; tau?: number }) => {
