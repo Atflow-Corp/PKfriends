@@ -403,7 +403,7 @@ const PKCharts = ({
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
                 현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시 Steady State까지 
-                <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {predictedAUC || 0}mg*h/L</span>으로 
+                <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {fmtFixed(predictedAUC, 'mg*h/L')}</span>으로 
                 치료 범위 이하로 떨어질 수 있습니다.
               </p>
             </div>
