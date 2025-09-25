@@ -183,14 +183,12 @@ const StepWorkflow = ({
         {currentStep === 1 && (
           <PatientStep
             patients={patients}
-            prescriptions={prescriptions}
             selectedPatient={selectedPatient}
             setSelectedPatient={setSelectedPatient}
             onAddPatient={onAddPatient}
             onUpdatePatient={onUpdatePatient}
             onDeletePatient={onDeletePatient}
             onNext={handleNextStep}
-            onResetWorkflow={handleResetWorkflow}
             isCompleted={isStepCompleted(1)}
           />
         )}
@@ -214,6 +212,7 @@ const StepWorkflow = ({
             bloodTests={bloodTests}
             drugAdministrations={drugAdministrations}
             onClearLaterStepData={clearLaterStepData}
+            onResetWorkflow={handleResetWorkflow}
           />
         )}
         
