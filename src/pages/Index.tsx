@@ -162,6 +162,21 @@ const Index = ({ onLogout }: IndexProps) => {
     setPatients([...patients, patient]);
   };
 
+  const updatePatient = (patient: Patient) => {
+    setPatients(patients.map(p => p.id === patient.id ? patient : p));
+  };
+
+  const deletePatient = (patientId: string) => {
+    setPatients(patients.filter(p => p.id !== patientId));
+  };
+
+  const resetWorkflow = () => {
+    // 워크플로우 관련 데이터 초기화
+    setPrescriptions([]);
+    setBloodTests([]);
+    setDrugAdministrations([]);
+  };
+
   const addPrescription = (prescription?: Prescription, updatedPrescriptions?: Prescription[]) => {
     if (updatedPrescriptions) {
       setPrescriptions(prescription ? [...updatedPrescriptions, prescription] : updatedPrescriptions);
@@ -283,11 +298,9 @@ const Index = ({ onLogout }: IndexProps) => {
               onAddDrugAdministration={addDrugAdministration}
               drugAdministrations={drugAdministrations}
               setDrugAdministrations={setDrugAdministrations}
-              onUpdatePatient={function (patient: Patient): void {
-                throw new Error("Function not implemented.");
-              } } onDeletePatient={function (patientId: string): void {
-                throw new Error("Function not implemented.");
-              } }            />
+              onUpdatePatient={updatePatient}
+              onDeletePatient={deletePatient}
+              onResetWorkflow={resetWorkflow}            />
           </TabsContent>
 
           <TabsContent value="management">

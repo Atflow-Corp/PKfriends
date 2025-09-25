@@ -27,6 +27,7 @@ interface StepWorkflowProps {
   onAddDrugAdministration: (drugAdministration: DrugAdministration) => void;
   drugAdministrations: DrugAdministration[];
   setDrugAdministrations: (drugAdministrations: DrugAdministration[]) => void;
+  onResetWorkflow: () => void;
 }
 
 const StepWorkflow = ({
@@ -45,7 +46,8 @@ const StepWorkflow = ({
   setBloodTests,
   onAddDrugAdministration,
   drugAdministrations,
-  setDrugAdministrations
+  setDrugAdministrations,
+  onResetWorkflow
 }: StepWorkflowProps) => {
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -91,6 +93,13 @@ const StepWorkflow = ({
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  const handleResetWorkflow = () => {
+    // 워크플로우 데이터 초기화
+    clearLaterStepData();
+    // 부모 컴포넌트의 워크플로우 리셋 함수 호출
+    onResetWorkflow();
   };
 
   // 후속 단계 데이터 초기화 함수
@@ -174,12 +183,14 @@ const StepWorkflow = ({
         {currentStep === 1 && (
           <PatientStep
             patients={patients}
+            prescriptions={prescriptions}
             selectedPatient={selectedPatient}
             setSelectedPatient={setSelectedPatient}
             onAddPatient={onAddPatient}
             onUpdatePatient={onUpdatePatient}
             onDeletePatient={onDeletePatient}
             onNext={handleNextStep}
+            onResetWorkflow={handleResetWorkflow}
             isCompleted={isStepCompleted(1)}
           />
         )}

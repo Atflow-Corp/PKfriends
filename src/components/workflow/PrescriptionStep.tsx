@@ -56,7 +56,8 @@ const TDM_DRUGS: TdmDrug[] = [
         "Cyclosporin",
         "Tacrolimus",
         "Non-steroidal anti-inflammatory agents (aceclofenac, ibuprofen, ketoprofen, ketorolac and zaltoprofen)",
-        "Trimethoprim/sulfamethoxazole"
+        "Trimethoprim/sulfamethoxazole",
+        "기타"
       ]
     },
     targets: [
@@ -502,7 +503,7 @@ const PrescriptionStep = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>등록일</TableHead>
+                        <TableHead>분석일</TableHead>
                         <TableHead>약물명</TableHead>
                         <TableHead>적응증</TableHead>
                         <TableHead>추가정보</TableHead>
@@ -518,7 +519,7 @@ const PrescriptionStep = ({
                             onClick={() => handleTdmSelect(prescription)}
                           >
                             <TableCell>
-                              {isNewlyAddedTdm(prescription.id) ? "등록 중" : (prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-")}
+                              {isNewlyAddedTdm(prescription.id) ? "진행 중" : (prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-")}
                             </TableCell>
                             <TableCell className="font-medium">{prescription.drugName}</TableCell>
                             <TableCell>{prescription.indication || "-"}</TableCell>

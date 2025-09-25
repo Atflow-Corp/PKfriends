@@ -115,7 +115,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
       patientNo: patient.id,
       name: patient.name,
       gender: patient.gender,
-      birth: patient.createdAt.toISOString().split('T')[0],
+      birth: patient.birthDate,
       age: patient.age.toString(),
       weight: patient.weight.toString(),
       height: patient.height.toString(),
@@ -157,17 +157,42 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     });
     setIsEditing(false);
     setSelectedPatient(null);
+    setIsModalOpen(false);
   };
 
   // 신규 환자 등록 모달 열기
   const openNewPatientModal = () => {
-    resetForm();
+    setFormData({
+      patientNo: "",
+      name: "",
+      gender: "",
+      birth: "",
+      age: "",
+      weight: "",
+      height: "",
+      medicalHistory: "",
+      allergies: ""
+    });
+    setIsEditing(false);
+    setSelectedPatient(null);
     setIsModalOpen(true);
   };
 
   // 외부에서 사용할 수 있도록 함수들을 export
   const openRegistrationModal = () => {
-    resetForm();
+    setFormData({
+      patientNo: "",
+      name: "",
+      gender: "",
+      birth: "",
+      age: "",
+      weight: "",
+      height: "",
+      medicalHistory: "",
+      allergies: ""
+    });
+    setIsEditing(false);
+    setSelectedPatient(null);
     setIsModalOpen(true);
   };
 
@@ -466,7 +491,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                     <TableHead>나이</TableHead>
                     <TableHead>성별</TableHead>
                     <TableHead>체중</TableHead>
-                    <TableHead>BMI</TableHead>
+                    <TableHead>신장</TableHead>
                     <TableHead>등록일</TableHead>
                     <TableHead>수정과 조회</TableHead>
                   </TableRow>
@@ -484,9 +509,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                       <TableCell>{patient.age}</TableCell>
                       <TableCell className="capitalize">{patient.gender}</TableCell>
                       <TableCell>{patient.weight} kg</TableCell>
-                      <TableCell>
-                        {(patient.weight / Math.pow(patient.height / 100, 2)).toFixed(1)}
-                      </TableCell>
+                      <TableCell>{patient.height} cm</TableCell>
                       <TableCell>{patient.createdAt.toLocaleDateString()}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">

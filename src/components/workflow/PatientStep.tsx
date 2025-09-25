@@ -1,58 +1,67 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Patient } from "@/pages/Index";
-import { User, UserPlus, ArrowRight, CheckCircle, Edit, FileChartColumnIncreasing } from "lucide-react";
-import PatientInformation, { PatientInformationRef } from "@/components/PatientInformation";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Patient, Prescription } from "@/pages/Index";
+import { User, ArrowRight, CheckCircle } from "lucide-react";
+import PatientInformation from "@/components/PatientInformation";
 
 interface PatientStepProps {
   patients: Patient[];
+  prescriptions: Prescription[];
   selectedPatient: Patient | null;
   setSelectedPatient: (patient: Patient | null) => void;
   onAddPatient: (patient: Patient) => void;
   onUpdatePatient: (patient: Patient) => void;
   onDeletePatient: (patientId: string) => void;
   onNext: () => void;
+  onResetWorkflow: () => void;
   isCompleted: boolean;
 }
 
 const PatientStep = ({
   patients,
+  prescriptions,
   selectedPatient,
   setSelectedPatient,
   onAddPatient,
   onUpdatePatient,
   onDeletePatient,
   onNext,
+  onResetWorkflow,
   isCompleted
 }: PatientStepProps) => {
-  const [search, setSearch] = useState("");
-  const patientInfoRef = useRef<PatientInformationRef>(null);
+  const [showWorkflowAlert, setShowWorkflowAlert] = useState(false);
 
-  // 모달 열기 함수들
-  const handleNewPatientClick = () => {
-    patientInfoRef.current?.openRegistrationModal();
+  // 진행 중인 워크플로우가 있는지 확인하는 함수
+  const hasOngoingWorkflow = (patient: Patient | null): boolean => {
+    if (!patient) return false;
+    // 해당 환자에게 prescriptions 데이터가 있는지 확인
+    const patientPrescriptions = prescriptions.filter(p => p.patientId === patient.id);
+    return patientPrescriptions.length > 0;
   };
 
-  const handleEditClick = (patient: Patient) => {
-    patientInfoRef.current?.openEditModalForPatient(patient);
+  // TDM 선택 버튼 클릭 핸들러
+  const handleTDMSelect = () => {
+    if (hasOngoingWorkflow(selectedPatient)) {
+      setShowWorkflowAlert(true);
+    } else {
+      onNext();
+    }
   };
 
-  const handleViewClick = (patient: Patient) => {
-    patientInfoRef.current?.openViewModalForPatient(patient);
+  // 새로 시작 버튼 클릭 핸들러
+  const handleNewStart = () => {
+    onResetWorkflow();
+    setShowWorkflowAlert(false);
+    onNext();
   };
 
-  // 검색어로 환자 필터링
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.name.includes(search) ||
-      (p.id && p.id.includes(search))
-  );
-
-
+  // 계속 진행 버튼 클릭 핸들러
+  const handleContinue = () => {
+    setShowWorkflowAlert(false);
+    onNext();
+  };
   return (
     <div className="space-y-6">
       {/* Step 1: Patient Selection */}
@@ -68,106 +77,16 @@ const PatientStep = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Existing Patients */}
-          {patients.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">
-                  등록된 환자 ({patients.length})
-                </h2>
-                <Input
-                  id="patientSearch"
-                  placeholder="이름 또는 환자번호로 검색"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-1/4"
-                />
-              </div>
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>이름</TableHead>
-                      <TableHead>환자번호</TableHead>
-                      <TableHead>나이</TableHead>
-                      <TableHead>성별</TableHead>
-                      <TableHead>체중(kg)</TableHead>
-                      <TableHead>신장(cm)</TableHead>
-                      <TableHead>수정과 조회</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPatients.length > 0 ? (
-                      filteredPatients.map((patient) => (
-                        <TableRow
-                          key={patient.id}
-                          className={
-                            selectedPatient?.id === patient.id
-                              ? "bg-blue-100 cursor-pointer"
-                              : "hover:bg-muted/50 cursor-pointer"
-                          }
-                          onClick={() => {
-                            setSelectedPatient(patient);
-                          }}
-                          data-state={selectedPatient?.id === patient.id ? "selected" : undefined}
-                        >
-                          <TableCell>{patient.name}</TableCell>
-                          <TableCell>{patient.id}</TableCell>
-                          <TableCell>{patient.age}</TableCell>
-                          <TableCell>{patient.gender === "male" ? "남" : patient.gender === "female" ? "여" : "-"}</TableCell>
-                          <TableCell>{patient.weight}</TableCell>
-                          <TableCell>{patient.height}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEditClick(patient);
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleViewClick(patient);
-                                }}
-                              >
-                                <FileChartColumnIncreasing className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground">검색 결과가 없습니다.</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-
-          {/* Or Register New */}
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground mb-4">
-              {patients.length > 0 ? "또는 신규 환자 등록" : "첫 환자를 등록하세요"}
-            </p>
-            <Button
-              variant="outline"
-              onClick={handleNewPatientClick}
-              className="w-full max-w-md"
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              신규 환자 등록
-            </Button>
-          </div>
+          {/* PatientInformation 컴포넌트 호출 */}
+          <PatientInformation
+            onAddPatient={onAddPatient}
+            onUpdatePatient={onUpdatePatient}
+            onDeletePatient={onDeletePatient}
+            patients={patients}
+            selectedPatient={selectedPatient}
+            setSelectedPatient={setSelectedPatient}
+            showHeader={false}
+          />
 
           {/* Selected Patient Info */}
           {selectedPatient && (
@@ -178,37 +97,37 @@ const PatientStep = ({
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">이름</Label>
+                    <p className="text-sm font-medium text-muted-foreground">이름</p>
                     <p className="text-sm">{selectedPatient.name}</p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">생년월일</Label>
-                    <p className="text-sm">{selectedPatient.createdAt.toLocaleDateString()}</p>
+                    <p className="text-sm font-medium text-muted-foreground">생년월일</p>
+                    <p className="text-sm">{selectedPatient.birthDate}</p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">나이</Label>
+                    <p className="text-sm font-medium text-muted-foreground">나이</p>
                     <p className="text-sm">{selectedPatient.age}세</p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">성별</Label>
+                    <p className="text-sm font-medium text-muted-foreground">성별</p>
                     <p className="text-sm">{selectedPatient.gender === "male" ? "남성" : selectedPatient.gender === "female" ? "여성" : "기타"}</p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">체중</Label>
+                    <p className="text-sm font-medium text-muted-foreground">체중</p>
                     <p className="text-sm">{selectedPatient.weight} kg</p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">신장</Label>
+                    <p className="text-sm font-medium text-muted-foreground">신장</p>
                     <p className="text-sm">{selectedPatient.height} cm</p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">BMI</Label>
+                    <p className="text-sm font-medium text-muted-foreground">BMI</p>
                     <p className="text-sm">
                       {(selectedPatient.weight && selectedPatient.height ? (selectedPatient.weight / Math.pow(selectedPatient.height / 100, 2)).toFixed(1) : "-")}
                     </p>
                   </div>
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">BSA</Label>
+                    <p className="text-sm font-medium text-muted-foreground">BSA</p>
                     <p className="text-sm">
                       {(selectedPatient.weight && selectedPatient.height ? Math.sqrt((selectedPatient.weight * selectedPatient.height) / 3600).toFixed(2) : "-")} m²
                     </p>
@@ -221,7 +140,7 @@ const PatientStep = ({
           {/* Next Button */}
           {isCompleted && (
             <div className="flex justify-end">
-              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
+              <Button onClick={handleTDMSelect} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
                 TDM 선택
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -230,19 +149,34 @@ const PatientStep = ({
         </CardContent>
       </Card>
 
-      {/* 숨겨진 PatientInformation 컴포넌트 - 모달만 사용 */}
-      <div style={{ display: 'none' }}>
-        <PatientInformation
-          ref={patientInfoRef}
-          onAddPatient={onAddPatient}
-          onUpdatePatient={onUpdatePatient}
-          onDeletePatient={onDeletePatient}
-          patients={patients}
-          selectedPatient={selectedPatient}
-          setSelectedPatient={setSelectedPatient}
-          showHeader={false}
-        />
-      </div>
+      {/* 워크플로우 진행 중 알림 다이얼로그 */}
+      <Dialog open={showWorkflowAlert} onOpenChange={setShowWorkflowAlert}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">
+              진행 중인 TDM 분석 워크플로우가 있습니다.
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-base">
+            {selectedPatient?.createdAt.toISOString().split('T')[0]}에 등록된 {selectedPatient?.name}환자의 워크플로우가 있습니다. 분석을 계속 진행할까요?
+          </DialogDescription>
+          <div className="flex gap-3 mt-6">
+            <Button 
+              variant="outline" 
+              onClick={handleNewStart}
+              className="flex-1"
+            >
+              새로 시작
+            </Button>
+            <Button 
+              onClick={handleContinue}
+              className="flex-1 bg-black text-white"
+            >
+              계속 진행
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
