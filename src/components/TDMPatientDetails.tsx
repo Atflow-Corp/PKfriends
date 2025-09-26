@@ -114,7 +114,7 @@ const TDMPatientDetails = ({
               <div className="font-medium">{selectedPrescription?.indication || 'N/A'}</div>
             </div>
             <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">추가정보</div>
+              <div className="text-sm text-muted-foreground">추가 정보</div>
               <div className="font-medium">{selectedPrescription?.additionalInfo || '-'}</div>
             </div>
             <div className="space-y-1">
@@ -134,20 +134,24 @@ const TDMPatientDetails = ({
             <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">처방 내역</div>
             <div className="grid grid-cols-5 gap-4">
             <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">처방 용량</div>
+              <div className="text-sm text-muted-foreground">투약 용량</div>
               <div className="font-medium">
-                {selectedPrescription ? 
-                  `${selectedPrescription.dosage}${selectedPrescription.unit}` : 
-                  'N/A'
+                {latestAdministration ? 
+                  `${latestAdministration.dose}${latestAdministration.unit}` : 
+                  (selectedPrescription ? 
+                    `${selectedPrescription.dosage}${selectedPrescription.unit}` : 
+                    'N/A')
                 }
               </div>
             </div>
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground">투약 간격</div>
               <div className="font-medium">
-                {selectedPrescription?.frequency ? 
-                  `${selectedPrescription.frequency}` : 
-                  'N/A'
+                {latestAdministration?.intervalHours ? 
+                  `${latestAdministration.intervalHours}시간` : 
+                  (selectedPrescription?.frequency ? 
+                    `${selectedPrescription.frequency}` : 
+                    'N/A')
                 }
               </div>
             </div>
@@ -183,14 +187,14 @@ const TDMPatientDetails = ({
 
           {/* 신 기능 데이터 섹션 */}
           <div className="space-y-3">
-            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">신 기능 데이터</div>
+            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">신기능 데이터</div>
             <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground">혈청 크레아티닌</div>
               <div className="font-medium">
                 {latestBloodTest?.creatinine ? 
-                  `CCr-CG = ${latestBloodTest.creatinine} mL/min` : 
-                  '-'
+                  latestBloodTest.creatinine : 
+                  <span className="text-gray-400 italic">미입력</span>
                 }
               </div>
             </div>
@@ -198,8 +202,8 @@ const TDMPatientDetails = ({
               <div className="text-sm text-muted-foreground">투석 정보</div>
               <div className="font-medium">
                 {latestBloodTest?.dialysis === 'Y' ? 
-                  latestBloodTest?.renalReplacement || '-' : 
-                  '-'
+                  latestBloodTest?.renalReplacement || <span className="text-gray-400 italic">미입력</span> : 
+                  <span className="text-gray-400 italic">미입력</span>
                 }
               </div>
             </div>
@@ -209,7 +213,7 @@ const TDMPatientDetails = ({
                 {/* 임시 데이터: 빈값으로 설정, 추후 백엔드에서 연결 예정 */}
                 {latestBloodTest?.dialysis === 'Y' && latestBloodTest?.renalReplacement === 'CRRT' ? 
                   '고위험군' : 
-                  ''
+                  <span className="text-gray-400 italic">미입력</span>
                 }
               </div>
             </div>

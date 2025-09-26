@@ -25,7 +25,7 @@ interface BloodTestStepProps {
   selectedPatient: Patient | null;
   onAddBloodTest: (bloodTest: BloodTest) => void;
   onDeleteBloodTest: (bloodTestId: string) => void;
-  onUpdateBloodTest: (bloodTestId: string, updates: Partial<BloodTest>) => void;
+  onUpdateBloodTest?: (bloodTestId: string, updates: Partial<BloodTest>) => void;
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
@@ -51,7 +51,7 @@ const BloodTestStep = ({
   selectedPatient,
   onAddBloodTest,
   onDeleteBloodTest,
-  onUpdateBloodTest,
+  onUpdateBloodTest = () => {},
   onNext,
   onPrev,
   isCompleted,
@@ -293,6 +293,10 @@ const BloodTestStep = ({
       return;
     }
     const testDateTime = dayjs(`${datePart} ${timePart}`, "YYYY-MM-DD HH:mm").toDate();
+    
+    // 선택된 신기능 데이터 가져오기
+    const selectedRenalInfo = renalInfoList.find(item => item.isSelected);
+    
     const newBloodTest: BloodTest = {
       id: Date.now().toString(),
       patientId: selectedPatient.id,
@@ -301,7 +305,11 @@ const BloodTestStep = ({
       unit: formData.unit,
       timeAfterDose: 0, // Lab 단계에서는 미사용
       testDate: testDateTime,
-      measurementType: formData.measurementType
+      measurementType: formData.measurementType,
+      // 신기능 데이터 추가
+      creatinine: selectedRenalInfo?.result || undefined,
+      dialysis: selectedRenalInfo?.dialysis || undefined,
+      renalReplacement: selectedRenalInfo?.renalReplacement || undefined
     };
     onAddBloodTest(newBloodTest);
     const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";

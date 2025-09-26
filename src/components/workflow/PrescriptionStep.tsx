@@ -125,12 +125,7 @@ const PrescriptionStep = ({
     return patientPrescriptions.length > 0;
   };
 
-  // 컴포넌트 마운트 시 워크플로우 확인
-  useEffect(() => {
-    if (hasOngoingWorkflow(selectedPatient)) {
-      setShowWorkflowAlert(true);
-    }
-  }, [selectedPatient, prescriptions]);
+  // 워크플로우 확인 로직은 StepWorkflow에서 처리하므로 제거
 
   // 새로 시작 버튼 클릭 핸들러
   const handleNewStart = () => {

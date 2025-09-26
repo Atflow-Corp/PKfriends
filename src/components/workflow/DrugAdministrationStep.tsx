@@ -133,7 +133,7 @@ const DrugAdministrationStep = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <History className="h-5 w-5" />
-            4단계: TDM 약물 투약력 입력
+            4단계: 투약기록
             {isCompleted && <CheckCircle className="h-5 w-5 text-green-600" />}
           </CardTitle>
           <CardDescription>
@@ -175,7 +175,8 @@ const DrugAdministrationStep = ({
                   unit: row.amount.split(" ")[1] || "mg",
                   isIVInfusion: row.route === "정맥",
                   infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
-                  administrationTime: undefined
+                  administrationTime: undefined,
+                  intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
                 }));
                 const updatedAdministrations = [
                   ...drugAdministrations.filter(d => d.patientId !== selectedPatient.id),
@@ -197,7 +198,8 @@ const DrugAdministrationStep = ({
                   unit: row.amount.split(" ")[1] || "mg",
                   isIVInfusion: row.route === "정맥",
                   infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
-                  administrationTime: undefined
+                  administrationTime: undefined,
+                  intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
                 }));
                 const updatedAdministrations = [
                   ...drugAdministrations.filter(d => d.patientId !== selectedPatient.id),

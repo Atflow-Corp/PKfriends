@@ -76,6 +76,7 @@ export interface DrugAdministration {
   isIVInfusion: boolean;
   infusionTime?: number; // IV 주입시간(분)
   administrationTime?: number; // 경구 등 투약시간(분)
+  intervalHours?: number; // 투약 간격(시간)
 }
 
 interface IndexProps {
