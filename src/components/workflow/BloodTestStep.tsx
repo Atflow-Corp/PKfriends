@@ -25,7 +25,7 @@ interface BloodTestStepProps {
   selectedPatient: Patient | null;
   onAddBloodTest: (bloodTest: BloodTest) => void;
   onDeleteBloodTest: (bloodTestId: string) => void;
-  onUpdateBloodTest: (bloodTestId: string, updates: Partial<BloodTest>) => void;
+  onUpdateBloodTest?: (bloodTestId: string, updates: Partial<BloodTest>) => void;
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
@@ -51,7 +51,7 @@ const BloodTestStep = ({
   selectedPatient,
   onAddBloodTest,
   onDeleteBloodTest,
-  onUpdateBloodTest,
+  onUpdateBloodTest = () => {},
   onNext,
   onPrev,
   isCompleted,
@@ -118,7 +118,7 @@ const BloodTestStep = ({
     
     // 조정체중 사용 여부 표시
     const weightInfo = isMorbidlyObese ? ` (조정체중: ${Math.round(adjustedWeight * 10) / 10}kg)` : "";
-    return `CCr-CG = ${Math.round(ccr * 10) / 10} mL/min${weightInfo}`;
+    return `CRCL = ${Math.round(ccr * 10) / 10} mL/min${weightInfo}`;
   };
 
   // MDRD 공식
@@ -126,7 +126,7 @@ const BloodTestStep = ({
     const genderFactor = gender === "여성" ? 0.742 : 1.0;
     const raceFactor = isBlack ? 1.212 : 1.0;
     const egfr = 175 * Math.pow(creatinine, -1.154) * Math.pow(age, -0.203) * genderFactor * raceFactor;
-    return `eGFR-MDRD = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
+    return `eGFR = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
   };
 
   // CKD-EPI 공식
@@ -151,7 +151,7 @@ const BloodTestStep = ({
     const scr = Math.min(Math.max(creatinine / kappa, 1), 999);
     const egfr = 141 * Math.pow(scr, alpha) * Math.pow(0.993, age) * raceFactor;
     
-    return `eGFR-CKD-EPI = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
+    return `eGFR = ${Math.round(egfr * 10) / 10} mL/min/1.73m²`;
   };
 
   // BMI 계산
@@ -293,6 +293,10 @@ const BloodTestStep = ({
       return;
     }
     const testDateTime = dayjs(`${datePart} ${timePart}`, "YYYY-MM-DD HH:mm").toDate();
+    
+    // 선택된 신기능 데이터 가져오기
+    const selectedRenalInfo = renalInfoList.find(item => item.isSelected);
+    
     const newBloodTest: BloodTest = {
       id: Date.now().toString(),
       patientId: selectedPatient.id,
@@ -301,7 +305,11 @@ const BloodTestStep = ({
       unit: formData.unit,
       timeAfterDose: 0, // Lab 단계에서는 미사용
       testDate: testDateTime,
-      measurementType: formData.measurementType
+      measurementType: formData.measurementType,
+      // 신기능 데이터 추가
+      creatinine: selectedRenalInfo?.result || undefined,
+      dialysis: selectedRenalInfo?.dialysis || undefined,
+      renalReplacement: selectedRenalInfo?.renalReplacement || undefined
     };
     onAddBloodTest(newBloodTest);
     const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";
@@ -626,10 +634,12 @@ const BloodTestStep = ({
                         {tdmDrug?.drugName === "Vancomycin" ? (
                           <>
                             <SelectItem value="mg/L">mg/L</SelectItem>
+                            <SelectItem value="μg/mL">ng/mL</SelectItem>
                             <SelectItem value="μg/mL">μg/mL</SelectItem>
                           </>
                         ) : (
                           <>
+                            <SelectItem value="mg/L">mg/L</SelectItem>
                             <SelectItem value="ng/mL">ng/mL</SelectItem>
                             <SelectItem value="μg/L">μg/L</SelectItem>
                           </>

@@ -76,6 +76,7 @@ export interface DrugAdministration {
   isIVInfusion: boolean;
   infusionTime?: number; // IV 주입시간(분)
   administrationTime?: number; // 경구 등 투약시간(분)
+  intervalHours?: number; // 투약 간격(시간)
 }
 
 interface IndexProps {
@@ -160,6 +161,21 @@ const Index = ({ onLogout }: IndexProps) => {
 
   const addPatient = (patient: Patient) => {
     setPatients([...patients, patient]);
+  };
+
+  const updatePatient = (patient: Patient) => {
+    setPatients(patients.map(p => p.id === patient.id ? patient : p));
+  };
+
+  const deletePatient = (patientId: string) => {
+    setPatients(patients.filter(p => p.id !== patientId));
+  };
+
+  const resetWorkflow = () => {
+    // 워크플로우 관련 데이터 초기화
+    setPrescriptions([]);
+    setBloodTests([]);
+    setDrugAdministrations([]);
   };
 
   const addPrescription = (prescription?: Prescription, updatedPrescriptions?: Prescription[]) => {
@@ -283,11 +299,9 @@ const Index = ({ onLogout }: IndexProps) => {
               onAddDrugAdministration={addDrugAdministration}
               drugAdministrations={drugAdministrations}
               setDrugAdministrations={setDrugAdministrations}
-              onUpdatePatient={function (patient: Patient): void {
-                throw new Error("Function not implemented.");
-              } } onDeletePatient={function (patientId: string): void {
-                throw new Error("Function not implemented.");
-              } }            />
+              onUpdatePatient={updatePatient}
+              onDeletePatient={deletePatient}
+              onResetWorkflow={resetWorkflow}            />
           </TabsContent>
 
           <TabsContent value="management">

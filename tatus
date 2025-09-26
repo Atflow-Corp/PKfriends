@@ -1,0 +1,65 @@
+  BR-CHA-0910-LETS-TDM-UI[m
+  BR-CHA-0910-PatientStep모듈화[m
+  BR-CHA-0910-TDMUI추가[m
+  BR-CHA-0910-TDMUI추가-수정[m
+  BR-CHA-0910-환자정보관리모달[m
+  BR-CHA-0912-LabUI수정[m
+  BR-CHA-0912-Lab검증로직추가[m
+  BR-CHA-0912-workflowUI수정[m
+  BR-CHA-0912-투약기록UI수정[m
+  BR-CHA-0913-시뮬레이션UI수정1차[m
+  BR-CHA-0913-시뮬레이션UI수정2차[m
+  BR-CHA-0913-시뮬레이션UI수정3차[m
+  BR-CHA-0913-신기능자동계산[m
+  BR-CHA-0925-UI누락1[m
+  backup/my-old-main[m
+  branch_cha_0908[m
+  branch_cha_0909[m
+  feature/bloodtest-guide[m
+  feature/fix-patient-birth-field[m
+  feature/patient-selection-ui-fix[m
+  feature/patientsadmin[m
+* [32mmain[m
+  [31mremotes/origin/BR-CHA-0910-LETS-TDM-UI[m
+  [31mremotes/origin/BR-CHA-0910-PatientStep모듈화[m
+  [31mremotes/origin/BR-CHA-0910-TDMUI추가-수정[m
+  [31mremotes/origin/BR-CHA-0910-환자정보관리모달[m
+  [31mremotes/origin/BR-CHA-0912-LabUI수정[m
+  [31mremotes/origin/BR-CHA-0912-workflowUI수정[m
+  [31mremotes/origin/BR-CHA-0912-투약기록UI수정[m
+  [31mremotes/origin/BR-CHA-0913-시뮬레이션UI수정1차[m
+  [31mremotes/origin/BR-CHA-0913-시뮬레이션UI수정2차[m
+  [31mremotes/origin/BR-CHA-0913-시뮬레이션UI수정3차[m
+  [31mremotes/origin/BR-CHA-0913-신기능자동계산[m
+  [31mremotes/origin/HEAD[m -> origin/main
+  [31mremotes/origin/bssanyang-patch-1[m
+  [31mremotes/origin/bssanyang-patch-2[m
+  [31mremotes/origin/bssanyang-patch-3[m
+  [31mremotes/origin/bssanyang-patch-4[m
+  [31mremotes/origin/bssanyang-patch-5[m
+  [31mremotes/origin/bssanyang-patch-6[m
+  [31mremotes/origin/bssanyang-patch-7[m
+  [31mremotes/origin/cursor/integrate-tdm-api-and-persist-data-b458[m
+  [31mremotes/origin/feature/bloodtest-guide[m
+  [31mremotes/origin/feature/drug-table-ui[m
+  [31mremotes/origin/feature/fix-patient-birth-field[m
+  [31mremotes/origin/feature/patient-selection-ui-fix[m
+  [31mremotes/origin/feature/patientsadmin[m
+  [31mremotes/origin/feature/ui-ux-improvements[m
+  [31mremotes/origin/fix/routing-issue[m
+  [31mremotes/origin/gh-pages[m
+  [31mremotes/origin/main[m
+  [31mremotes/upstream/BR-CHA-0910-환자정보관리모달[m
+  [31mremotes/upstream/HEAD[m -> upstream/main
+  [31mremotes/upstream/bssanyang-patch-1[m
+  [31mremotes/upstream/bssanyang-patch-2[m
+  [31mremotes/upstream/bssanyang-patch-3[m
+  [31mremotes/upstream/bssanyang-patch-4[m
+  [31mremotes/upstream/bssanyang-patch-5[m
+  [31mremotes/upstream/bssanyang-patch-6[m
+  [31mremotes/upstream/bssanyang-patch-7[m
+  [31mremotes/upstream/cursor/integrate-tdm-api-and-persist-data-b458[m
+  [31mremotes/upstream/feature/ui-ux-improvements[m
+  [31mremotes/upstream/fix/routing-issue[m
+  [31mremotes/upstream/gh-pages[m
+  [31mremotes/upstream/main[m

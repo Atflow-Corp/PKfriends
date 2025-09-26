@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { Pill, ArrowRight, ArrowLeft, CheckCircle, Plus } from "lucide-react";
 
@@ -38,6 +39,7 @@ interface PrescriptionStepProps {
   bloodTests: BloodTest[];
   drugAdministrations: DrugAdministration[];
   onClearLaterStepData: () => void;
+  onResetWorkflow: () => void;
 }
 
 const TDM_DRUGS: TdmDrug[] = [
@@ -56,7 +58,8 @@ const TDM_DRUGS: TdmDrug[] = [
         "Cyclosporin",
         "Tacrolimus",
         "Non-steroidal anti-inflammatory agents (aceclofenac, ibuprofen, ketoprofen, ketorolac and zaltoprofen)",
-        "Trimethoprim/sulfamethoxazole"
+        "Trimethoprim/sulfamethoxazole",
+        "기타"
       ]
     },
     targets: [
@@ -101,7 +104,8 @@ const PrescriptionStep = ({
   isCompleted,
   bloodTests,
   drugAdministrations,
-  onClearLaterStepData
+  onClearLaterStepData,
+  onResetWorkflow
 }: PrescriptionStepProps) => {
   const [formData, setFormData] = useState({
     drugName: "",
@@ -110,6 +114,29 @@ const PrescriptionStep = ({
     tdmTarget: "",
     tdmTargetValue: ""
   });
+
+  const [showWorkflowAlert, setShowWorkflowAlert] = useState(false);
+
+  // 진행 중인 워크플로우가 있는지 확인하는 함수
+  const hasOngoingWorkflow = (patient: Patient | null): boolean => {
+    if (!patient) return false;
+    // 해당 환자에게 prescriptions 데이터가 있는지 확인
+    const patientPrescriptions = prescriptions.filter(p => p.patientId === patient.id);
+    return patientPrescriptions.length > 0;
+  };
+
+  // 워크플로우 확인 로직은 StepWorkflow에서 처리하므로 제거
+
+  // 새로 시작 버튼 클릭 핸들러
+  const handleNewStart = () => {
+    onResetWorkflow();
+    setShowWorkflowAlert(false);
+  };
+
+  // 계속 진행 버튼 클릭 핸들러
+  const handleContinue = () => {
+    setShowWorkflowAlert(false);
+  };
 
   const [selectedTdmId, setSelectedTdmId] = useState<string | null>(null);
   const [newlyAddedTdmId, setNewlyAddedTdmId] = useState<string | null>(null);
@@ -502,7 +529,7 @@ const PrescriptionStep = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>등록일</TableHead>
+                        <TableHead>분석일</TableHead>
                         <TableHead>약물명</TableHead>
                         <TableHead>적응증</TableHead>
                         <TableHead>추가정보</TableHead>
@@ -518,7 +545,7 @@ const PrescriptionStep = ({
                             onClick={() => handleTdmSelect(prescription)}
                           >
                             <TableCell>
-                              {isNewlyAddedTdm(prescription.id) ? "등록 중" : (prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-")}
+                              {isNewlyAddedTdm(prescription.id) ? "진행 중" : (prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-")}
                             </TableCell>
                             <TableCell className="font-medium">{prescription.drugName}</TableCell>
                             <TableCell>{prescription.indication || "-"}</TableCell>
@@ -679,6 +706,35 @@ const PrescriptionStep = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* 워크플로우 진행 중 알림 다이얼로그 */}
+      <Dialog open={showWorkflowAlert} onOpenChange={setShowWorkflowAlert}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">
+              진행 중인 TDM 분석 워크플로우가 있습니다.
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-base">
+            {selectedPatient?.createdAt.toISOString().split('T')[0]}에 등록된 {selectedPatient?.name}환자의 워크플로우가 있습니다. 분석을 계속 진행할까요?
+          </DialogDescription>
+          <div className="flex gap-3 mt-6">
+            <Button 
+              variant="outline" 
+              onClick={handleNewStart}
+              className="flex-1"
+            >
+              새로 시작
+            </Button>
+            <Button 
+              onClick={handleContinue}
+              className="flex-1 bg-black text-white"
+            >
+              계속 진행
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -532,7 +532,7 @@ function TablePage(props) {
 
   // 테이블 데이터만 삭제 (투약 서머리 데이터는 유지)
   const resetTableData = () => {
-    if (window.confirm("투약 기록 테이블을 전체 삭제하시겠습니까? 투약 조건은 유지됩니다.")) {
+    if (window.confirm("투약 기록 테이블을 전체 삭제하시겠습니까? 처방 내역은 유지됩니다.")) {
       setTableData([]);
       setIsTableGenerated(false);
       setSelectedRows(new Set());
@@ -613,6 +613,21 @@ function TablePage(props) {
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
             <h1 style={{ marginBottom: 20, color: isDarkMode ? "#e0e6f0" : "#495057" }}>1단계: 처방 내역을 입력하세요</h1>
+            <div style={{ 
+              marginBottom: 20, 
+              color: isDarkMode ? '#9ca3af' : '#6b7280', 
+              fontSize: '14px',
+              lineHeight: '1.5'
+            }}>
+              <div style={{ marginBottom: '8px' }}>
+                • 처방 내역을 입력한 후 [처방 내역 입력 완료] 버튼을 클릭하면 하단에 자동으로 ‘상세 투약 기록’ 테이블이 생성됩니다.
+              </div>
+              <div>
+                • 처방 내역 변경이 있었다면 실제 처방에 일치하도록 새로운 처방 내역을 입력해야 합니다.
+                </div>
+               <div>  (예: 1월 4일은 경구 투약, 1월 5일부터는 정맥 주입한 경우 처방 내역을 2개 등록)
+              </div>
+            </div>
 
                        {/* 현재 조건 입력 박스 */}
             <div style={{
@@ -849,7 +864,7 @@ function TablePage(props) {
                   <span style={{ fontSize: 20, marginRight: 6, fontWeight: 600, background: "transparent" }}>
                     {isEditMode ? "✓" : "+"}
                   </span>
-                  {isEditMode ? "조건 수정" : "조건 추가"}
+                  {isEditMode ? "처방 내역 수정" : "처방 내역 추가"}
                 </button>
               </div>
             </div>
@@ -869,7 +884,7 @@ function TablePage(props) {
               }}>
                 {conditions.length === 0 ? (
                   <div style={{ color: "#6c757d", fontStyle: "italic" }}>
-                    투약 조건을 추가해주세요.
+                    처방 내역을 추가해주세요.
                   </div>
                 ) : (
                   conditions.map((condition, index) => (
@@ -965,7 +980,7 @@ function TablePage(props) {
                 }
               }}
             >
-              투약기록 입력 완료
+              처방 내역 입력 완료
             </button>
           </div>
 
@@ -976,7 +991,7 @@ function TablePage(props) {
             borderRadius: "8px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h2 style={{ marginBottom: 10, color: isDarkMode ? '#e0e6f0' : '#495057' }}>2단계 : 투약 기록을 확인하세요</h2>
+            <h2 style={{ marginBottom: 10, color: isDarkMode ? '#e0e6f0' : '#495057' }}>2단계: 투약 기록을 확인하세요</h2>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 
@@ -1182,7 +1197,7 @@ function TablePage(props) {
                           color: isDarkMode ? "#6b7280" : "#6b7280",
                           fontStyle: "italic"
                         }}>
-                          투약 조건을 입력하고 "투약기록 입력 완료" 버튼을 클릭하여 테이블을 생성하세요.
+                          처방 내역을 입력하고 "처방 내역 입력 완료" 버튼을 클릭하여 테이블을 생성하세요.
                         </td>
                       </tr>
                     )}

@@ -8,6 +8,7 @@ interface SimulationDataPoint {
   predicted: number;
   observed: number | null;
   controlGroup?: number;
+  actualTestTime?: string; // 실제 검사 시간 (YYYY-MM-DD HH:MM 형식)
 }
 
 interface PKChartsProps {
@@ -63,12 +64,12 @@ const PKCharts = ({
   // Merge separated series if provided; otherwise fall back to simulationData
   const data: SimulationDataPoint[] = useMemo(() => {
     if ((ipredSeries && ipredSeries.length) || (predSeries && predSeries.length) || (observedSeries && observedSeries.length)) {
-      const map = new Map<number, SimulationDataPoint & { controlGroup?: number }>();
+      const map = new Map<number, SimulationDataPoint & { controlGroup?: number; averageLine?: number }>();
       const getPoint = (t: number) => {
         const key = Number(t) || 0;
         const existed = map.get(key);
         if (existed) return existed;
-        const created: SimulationDataPoint & { controlGroup?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0 };
+        const created: SimulationDataPoint & { controlGroup?: number; averageLine?: number } = { time: key, predicted: 0, observed: null, controlGroup: 0, averageLine: 0 };
         map.set(key, created);
         return created;
       };
@@ -77,7 +78,7 @@ const PKCharts = ({
         pt.predicted = p.value;
       }
       for (const p of predSeries || []) {
-        const pt = getPoint(p.time) as SimulationDataPoint & { controlGroup?: number };
+        const pt = getPoint(p.time) as SimulationDataPoint & { controlGroup?: number; averageLine?: number };
         pt.controlGroup = p.value;
       }
       for (const p of observedSeries || []) {
@@ -117,6 +118,15 @@ const PKCharts = ({
     return auc / duration;
   })();
 
+  // 평균값을 데이터에 추가
+  const dataWithAverage = useMemo(() => {
+    if (!averageConcentration) return data;
+    return data.map(point => ({
+      ...point,
+      averageLine: averageConcentration
+    }));
+  }, [data, averageConcentration]);
+
   // Y축 상한: 반코마이신 데이터에 최적화된 범위 (0~0.2 mg/L)
   const yMax = useMemo(() => {
     const dataMax = (data || []).reduce((m, p) => {
@@ -145,6 +155,68 @@ const PKCharts = ({
   const fmtFixed = (n: number | null, unit: string) => {
     if (n == null || Number.isNaN(n)) return '-';
     return `${Number(n.toFixed(2)).toLocaleString()} ${unit}`;
+  };
+
+  // 약물별 농도 단위 결정
+  const getConcentrationUnit = (drug?: string) => {
+    switch (drug) {
+      case 'Vancomycin':
+        return 'mg/L';
+      case 'Cyclosporin':
+        return 'ng/mL';
+      default:
+        return 'mg/L'; // 기본값
+    }
+  };
+
+  // TDM 목표에 따른 예측값과 단위 결정
+  const getTdmTargetValue = () => {
+    const target = tdmTarget?.toLowerCase() || '';
+    
+    if (target.includes('auc')) {
+      return {
+        value: fmtFixed(predictedAUC, 'mg*h/L'),
+        unit: 'mg*h/L',
+        numericValue: predictedAUC
+      };
+    } else if (target.includes('max') || target.includes('peak')) {
+      return {
+        value: fmtFixed(predictedMax, getConcentrationUnit(selectedDrug)),
+        unit: getConcentrationUnit(selectedDrug),
+        numericValue: predictedMax
+      };
+    } else if (target.includes('trough')) {
+      return {
+        value: fmtFixed(predictedTrough, getConcentrationUnit(selectedDrug)),
+        unit: getConcentrationUnit(selectedDrug),
+        numericValue: predictedTrough
+      };
+    } else {
+      // 기본값은 AUC
+      return {
+        value: fmtFixed(predictedAUC, 'mg*h/L'),
+        unit: 'mg*h/L',
+        numericValue: predictedAUC
+      };
+    }
+  };
+
+  // 목표 범위 파싱 및 범위 내 여부 확인
+  const isWithinTargetRange = () => {
+    const targetValue = getTdmTargetValue();
+    const targetRange = tdmTargetValue || '';
+    
+    if (!targetRange || !targetValue.numericValue) return true; // 범위 정보가 없으면 true로 처리
+    
+    // 범위 파싱 (예: "10-20 mg/L", "400-600 mg·h/L")
+    const rangeMatch = targetRange.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+    if (!rangeMatch) return true; // 파싱 실패 시 true로 처리
+    
+    const minValue = parseFloat(rangeMatch[1]);
+    const maxValue = parseFloat(rangeMatch[2]);
+    const currentValue = targetValue.numericValue;
+    
+    return currentValue >= minValue && currentValue <= maxValue;
   };
 
   return (
@@ -176,9 +248,9 @@ const PKCharts = ({
             <>
               <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를 의미합니다.</p>
               <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
-              <p><strong>(3)</strong> 파란색 range는 TDM목표치 범위를 의미합니다.</p>
+              <p><strong>(3)</strong> 회색 점선은 평균 약물 농도를, 파란색 range는 TDM목표치 범위를 의미합니다.</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                * (1)과 (2)가 (3)의 range안에 모두 있다면 현 용법이 적절하다는 의미로 해석될 수 있습니다.
+                {/* 선택한 TDM 목표가 (3)의 range안에 모두 있다면 현 용법이 적절하다는 의미로 해석될 수 있습니다. */}
               </p>
             </>
           )}
@@ -201,17 +273,16 @@ const PKCharts = ({
 
       {/* 메인 그래프 - 가로 스크롤 가능 */}
       <div className="mb-2">
-
-        <div className="h-48 overflow-x-auto overflow-y-hidden">
+        {/* 차트 영역 */}
+        <div className="h-96 overflow-x-auto overflow-y-hidden">
           <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              {selectedDrug === 'Vancomycin' ? (
-                // 반코마이신: Area Chart
-                <AreaChart data={data}>
+             <ResponsiveContainer width="100%" height="100%">
+               {selectedDrug === 'Vancomycin' ? (
+                 // 반코마이신: Area Chart
+                 <AreaChart data={dataWithAverage}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="time" 
-                  label={{ value: 'Time(hours)', position: 'insideBottom', offset: -5 }}
                   tick={{ fontSize: 12 }}
                   domain={[0, 72]}
                   type="number"
@@ -220,11 +291,12 @@ const PKCharts = ({
                   tickFormatter={(value) => `${value}h`}
                 />
                 <YAxis 
-                  label={{ value: 'Concentration(mg/L)', angle: -90, position: 'insideLeft' }}
+                  label={{ value: 'Concentration(mg/L)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
                   tick={{ fontSize: 12 }}
                   domain={[0, yMax]}
                     tickCount={6}
                     tickFormatter={(value) => `${value.toFixed(2)}`}
+                    width={80}
                 />
                 {/* 목표 범위 (파란색 영역) */}
                 {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
@@ -232,14 +304,37 @@ const PKCharts = ({
                 )}
                 {/* 평균 약물 농도 점선 */}
                 {typeof averageConcentration === 'number' && (
-                  <ReferenceLine y={averageConcentration} stroke="#3b82f6" strokeDasharray="5 5" />
+                  <Line 
+                    type="monotone" 
+                    dataKey="averageLine" 
+                    stroke="#808080" 
+                    strokeDasharray="5 5"
+                    strokeWidth={0.5}
+                    name="평균 약물 농도"
+                    dot={false}
+                  />
                 )}
                 <Tooltip 
-                  formatter={(value: unknown, name: string) => [
-                    typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', 
-                    name === 'predicted' ? '환자 현용법' : name === 'controlGroup' ? '일반 대조군' : '실제값'
-                  ]}
-                  labelFormatter={(value) => `Time: ${value} hours`}
+                  formatter={(value: unknown, name: string) => {
+                    if (name === '실제 혈중 농도') {
+                      return [`${(value as number).toFixed(2)} mg/L`, '실제 혈중 농도'];
+                    }
+                    
+                    return [
+                      typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', 
+                      name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'
+                    ];
+                  }}
+                  labelFormatter={(value, payload) => {
+                    const data = payload && payload[0] && payload[0].payload;
+                    const hasObserved = data && data.observed !== null && data.observed !== undefined;
+                    
+                    if (hasObserved && data.actualTestTime) {
+                      return <strong>검사 시간: {data.actualTestTime}</strong>;
+                    }
+                    
+                    return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
+                  }}
                 />
                   {/* 대조군 (PRED_CONC, 주황색 영역) */}
                   <Area 
@@ -260,13 +355,12 @@ const PKCharts = ({
                     name="환자 현용법"
                   />
                 </AreaChart>
-              ) : (
-                // 사이클로스포린: Line Chart + 목표 범위
-                <LineChart data={data}>
+               ) : (
+                 // 사이클로스포린: Line Chart + 목표 범위
+                 <LineChart data={dataWithAverage}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
                     dataKey="time" 
-                    label={{ value: 'Time(hours)', position: 'insideBottom', offset: -5 }}
                     tick={{ fontSize: 12 }}
                     domain={[0, 72]}
                     type="number"
@@ -275,11 +369,12 @@ const PKCharts = ({
                     tickFormatter={(value) => `${value}h`}
                   />
                   <YAxis 
-                    label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'insideLeft' }}
+                    label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
                     tick={{ fontSize: 12 }}
                     domain={[0, yMax]}
                     tickCount={6}
                     tickFormatter={(value) => `${Math.round(value)}`}
+                    width={80}
                   />
                   {/* 목표 범위 (파란색 영역) */}
                   {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
@@ -287,15 +382,38 @@ const PKCharts = ({
                   )}
                   {/* 평균 약물 농도 점선 */}
                   {typeof averageConcentration === 'number' && (
-                    <ReferenceLine y={averageConcentration} stroke="#3b82f6" strokeDasharray="5 5" />
+                    <Line 
+                      type="monotone" 
+                      dataKey="averageLine" 
+                      stroke="#808080" 
+                      strokeDasharray="5 5"
+                      strokeWidth={0.5}
+                      name="평균 약물 농도"
+                      dot={false}
+                    />
                   )}
                   <Tooltip 
-                    formatter={(value: unknown, name: string) => [
-                      typeof value === 'number' ? `${value.toFixed(2)} ng/mL` : 'N/A', 
-                    name === 'predicted' ? '환자 현용법' : name === 'controlGroup' ? '일반 대조군' : '실제값'
-                  ]}
-                  labelFormatter={(value) => `Time: ${value} hours`}
-                />
+                    formatter={(value: unknown, name: string) => {
+                      if (name === '실제 혈중 농도') {
+                        return [`${(value as number).toFixed(2)} ng/mL`, '실제 혈중 농도'];
+                      }
+                      
+                      return [
+                        typeof value === 'number' ? `${value.toFixed(2)} ng/mL` : 'N/A', 
+                        name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'
+                      ];
+                    }}
+                    labelFormatter={(value, payload) => {
+                      const data = payload && payload[0] && payload[0].payload;
+                      const hasObserved = data && data.observed !== null && data.observed !== undefined;
+                      
+                      if (hasObserved && data.actualTestTime) {
+                        return <strong>검사 시간: {data.actualTestTime}</strong>;
+                      }
+                      
+                      return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
+                    }}
+                  />
                 {/* 대조군 (PRED_CONC, 주황색) */}
                 <Line 
                   type="monotone" 
@@ -319,14 +437,20 @@ const PKCharts = ({
                   type="monotone" 
                   dataKey="observed" 
                   stroke="#dc2626" 
-                  strokeWidth={0}
-                  dot={{ fill: "#dc2626", r: 4 }}
-                  name="실제값"
+                  strokeWidth={2}
+                  dot={{ fill: "#dc2626", r: 4, strokeWidth: 0 }}
+                  name="실제 혈중 농도"
+                  connectNulls={false}
                 />
               </LineChart>
               )}
             </ResponsiveContainer>
           </div>
+        </div>
+        
+        {/* 고정된 X축 라벨 */}
+        <div className="flex justify-center mt-2">
+          <div className="text-sm text-gray-600 font-medium">Time (hours)</div>
         </div>
       </div>
 
@@ -344,7 +468,7 @@ const PKCharts = ({
           {/* 최근 혈중 약물 농도 */}
           <Card className="bg-white border-2">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg text-gray-800">최근 혈중 약물 농도</CardTitle>
+              <CardTitle className="text-lg text-gray-800">최신 혈중 약물 농도</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
               <div className="flex justify-between">
@@ -353,11 +477,11 @@ const PKCharts = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">max 농도:</span>
-                <span className="font-semibold">{fmtFixed(recentMax, 'mg/L')}</span>
+                <span className="font-semibold">{fmtFixed(recentMax, getConcentrationUnit(selectedDrug))}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">trough 농도:</span>
-                <span className="font-semibold">{fmtFixed(recentTrough, 'mg/L')}</span>
+                <span className="font-semibold">{fmtFixed(recentTrough, getConcentrationUnit(selectedDrug))}</span>
               </div>
             </CardContent>
           </Card>
@@ -374,11 +498,11 @@ const PKCharts = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">max 농도:</span>
-                <span className="font-semibold">{fmtFixed(predictedMax, 'mg/L')}</span>
+                <span className="font-semibold">{fmtFixed(predictedMax, getConcentrationUnit(selectedDrug))}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">trough 농도:</span>
-                <span className="font-semibold">{fmtFixed(predictedTrough, 'mg/L')}</span>
+                <span className="font-semibold">{fmtFixed(predictedTrough, getConcentrationUnit(selectedDrug))}</span>
               </div>
             </CardContent>
           </Card>
@@ -399,21 +523,26 @@ const PKCharts = ({
                 <span className="font-semibold text-blue-600 dark:text-blue-400"> {tdmTarget || '목표 유형'} ({tdmTargetValue || '목표값'})</span>입니다.
               </p>
             </div>
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
-              <p className="leading-relaxed">
-                현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시 Steady State까지 
-                <span className="font-semibold text-red-600 dark:text-red-400"> AUC는 {fmtFixed(predictedAUC, 'mg*h/L')}</span>으로 
-                치료 범위 이하로 떨어질 수 있습니다.
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
-              <p className="leading-relaxed">
-                
-                <span className="font-semibold text-red-600 dark:text-red-400">투약 용량 조정(증량)</span>을 권장합니다.
-              </p>
-            </div>
+             <div className="flex items-start gap-2">
+               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+               <p className="leading-relaxed">
+                 <span className="font-semibold">현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시</span> Steady State까지 
+                 TDM 목표인 <span className="font-semibold text-blue-600 dark:text-blue-400">{tdmTarget || '목표 유형'}</span>는 
+                 <span className="font-semibold text-red-600 dark:text-red-400"> {getTdmTargetValue().value}</span>으로 
+                 {isWithinTargetRange() ? (
+                   <>적절한 용법입니다.</>
+                 ) : (
+                   <>치료 범위를 벗어납니다.</>
+                 )}
+               </p>
+             </div>
+             {/* <div className="flex items-start gap-2">
+               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+               <p className="leading-relaxed">
+                 
+                 <span className="font-semibold text-red-600 dark:text-red-400">투약 용량 조정(증량)</span>을 권장합니다.
+               </p>
+             </div> */}
           </CardContent>
         </Card>
           </div>
