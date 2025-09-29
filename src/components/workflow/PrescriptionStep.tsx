@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { Pill, ArrowRight, ArrowLeft, CheckCircle, Plus } from "lucide-react";
 
@@ -115,28 +114,6 @@ const PrescriptionStep = ({
     tdmTargetValue: ""
   });
 
-  const [showWorkflowAlert, setShowWorkflowAlert] = useState(false);
-
-  // 진행 중인 워크플로우가 있는지 확인하는 함수
-  const hasOngoingWorkflow = (patient: Patient | null): boolean => {
-    if (!patient) return false;
-    // 해당 환자에게 prescriptions 데이터가 있는지 확인
-    const patientPrescriptions = prescriptions.filter(p => p.patientId === patient.id);
-    return patientPrescriptions.length > 0;
-  };
-
-  // 워크플로우 확인 로직은 StepWorkflow에서 처리하므로 제거
-
-  // 새로 시작 버튼 클릭 핸들러
-  const handleNewStart = () => {
-    onResetWorkflow();
-    setShowWorkflowAlert(false);
-  };
-
-  // 계속 진행 버튼 클릭 핸들러
-  const handleContinue = () => {
-    setShowWorkflowAlert(false);
-  };
 
   const [selectedTdmId, setSelectedTdmId] = useState<string | null>(null);
   const [newlyAddedTdmId, setNewlyAddedTdmId] = useState<string | null>(null);
@@ -147,7 +124,7 @@ const PrescriptionStep = ({
   };
 
 
-  // 과거 데이터(테스트 데이터)가 아니면 모두 신규 데이터로 판단
+  // 새로 추가된 TDM인지 확인 (temp로 시작하지 않는 ID는 모두 신규)
   const isNewlyAddedTdm = (prescriptionId: string): boolean => {
     return !isTempTdm(prescriptionId);
   };
@@ -407,18 +384,98 @@ const PrescriptionStep = ({
     if (!selectedPatient) return;
     
     
-    // 신규 TDM은 1개만 허용 - 기존 신규 TDM이 있는지 확인
-    const newlyAddedCount = getNewlyAddedTdmCount();
-    if (newlyAddedCount > 0) {
-      const confirmed = window.confirm("이미 신규 TDM이 등록되어 있습니다. 삭제 후 새로운 TDM을 추가하시겠습니까?");
+    // 신규 TDM은 약물별로 1개만 허용 - 해당 약물의 기존 신규 TDM 개수 확인
+    const existingNewTdmsForDrug = prescriptions.filter(p => 
+      p.patientId === selectedPatient.id && 
+      p.drugName === formData.drugName && 
+      isNewlyAddedTdm(p.id)
+    );
+    
+    const hasExistingNewTdmForDrug = existingNewTdmsForDrug.length > 0;
+    
+    console.log('Debug - hasExistingNewTdmForDrug:', hasExistingNewTdmForDrug);
+    console.log('Debug - formData.drugName:', formData.drugName);
+    console.log('Debug - selectedPatient.id:', selectedPatient.id);
+    console.log('Debug - prescriptions for patient:', prescriptions.filter(p => p.patientId === selectedPatient.id));
+    console.log('Debug - newlyAddedTdmId:', newlyAddedTdmId);
+    console.log('Debug - existingNewTdmsForDrug:', existingNewTdmsForDrug);
+    
+    if (hasExistingNewTdmForDrug) {
+      const confirmed = window.confirm(`${formData.drugName}에 대한 신규 TDM이 이미 등록되어 있습니다. 삭제 후 새로운 TDM을 추가하시겠습니까?`);
       if (!confirmed) {
         return;
       }
-      // 기존 신규 TDM만 삭제 (과거 데이터는 유지)
-      const filtered = prescriptions.filter(p => !(p.patientId === selectedPatient.id && isNewlyAddedTdm(p.id)));
-      onAddPrescription(undefined, filtered);
+      // 해당 약물의 기존 신규 TDM만 삭제 (과거 데이터는 유지)
+      console.log('Debug - Before filtering, prescriptions:', prescriptions);
+      
+      // 같은 환자, 같은 약물의 모든 신규 TDM 삭제
+      console.log('Debug - existingNewTdmsForDrug:', existingNewTdmsForDrug);
+      
+      const filtered = prescriptions.filter(p => {
+        // 다른 환자의 데이터는 모두 유지
+        if (p.patientId !== selectedPatient.id) {
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 다른 환자 - 유지`);
+          return true;
+        }
+        
+        // 다른 약물의 데이터는 모두 유지
+        if (p.drugName !== formData.drugName) {
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 다른 약물 - 유지`);
+          return true;
+        }
+        
+        // 같은 환자, 같은 약물인 경우
+        const isNewTdm = isNewlyAddedTdm(p.id);
+        if (isNewTdm) {
+          // 신규 TDM인 경우 - 모두 삭제
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 신규 TDM - 삭제`);
+          return false;
+        } else {
+          // 과거 데이터는 모두 유지
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 과거 데이터 - 유지`);
+          return true;
+        }
+      });
+      
+      console.log('Debug - filtered prescriptions:', filtered);
+      
+      // 기존 신규 TDM 삭제 후 새 TDM 추가
+      const newPrescription: Prescription = {
+        id: Date.now().toString(),
+        patientId: selectedPatient.id,
+        drugName: formData.drugName,
+        dosage: 0,
+        unit: "",
+        frequency: "",
+        startDate: new Date(),
+        route: "",
+        prescribedBy: "",
+        indication: formData.indication,
+        tdmTarget: formData.tdmTarget,
+        tdmTargetValue: formData.tdmTargetValue,
+        additionalInfo: formData.additionalInfo
+      };
+      
+      const finalPrescriptions = [...filtered, newPrescription];
+      onAddPrescription(undefined, finalPrescriptions);
+      
+      // 신규 추가된 TDM ID 설정 및 즉시 선택
+      setNewlyAddedTdmId(newPrescription.id);
+      setSelectedTdmId(newPrescription.id);
+      
+      // 폼 초기화
+      setFormData({
+        drugName: "",
+        indication: "",
+        additionalInfo: "",
+        tdmTarget: "",
+        tdmTargetValue: ""
+      });
+      
+      return; // 함수 종료
     }
     
+    // 기존 신규 TDM이 없는 경우의 로직
     // 추가정보 필수 입력 체크
     if (formData.drugName === "Vancomycin" && 
         formData.indication === "Neurosurgical patients/Korean" && 
@@ -707,34 +764,6 @@ const PrescriptionStep = ({
         </CardContent>
       </Card>
 
-      {/* 워크플로우 진행 중 알림 다이얼로그 */}
-      <Dialog open={showWorkflowAlert} onOpenChange={setShowWorkflowAlert}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold">
-              진행 중인 TDM 분석 워크플로우가 있습니다.
-            </DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-base">
-            {selectedPatient?.createdAt.toISOString().split('T')[0]}에 등록된 {selectedPatient?.name}환자의 워크플로우가 있습니다. 분석을 계속 진행할까요?
-          </DialogDescription>
-          <div className="flex gap-3 mt-6">
-            <Button 
-              variant="outline" 
-              onClick={handleNewStart}
-              className="flex-1"
-            >
-              새로 시작
-            </Button>
-            <Button 
-              onClick={handleContinue}
-              className="flex-1 bg-black text-white"
-            >
-              계속 진행
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

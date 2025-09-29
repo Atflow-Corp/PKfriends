@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { CheckCircle, Circle, User, Pill, FlaskConical, Activity, History } from "lucide-react";
 import PatientStep from "./workflow/PatientStep";
@@ -51,7 +50,6 @@ const StepWorkflow = ({
   onResetWorkflow
 }: StepWorkflowProps) => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [showWorkflowAlert, setShowWorkflowAlert] = useState(false);
 
   const steps = [
     { id: 1, title: "환자 등록 및 선택", icon: User, description: "환자를 선택하거나 신규 등록해주세요." },
@@ -93,12 +91,6 @@ const StepWorkflow = ({
   };
 
   const handleNextStep = () => {
-    // PatientStep(1단계)에서 TDM 선택 버튼 클릭 시 워크플로우 확인
-    if (currentStep === 1 && hasOngoingWorkflow(selectedPatient)) {
-      setShowWorkflowAlert(true);
-      return;
-    }
-    
     if (currentStep < 5) {
       setCurrentStep(currentStep + 1);
     }
@@ -175,13 +167,6 @@ const StepWorkflow = ({
                     disabled={!canAccess}
                     onClick={() => {
                       if (!canAccess) return;
-                      
-                      // 1단계에서 2단계(TDM 선택)로 이동할 때 워크플로우 확인
-                      if (currentStep === 1 && step.id === 2 && hasOngoingWorkflow(selectedPatient)) {
-                        setShowWorkflowAlert(true);
-                        return;
-                      }
-                      
                       setCurrentStep(step.id);
                     }}
                   >
@@ -281,40 +266,6 @@ const StepWorkflow = ({
         )}
       </div>
 
-      {/* 워크플로우 진행 중 알림 다이얼로그 */}
-      <Dialog open={showWorkflowAlert} onOpenChange={setShowWorkflowAlert}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold">
-              진행 중인 TDM 분석 워크플로우가 있습니다.
-            </DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-base">
-            {selectedPatient?.createdAt.toISOString().split('T')[0]}에 등록된 {selectedPatient?.name}환자의 워크플로우가 있습니다. 분석을 계속 진행할까요?
-          </DialogDescription>
-          <div className="flex gap-3 mt-6">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                onResetWorkflow();
-                setShowWorkflowAlert(false);
-              }}
-              className="flex-1"
-            >
-              새로 시작
-            </Button>
-            <Button 
-              onClick={() => {
-                setCurrentStep(2);
-                setShowWorkflowAlert(false);
-              }}
-              className="flex-1"
-            >
-              계속 진행
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
