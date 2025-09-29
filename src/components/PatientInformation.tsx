@@ -1,14 +1,15 @@
-import { useState, forwardRef, useImperativeHandle } from "react";
+import { useState, forwardRef, useImperativeHandle, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Patient } from "@/pages/Index";
-import { UserPlus, Edit, Eye, X, Search, Trash2, FileChartColumnIncreasing } from "lucide-react";
+import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
+import { UserPlus, Edit, Eye, X, Search, Trash2, FileChartColumnIncreasing, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 import dayjs from "dayjs";
 
 interface PatientInformationProps {
@@ -65,6 +66,10 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewingPatient, setViewingPatient] = useState<Patient | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // TDM 분석 목록 관련 상태
+  const [tdmPrescriptions, setTdmPrescriptions] = useState<Prescription[]>([]);
+  const [selectedTdmPrescription, setSelectedTdmPrescription] = useState<Prescription | null>(null);
 
   // 환자 신규 등록
   const handleRegistration = (e: React.FormEvent) => {
@@ -79,6 +84,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
       gender: formData.gender,
       medicalHistory: formData.medicalHistory,
       allergies: formData.allergies,
+      birthDate: formData.birth,
       createdAt: new Date()
     };
 
@@ -127,9 +133,45 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     setIsModalOpen(true);
   };
 
+  // TDM 분석 목록 로드
+  const loadTdmPrescriptions = (patientId: string) => {
+    try {
+      const savedPrescriptions = storage.getJSON<Prescription[]>(STORAGE_KEYS.prescriptions, [] as Prescription[]);
+      const patientPrescriptions = savedPrescriptions.filter(p => p.patientId === patientId);
+      
+      // 등록일 기준으로 내림차순 정렬 (최신순)
+      const sortedPrescriptions = patientPrescriptions.sort((a, b) => {
+        const dateA = new Date(a.startDate || a.id);
+        const dateB = new Date(b.startDate || b.id);
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      setTdmPrescriptions(sortedPrescriptions);
+    } catch (error) {
+      console.error('TDM 분석 목록 로드 실패:', error);
+      setTdmPrescriptions([]);
+    }
+  };
+
+  // TDM 분석 선택 시 보고서 페이지로 이동
+  const handleTdmSelection = (prescription: Prescription) => {
+    if (!viewingPatient) return;
+    
+    // 선택된 약품 정보를 localStorage에 저장
+    window.localStorage.setItem(`tdmfriends:selectedDrug:${viewingPatient.id}`, prescription.drugName);
+    
+    // TDMReportPage로 이동
+    const reportUrl = `${window.location.origin}${window.location.pathname}report?patientId=${viewingPatient.id}`;
+    window.open(reportUrl, '_blank');
+    
+    // 모달 닫기
+    setIsViewModalOpen(false);
+  };
+
   // 환자 정보 조회 모달 열기
   const openViewModal = (patient: Patient) => {
     setViewingPatient(patient);
+    loadTdmPrescriptions(patient.id);
     setIsViewModalOpen(true);
   };
 
@@ -389,70 +431,79 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
         </div>
       </div>
 
-      {/* 환자 정보 조회 모달 */}
+      {/* TDM 분석 목록 조회 모달 */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="min-w-[900px]">
-          <DialogHeader>
-            <DialogTitle>환자 정보 조회</DialogTitle>
+        <DialogContent className="min-w-[1000px] min-h-[500px] max-h-[80vh] p-0">
+          <DialogHeader className="px-6 pt-6 pb-0">
+            <DialogTitle>{viewingPatient?.name} 환자의 Report 조회</DialogTitle>
             <DialogDescription>
-              환자의 상세 정보를 확인합니다.
+              TDM 분석 내역을 선택하면 해당 분석의 Report를 조회하고 다운로드할 수 있습니다.
             </DialogDescription>
           </DialogHeader>
           {viewingPatient && (
-            <div className="space-y-4">
-              {/* 첫 번째 행 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>환자 이름</Label>
-                  <p className="text-lg font-medium">{viewingPatient.name}</p>
+            <div className="px-6 pb-6">
+              {tdmPrescriptions.length > 0 ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[120px]">등록일</TableHead>
+                        <TableHead className="w-[150px]">약물명</TableHead>
+                        <TableHead className="w-[200px]">적응증</TableHead>
+                        <TableHead className="w-[200px]">추가정보</TableHead>
+                        <TableHead className="w-[200px]">TDM 목표치</TableHead>
+                        <TableHead className="w-[100px]">액션</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tdmPrescriptions.map((prescription, index) => (
+                        <TableRow 
+                          key={prescription.id}
+                          className={`cursor-pointer hover:bg-blue-50/50 ${
+                            selectedTdmPrescription?.id === prescription.id ? "bg-blue-50" : ""
+                          }`}
+                          onClick={() => setSelectedTdmPrescription(prescription)}
+                        >
+                          <TableCell className="align-top">
+                            {dayjs(prescription.startDate || prescription.id).format('YYYY.M.D')}
+                          </TableCell>
+                          <TableCell className="font-medium align-top">
+                            {prescription.drugName}
+                          </TableCell>
+                          <TableCell className="align-top">
+                            {prescription.indication || '-'}
+                          </TableCell>
+                          <TableCell className="align-top">
+                            {prescription.additionalInfo || '-'}
+                          </TableCell>
+                          <TableCell className="align-top">
+                            {prescription.tdmTargetValue || '-'}
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTdmSelection(prescription);
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              조회
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-                <div>
-                  <Label>환자 번호</Label>
-                  <p className="text-lg font-medium">{viewingPatient.id}</p>
+              ) : (
+                <div className="text-center py-8 px-6">
+                  <FileChartColumnIncreasing className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">등록된 TDM 분석 내역이 없습니다.</p>
                 </div>
-              </div>
-
-              {/* 두 번째 행 */}
-              <div className="flex justify-end">
-                <Button variant="outline">Report Download</Button>
-              </div>
-
-              {/* 세 번째 행 */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label>나이</Label>
-                  <p>{viewingPatient.age}</p>
-                </div>
-                <div>
-                  <Label>생년월일</Label>
-                  <p>{viewingPatient.createdAt.toISOString().split('T')[0]}</p>
-                </div>
-                <div>
-                  <Label>성별</Label>
-                  <p className="capitalize">{viewingPatient.gender}</p>
-                </div>
-                <div>
-                  <Label>키 (cm)</Label>
-                  <p>{viewingPatient.height}</p>
-                </div>
-                <div>
-                  <Label>몸무게 (kg)</Label>
-                  <p>{viewingPatient.weight}</p>
-                </div>
-                <div>
-                  <Label>BMI</Label>
-                  <p>{(viewingPatient.weight / Math.pow(viewingPatient.height / 100, 2)).toFixed(1)}</p>
-                </div>
-                <div>
-                  <Label>BSA</Label>
-                  <p>{Math.sqrt((viewingPatient.weight * viewingPatient.height) / 3600).toFixed(2)}</p>
-                </div>
-              </div>
-              
-              {/* 네 번째 행 */}
-              <div className="mt-8">
-                <p className="font-semibold text-lg">시뮬레이션 리포트</p>
-              </div>
+              )}
             </div>
           )}
         </DialogContent>
