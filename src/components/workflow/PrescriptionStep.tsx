@@ -162,27 +162,6 @@ const PrescriptionStep = ({
         const parsed = JSON.parse(savedData);
         if (parsed.selectedTdmId) {
           setSelectedTdmId(parsed.selectedTdmId);
-          
-          // selectedTdmId가 복원되면 해당 prescription을 찾아서 폼 데이터 설정
-          const currentPatientPrescriptions = selectedPatient 
-            ? prescriptions.filter(p => p.patientId === selectedPatient.id)
-            : [];
-          const selectedPrescription = currentPatientPrescriptions.find(p => p.id === parsed.selectedTdmId);
-          if (selectedPrescription) {
-            const formDataFromPrescription = {
-              drugName: selectedPrescription.drugName || "",
-              indication: selectedPrescription.indication || "",
-              additionalInfo: selectedPrescription.additionalInfo || "",
-              tdmTarget: selectedPrescription.tdmTarget || "Trough Concentration",
-              tdmTargetValue: selectedPrescription.tdmTargetValue || ""
-            };
-            setFormData(formDataFromPrescription);
-          } else if (parsed.formData) {
-            // prescription을 찾을 수 없는 경우에만 저장된 formData 사용
-            setFormData(parsed.formData);
-          }
-        } else if (parsed.formData) {
-          setFormData(parsed.formData);
         }
         
         if (parsed.newlyAddedTdmId) {
