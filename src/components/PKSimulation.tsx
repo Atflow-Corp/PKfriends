@@ -94,6 +94,8 @@ interface PKSimulationProps {
 
   selectedPatient: Patient | null;
 
+  selectedPrescription?: Prescription | null;
+
   drugAdministrations?: DrugAdministration[];
 
   onDownloadPDF?: () => void;
@@ -170,14 +172,16 @@ interface TdmDatasetRow {
 
 
 
-const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [], onDownloadPDF }: PKSimulationProps) => {
+const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, selectedPrescription, drugAdministrations = [], onDownloadPDF }: PKSimulationProps) => {
 
   const [selectedPatientId, setSelectedPatientId] = useState(selectedPatient?.id || "");
 
-  const [selectedDrug, setSelectedDrug] = useState("");
+  const [selectedDrug, setSelectedDrug] = useState(selectedPrescription?.drugName || "");
 
-  // 투약기록 데이터 계산 (TDMPatientDetails와 동일한 로직)
-  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient?.id);
+  // 투약기록 데이터 계산 (환자&약품명 기준으로 필터링)
+  const patientDrugAdministrations = selectedPatient && selectedPrescription
+    ? drugAdministrations.filter(d => d.patientId === selectedPatient.id && d.drugName === selectedPrescription.drugName)
+    : [];
   const latestAdministration = patientDrugAdministrations.length > 0 
     ? [...patientDrugAdministrations].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())[patientDrugAdministrations.length - 1]
     : null;
@@ -259,10 +263,10 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   ), [selectedPatientId, prescriptions]);
 
   const patientBloodTests = useMemo(() => (
-
-    selectedPatientId ? bloodTests.filter(b => b.patientId === selectedPatientId) : []
-
-  ), [selectedPatientId, bloodTests]);
+    selectedPatientId && selectedPrescription 
+      ? bloodTests.filter(b => b.patientId === selectedPatientId && b.drugName === selectedPrescription.drugName) 
+      : []
+  ), [selectedPatientId, selectedPrescription, bloodTests]);
 
 
 
@@ -328,13 +332,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
 
 
-  // 선택된 약물의 처방 정보 가져오기
-
-  const selectedPrescription = selectedDrug 
-
-    ? patientPrescriptions.find(p => p.drugName === selectedDrug)
-
-    : null;
+  // 선택된 약물의 처방 정보 가져오기 (props에서 전달받은 selectedPrescription 사용)
 
 
 

@@ -14,6 +14,7 @@ interface DrugAdministrationStepProps {
   patients: Patient[];
   prescriptions: Prescription[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
   onAddDrugAdministration: (drugAdministration: DrugAdministration) => void;
   setDrugAdministrations: (records: unknown[]) => void;
   drugAdministrations: DrugAdministration[];
@@ -26,6 +27,7 @@ const DrugAdministrationStep = ({
   patients,
   prescriptions,
   selectedPatient,
+  selectedPrescription,
   onAddDrugAdministration,
   setDrugAdministrations,
   drugAdministrations,
@@ -33,8 +35,8 @@ const DrugAdministrationStep = ({
   onPrev,
   isCompleted
 }: DrugAdministrationStepProps) => {
-  // 2단계에서 입력한 TDM 약물 1개만 사용
-  const tdmDrug = prescriptions.find(p => p.patientId === selectedPatient?.id);
+  // 선택된 처방전 사용 (약품명 기준으로 데이터 분리)
+  const tdmDrug = selectedPrescription;
   const [form, setForm] = useState<Partial<DrugAdministration>>({
     drugName: tdmDrug?.drugName || "",
     route: "",
@@ -83,7 +85,9 @@ const DrugAdministrationStep = ({
     });
   };
 
-  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient?.id);
+  const patientDrugAdministrations = selectedPatient && tdmDrug
+    ? drugAdministrations.filter(d => d.patientId === selectedPatient.id && d.drugName === tdmDrug.drugName)
+    : [];
 
   // localStorage 키 생성
   const getStorageKey = () => selectedPatient ? `tdmfriends:conditions:${selectedPatient.id}` : null;
@@ -179,7 +183,7 @@ const DrugAdministrationStep = ({
                   intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
                 }));
                 const updatedAdministrations = [
-                  ...drugAdministrations.filter(d => d.patientId !== selectedPatient.id),
+                  ...drugAdministrations.filter(d => !(d.patientId === selectedPatient.id && d.drugName === tdmDrug?.drugName)),
                   ...newAdministrations
                 ];
                 setDrugAdministrations(updatedAdministrations);
@@ -202,7 +206,7 @@ const DrugAdministrationStep = ({
                   intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
                 }));
                 const updatedAdministrations = [
-                  ...drugAdministrations.filter(d => d.patientId !== selectedPatient.id),
+                  ...drugAdministrations.filter(d => !(d.patientId === selectedPatient.id && d.drugName === tdmDrug?.drugName)),
                   ...mapped
                 ];
                 setDrugAdministrations(updatedAdministrations);

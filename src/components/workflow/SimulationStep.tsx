@@ -13,6 +13,7 @@ interface SimulationStepProps {
   prescriptions: Prescription[];
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
   drugAdministrations: DrugAdministration[];
   onPrev: () => void;
 }
@@ -22,6 +23,7 @@ const SimulationStep = ({
   prescriptions,
   bloodTests,
   selectedPatient,
+  selectedPrescription,
   drugAdministrations,
   onPrev
 }: SimulationStepProps) => {
@@ -79,8 +81,12 @@ const SimulationStep = ({
   }
 
   const patientPrescriptions = prescriptions.filter(p => p.patientId === selectedPatient.id);
-  const patientBloodTests = bloodTests.filter(b => b.patientId === selectedPatient.id);
-  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient.id);
+  const patientBloodTests = selectedPrescription 
+    ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === selectedPrescription.drugName)
+    : [];
+  const patientDrugAdministrations = selectedPrescription
+    ? drugAdministrations.filter(d => d.patientId === selectedPatient.id && d.drugName === selectedPrescription.drugName)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -103,6 +109,7 @@ const SimulationStep = ({
               prescriptions={prescriptions}
               bloodTests={bloodTests}
               selectedPatient={selectedPatient}
+              selectedPrescription={selectedPrescription}
               drugAdministrations={patientDrugAdministrations}
               onDownloadPDF={handleDownloadPDF}
             />

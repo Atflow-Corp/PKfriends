@@ -23,6 +23,7 @@ interface BloodTestStepProps {
   patients: Patient[];
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
   onAddBloodTest: (bloodTest: BloodTest) => void;
   onDeleteBloodTest: (bloodTestId: string) => void;
   onUpdateBloodTest?: (bloodTestId: string, updates: Partial<BloodTest>) => void;
@@ -49,6 +50,7 @@ const BloodTestStep = ({
   patients,
   bloodTests,
   selectedPatient,
+  selectedPrescription,
   onAddBloodTest,
   onDeleteBloodTest,
   onUpdateBloodTest = () => {},
@@ -168,12 +170,15 @@ const BloodTestStep = ({
     return bsa.toFixed(2);
   };
 
-  // Persist renal info list per patient in localStorage (hydrate first, then allow writes)
+  // 선택된 처방전 사용 (약품명 기준으로 데이터 분리)
+  const tdmDrug = selectedPrescription;
+
+  // Persist renal info list per patient & drug in localStorage (hydrate first, then allow writes)
   useEffect(() => {
-    if (!selectedPatient) return;
+    if (!selectedPatient || !tdmDrug) return;
     setRenalHydrated(false);
     try {
-      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}`);
+      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}:${tdmDrug.drugName}`);
       if (raw) {
         const parsed = JSON.parse(raw) as RenalInfo[];
         setRenalInfoList(parsed);
@@ -185,14 +190,14 @@ const BloodTestStep = ({
     } finally {
       setRenalHydrated(true);
     }
-  }, [selectedPatient?.id]);
+  }, [selectedPatient?.id, tdmDrug?.drugName]);
 
   useEffect(() => {
-    if (!selectedPatient || !renalHydrated) return;
+    if (!selectedPatient || !tdmDrug || !renalHydrated) return;
     try {
-      window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}`, JSON.stringify(renalInfoList));
+      window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}:${tdmDrug.drugName}`, JSON.stringify(renalInfoList));
     } catch (_err) { /* no-op */ }
-  }, [selectedPatient?.id, renalInfoList, renalHydrated]);
+  }, [selectedPatient?.id, tdmDrug?.drugName, renalInfoList, renalHydrated]);
 
   // 혈중 약물 농도 입력 상태
   const [formData, setFormData] = useState({
@@ -206,14 +211,11 @@ const BloodTestStep = ({
   // 모달 상태 추가
   const [showAlertModal, setShowAlertModal] = useState(false);
 
-  const patientBloodTests = selectedPatient 
-    ? bloodTests.filter(b => b.patientId === selectedPatient.id)
+  const patientBloodTests = selectedPatient && tdmDrug
+    ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === tdmDrug.drugName)
     : [];
 
   const today = dayjs().format("YYYY-MM-DD");
-
-  // 2단계에서 입력한 TDM 약물 1개만 사용
-  const tdmDrug = prescriptions.find(p => p.patientId === selectedPatient?.id);
 
   // TDM 약물이 변경될 때마다 단위 업데이트
   useEffect(() => {

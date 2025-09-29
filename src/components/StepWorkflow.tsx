@@ -49,6 +49,7 @@ const StepWorkflow = ({
   setDrugAdministrations,
   onResetWorkflow
 }: StepWorkflowProps) => {
+  const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
 
   const steps = [
@@ -208,9 +209,12 @@ const StepWorkflow = ({
             patients={patients}
             prescriptions={prescriptions}
             selectedPatient={selectedPatient}
+            selectedPrescription={selectedPrescription}
+            setSelectedPrescription={setSelectedPrescription}
             onAddPrescription={(prescription, updatedPrescriptions) => {
               if (prescription) {
                 onAddPrescription(prescription);
+                setSelectedPrescription(prescription);
               } else {
                 // 삭제의 경우 - updatedPrescriptions를 사용하여 prescriptions 상태 업데이트
                 setPrescriptions(updatedPrescriptions);
@@ -220,7 +224,9 @@ const StepWorkflow = ({
             onPrev={handlePrevStep}
             isCompleted={isStepCompleted(2)}
             bloodTests={bloodTests}
+            setBloodTests={setBloodTests}
             drugAdministrations={drugAdministrations}
+            setDrugAdministrations={setDrugAdministrations}
             onClearLaterStepData={clearLaterStepData}
             onResetWorkflow={handleResetWorkflow}
           />
@@ -231,6 +237,7 @@ const StepWorkflow = ({
             patients={patients}
             bloodTests={bloodTests}
             selectedPatient={selectedPatient}
+            selectedPrescription={selectedPrescription}
             onAddBloodTest={onAddBloodTest}
             onDeleteBloodTest={onDeleteBloodTest}
             onNext={handleNextStep}
@@ -245,6 +252,7 @@ const StepWorkflow = ({
             patients={patients}
             prescriptions={prescriptions}
             selectedPatient={selectedPatient}
+            selectedPrescription={selectedPrescription}
             onAddDrugAdministration={onAddDrugAdministration}
             setDrugAdministrations={setDrugAdministrations}
             drugAdministrations={drugAdministrations}
@@ -260,6 +268,7 @@ const StepWorkflow = ({
             prescriptions={prescriptions}
             bloodTests={bloodTests}
             selectedPatient={selectedPatient}
+            selectedPrescription={selectedPrescription}
             drugAdministrations={drugAdministrations}
             onPrev={handlePrevStep}
           />

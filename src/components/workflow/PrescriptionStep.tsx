@@ -31,12 +31,16 @@ interface PrescriptionStepProps {
   patients: Patient[];
   prescriptions: Prescription[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
+  setSelectedPrescription: (prescription: Prescription | null) => void;
   onAddPrescription: (prescription: Prescription | undefined, updatedPrescriptions: Prescription[]) => void;
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
   bloodTests: BloodTest[];
+  setBloodTests: (bloodTests: BloodTest[]) => void;
   drugAdministrations: DrugAdministration[];
+  setDrugAdministrations: (drugAdministrations: DrugAdministration[]) => void;
   onClearLaterStepData: () => void;
   onResetWorkflow: () => void;
 }
@@ -97,12 +101,16 @@ const PrescriptionStep = ({
   patients,
   prescriptions,
   selectedPatient,
+  selectedPrescription,
+  setSelectedPrescription,
   onAddPrescription,
   onNext,
   onPrev,
   isCompleted,
   bloodTests,
+  setBloodTests,
   drugAdministrations,
+  setDrugAdministrations,
   onClearLaterStepData,
   onResetWorkflow
 }: PrescriptionStepProps) => {
@@ -214,6 +222,7 @@ const PrescriptionStep = ({
   // TDM 내역 선택 시 폼에 자동 기입
   const handleTdmSelect = (prescription: Prescription) => {
     setSelectedTdmId(prescription.id);
+    setSelectedPrescription(prescription);
     // 기존 TDM을 선택할 때는 newlyAddedTdmId 클리어
     if (prescription.id !== newlyAddedTdmId) {
       setNewlyAddedTdmId(null);
@@ -512,15 +521,81 @@ const PrescriptionStep = ({
       return;
     }
     
+    // 삭제할 TDM 정보 찾기
+    const prescriptionToDelete = prescriptions.find(p => p.id === id && p.patientId === selectedPatient.id);
+    if (!prescriptionToDelete) return;
+    
+    // 진행 중인 TDM 삭제 확인 얼럿
+    const confirmed = window.confirm(
+      `${prescriptionToDelete.drugName} TDM이 진행 중입니다.\n\n` +
+      `해당 TDM 내역을 삭제 시 관련된 Lab정보와 투약 기록, 시뮬레이션 데이터가 초기화 됩니다.\n\n` +
+      `삭제하시겠습니까?`
+    );
+    
+    if (!confirmed) return;
+    
+    // 해당 약품의 관련 데이터 삭제
+    const drugName = prescriptionToDelete.drugName;
+    
+    // 1. 처방전 데이터 삭제
     const filtered = prescriptions.filter(p => !(p.id === id && p.patientId === selectedPatient.id));
     onAddPrescription(undefined, filtered);
     
-    // 삭제된 TDM이 선택된 상태였다면 선택 해제
-    if (selectedTdmId === id) {
-      setSelectedTdmId(null);
+    // 2. 혈중 약물 농도 데이터 삭제 (해당 약품만)
+    const filteredBloodTests = bloodTests.filter(test => 
+      !(test.patientId === selectedPatient.id && test.drugName === drugName)
+    );
+    setBloodTests(filteredBloodTests);
+    
+    // 3. 투약 기록 데이터 삭제 (해당 약품만)
+    const filteredDrugAdministrations = drugAdministrations.filter(admin => 
+      !(admin.patientId === selectedPatient.id && admin.drugName === drugName)
+    );
+    setDrugAdministrations(filteredDrugAdministrations);
+    
+    // 4. 로컬스토리지에서 신기능 데이터 삭제
+    try {
+      localStorage.removeItem(`tdmfriends:renal:${selectedPatient.id}:${drugName}`);
+    } catch (error) {
+      console.error('Failed to clear renal data from localStorage:', error);
     }
     
-    // 삭제된 TDM이 새로 추가된 TDM이었다면 상태 초기화
+    // 5. 삭제 후 남아있는 최신 TDM 자동 선택
+    const remainingPrescriptions = filtered.filter(p => p.patientId === selectedPatient.id);
+    if (remainingPrescriptions.length > 0) {
+      // 시간순으로 정렬하여 최신 TDM 선택
+      const latestPrescription = remainingPrescriptions.sort((a, b) => {
+        const timeA = parseInt(a.id);
+        const timeB = parseInt(b.id);
+        return timeB - timeA; // 최신순
+      })[0];
+      
+      setSelectedTdmId(latestPrescription.id);
+      setSelectedPrescription(latestPrescription);
+      
+      // 최신 TDM이 신규 추가된 것인지 확인
+      if (isNewlyAddedTdm(latestPrescription.id)) {
+        setNewlyAddedTdmId(latestPrescription.id);
+      } else {
+        setNewlyAddedTdmId(null);
+      }
+      
+      // 폼 데이터 설정
+      const newFormData = {
+        drugName: latestPrescription.drugName || "",
+        indication: latestPrescription.indication || "",
+        additionalInfo: latestPrescription.additionalInfo || "",
+        tdmTarget: latestPrescription.tdmTarget || "Trough Concentration",
+        tdmTargetValue: latestPrescription.tdmTargetValue || ""
+      };
+      setFormData(newFormData);
+    } else {
+      // 남은 TDM이 없으면 선택 상태 초기화
+      setSelectedTdmId(null);
+      setSelectedPrescription(null);
+    }
+    
+    // 6. 삭제된 TDM이 새로 추가된 TDM이었다면 상태 초기화
     if (id === newlyAddedTdmId) {
       setNewlyAddedTdmId(null);
     }
