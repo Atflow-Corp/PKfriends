@@ -13,6 +13,7 @@ interface SimulationStepProps {
   prescriptions: Prescription[];
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
   drugAdministrations: DrugAdministration[];
   onPrev: () => void;
 }
@@ -22,6 +23,7 @@ const SimulationStep = ({
   prescriptions,
   bloodTests,
   selectedPatient,
+  selectedPrescription,
   drugAdministrations,
   onPrev
 }: SimulationStepProps) => {
@@ -55,7 +57,10 @@ const SimulationStep = ({
   // 보고서 생성 확인 핸들러
   const handleConfirmReport = () => {
     setShowReportAlert(false);
-    handleDownloadPDF();
+    // 새 탭에서 보고서 페이지 열기 (동적 URL 구성)
+    const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
+    const reportUrl = `${baseUrl}/report?patientId=${selectedPatient.id}`;
+    window.open(reportUrl, '_blank');
   };
 
   // 보고서 생성 취소 핸들러
@@ -76,8 +81,12 @@ const SimulationStep = ({
   }
 
   const patientPrescriptions = prescriptions.filter(p => p.patientId === selectedPatient.id);
-  const patientBloodTests = bloodTests.filter(b => b.patientId === selectedPatient.id);
-  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient.id);
+  const patientBloodTests = selectedPrescription 
+    ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === selectedPrescription.drugName)
+    : [];
+  const patientDrugAdministrations = selectedPrescription
+    ? drugAdministrations.filter(d => d.patientId === selectedPatient.id && d.drugName === selectedPrescription.drugName)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -100,6 +109,7 @@ const SimulationStep = ({
               prescriptions={prescriptions}
               bloodTests={bloodTests}
               selectedPatient={selectedPatient}
+              selectedPrescription={selectedPrescription}
               drugAdministrations={patientDrugAdministrations}
               onDownloadPDF={handleDownloadPDF}
             />
@@ -124,12 +134,10 @@ const SimulationStep = ({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {selectedPatient.name} 환자의 TDM을 종료할까요?
+              {selectedPatient.name} 환자의 TDM 분석을 종료하시겠습니까?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              분석을 종료하고 보고서를 생성합니다.
-              <br />
-              보고서 생성 후에는 데이터를 수정할 수 없습니다.
+              분석 종료 후 데이터 수정은 불가하며 새 탭에서 PDF 파일로 보고서를 다운로드할 수 있습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

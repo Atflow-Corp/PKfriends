@@ -23,6 +23,7 @@ interface BloodTestStepProps {
   patients: Patient[];
   bloodTests: BloodTest[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
   onAddBloodTest: (bloodTest: BloodTest) => void;
   onDeleteBloodTest: (bloodTestId: string) => void;
   onUpdateBloodTest?: (bloodTestId: string, updates: Partial<BloodTest>) => void;
@@ -49,6 +50,7 @@ const BloodTestStep = ({
   patients,
   bloodTests,
   selectedPatient,
+  selectedPrescription,
   onAddBloodTest,
   onDeleteBloodTest,
   onUpdateBloodTest = () => {},
@@ -168,12 +170,15 @@ const BloodTestStep = ({
     return bsa.toFixed(2);
   };
 
-  // Persist renal info list per patient in localStorage (hydrate first, then allow writes)
+  // 선택된 처방전 사용 (약품명 기준으로 데이터 분리)
+  const tdmDrug = selectedPrescription;
+
+  // Persist renal info list per patient & drug in localStorage (hydrate first, then allow writes)
   useEffect(() => {
-    if (!selectedPatient) return;
+    if (!selectedPatient || !tdmDrug) return;
     setRenalHydrated(false);
     try {
-      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}`);
+      const raw = window.localStorage.getItem(`tdmfriends:renal:${selectedPatient.id}:${tdmDrug.drugName}`);
       if (raw) {
         const parsed = JSON.parse(raw) as RenalInfo[];
         setRenalInfoList(parsed);
@@ -185,14 +190,14 @@ const BloodTestStep = ({
     } finally {
       setRenalHydrated(true);
     }
-  }, [selectedPatient?.id]);
+  }, [selectedPatient?.id, tdmDrug?.drugName]);
 
   useEffect(() => {
-    if (!selectedPatient || !renalHydrated) return;
+    if (!selectedPatient || !tdmDrug || !renalHydrated) return;
     try {
-      window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}`, JSON.stringify(renalInfoList));
+      window.localStorage.setItem(`tdmfriends:renal:${selectedPatient.id}:${tdmDrug.drugName}`, JSON.stringify(renalInfoList));
     } catch (_err) { /* no-op */ }
-  }, [selectedPatient?.id, renalInfoList, renalHydrated]);
+  }, [selectedPatient?.id, tdmDrug?.drugName, renalInfoList, renalHydrated]);
 
   // 혈중 약물 농도 입력 상태
   const [formData, setFormData] = useState({
@@ -206,14 +211,11 @@ const BloodTestStep = ({
   // 모달 상태 추가
   const [showAlertModal, setShowAlertModal] = useState(false);
 
-  const patientBloodTests = selectedPatient 
-    ? bloodTests.filter(b => b.patientId === selectedPatient.id)
+  const patientBloodTests = selectedPatient && tdmDrug
+    ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === tdmDrug.drugName)
     : [];
 
   const today = dayjs().format("YYYY-MM-DD");
-
-  // 2단계에서 입력한 TDM 약물 1개만 사용
-  const tdmDrug = prescriptions.find(p => p.patientId === selectedPatient?.id);
 
   // TDM 약물이 변경될 때마다 단위 업데이트
   useEffect(() => {
@@ -222,7 +224,11 @@ const BloodTestStep = ({
   }, [tdmDrug?.drugName]);
 
   const handleAddRenal = () => {
-    if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) return;
+    // 필수 데이터 입력 체크 (투석여부는 기본값 N이므로 검증에서 제외)
+    if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) {
+      alert("신기능 데이터의 필수 항목을 모두 입력해주세요. (혈청 크레아티닌, 검사일, 투석여부)");
+      return;
+    }
     
     // 투석 여부가 Y일 때 신 대체요법 입력 체크
     if (renalForm.dialysis === "Y" && !renalForm.renalReplacement.trim()) {
@@ -230,14 +236,9 @@ const BloodTestStep = ({
       return;
     }
     
-    // 신기능 데이터 추가 조건 체크
-    if (selectedPatient && selectedPatient.age > 20 && renalInfoList.length > 0) {
+    // 신 대체요법이 CRRT일 때만 모달 띄우기
+    if (renalForm.renalReplacement.toUpperCase() === "CRRT") {
       setShowAlertModal(true);
-      return;
-    }
-    // 조건에 부합하면 모달 띄우기 (데이터 추가 후 실행)
-   if (renalForm.dialysis === "Y" && renalForm.renalReplacement.toUpperCase() === "CRRT") {
-    setShowAlertModal(true);
     }
 
     const newRenalInfo: RenalInfo = {
@@ -246,7 +247,11 @@ const BloodTestStep = ({
       isSelected: true  // 새로 추가된 데이터는 자동으로 선택
     };
     
-    setRenalInfoList([...renalInfoList, newRenalInfo]);
+    // 기존 데이터들의 선택을 해제하고 새 데이터만 선택
+    const updatedRenalInfoList = renalInfoList.map(item => ({ ...item, isSelected: false }));
+    setRenalInfoList([...updatedRenalInfoList, newRenalInfo]);
+    
+    // 신기능 데이터 추가 후 폼 자동 초기화
     setRenalForm({
       creatinine: "",
       date: "",
@@ -254,13 +259,14 @@ const BloodTestStep = ({
       result: "",
       dialysis: "N",
       renalReplacement: "",
-      isBlack: false // 인종정보 필요 시 추가하며 임의로 흑인 아님으로 처리한다.
+      isBlack: false
     });
   };
 
   const handleDeleteRenal = (id: string) => {
     setRenalInfoList(renalInfoList.filter(item => item.id !== id));
   };
+
 
   const handleRenalSelectionChange = (id: string, checked: boolean) => {
     setRenalInfoList(renalInfoList.map(item => ({
@@ -397,7 +403,7 @@ const BloodTestStep = ({
           {/* 신기능 데이터 */}
           <Card>
             <CardHeader>
-              <CardTitle>신기능 데이터 ({renalInfoList.length + 1})</CardTitle>
+              <CardTitle>신기능 데이터 ({renalInfoList.length})</CardTitle>
               <CardDescription>
                 체크박스를 선택하면 해당 신기능 데이터가 시뮬레이션에 반영됩니다.
               </CardDescription>
@@ -451,7 +457,12 @@ const BloodTestStep = ({
                         <TableCell>{renalInfo.formula}</TableCell>
                         <TableCell>{renalInfo.result || "-"}</TableCell>
                         <TableCell>{renalInfo.dialysis}</TableCell>
-                        <TableCell>{renalInfo.renalReplacement || "-"}</TableCell>
+                        <TableCell>
+                          {renalInfo.dialysis === "Y" 
+                            ? (renalInfo.renalReplacement || "-") 
+                            : "N"
+                          }
+                        </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"

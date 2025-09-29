@@ -94,6 +94,8 @@ interface PKSimulationProps {
 
   selectedPatient: Patient | null;
 
+  selectedPrescription?: Prescription | null;
+
   drugAdministrations?: DrugAdministration[];
 
   onDownloadPDF?: () => void;
@@ -170,11 +172,19 @@ interface TdmDatasetRow {
 
 
 
-const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, drugAdministrations = [], onDownloadPDF }: PKSimulationProps) => {
+const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, selectedPrescription, drugAdministrations = [], onDownloadPDF }: PKSimulationProps) => {
 
   const [selectedPatientId, setSelectedPatientId] = useState(selectedPatient?.id || "");
 
-  const [selectedDrug, setSelectedDrug] = useState("");
+  const [selectedDrug, setSelectedDrug] = useState(selectedPrescription?.drugName || "");
+
+  // 투약기록 데이터 계산 (환자&약품명 기준으로 필터링)
+  const patientDrugAdministrations = selectedPatient && selectedPrescription
+    ? drugAdministrations.filter(d => d.patientId === selectedPatient.id && d.drugName === selectedPrescription.drugName)
+    : [];
+  const latestAdministration = patientDrugAdministrations.length > 0 
+    ? [...patientDrugAdministrations].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())[patientDrugAdministrations.length - 1]
+    : null;
 
   const [simulationParams, setSimulationParams] = useState({
 
@@ -212,7 +222,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   const [tdmChartDataInterval, setTdmChartDataInterval] = useState<ChartPoint[]>([]);
 
-  const [tdmExtraSeries, setTdmExtraSeries] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
+  const [tdmExtraSeries, setTdmExtraSeries] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[]; currentMethodSeries: { time: number; value: number }[] } | null>(null);
 
   const [tdmExtraSeriesDose, setTdmExtraSeriesDose] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
 
@@ -253,10 +263,10 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
   ), [selectedPatientId, prescriptions]);
 
   const patientBloodTests = useMemo(() => (
-
-    selectedPatientId ? bloodTests.filter(b => b.patientId === selectedPatientId) : []
-
-  ), [selectedPatientId, bloodTests]);
+    selectedPatientId && selectedPrescription 
+      ? bloodTests.filter(b => b.patientId === selectedPatientId && b.drugName === selectedPrescription.drugName) 
+      : []
+  ), [selectedPatientId, selectedPrescription, bloodTests]);
 
 
 
@@ -322,13 +332,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
 
 
-  // 선택된 약물의 처방 정보 가져오기
-
-  const selectedPrescription = selectedDrug 
-
-    ? patientPrescriptions.find(p => p.drugName === selectedDrug)
-
-    : null;
+  // 선택된 약물의 처방 정보 가져오기 (props에서 전달받은 selectedPrescription 사용)
 
 
 
@@ -594,13 +598,19 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
       setTdmChartDataMain(toChartData(cached.data, cached.dataset || []));
 
+      const currentMethodData = (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72);
+      console.log('PKSimulation currentMethodSeries (cached):', currentMethodData);
+      console.log('PKSimulation PRED_CONC raw:', cached.data?.PRED_CONC);
+
       setTdmExtraSeries({
 
         ipredSeries: (cached.data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
 
         predSeries: (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
 
-        observedSeries: (cached.dataset || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+        observedSeries: (cached.dataset || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72),
+
+        currentMethodSeries: currentMethodData
 
       });
 
@@ -952,7 +962,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
           .map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72))
+          .filter((p) => p.time >= 0 && p.time <= 72)),
+
+        currentMethodSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
+
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 }))
+
+          .filter((p) => p.time >= 0 && p.time <= 72)
 
       });
 
@@ -1208,7 +1224,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
             predSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
 
-            observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+            observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72),
+
+            currentMethodSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72)
 
           });
 
@@ -1552,6 +1570,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
             .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
+            .filter(p => p.time >= 0 && p.time <= 72),
+
+          currentMethodSeries: (data?.PRED_CONC || [])
+
+            .map((p: { time: number; PRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.PRED ?? 0) || 0) }))
+
             .filter(p => p.time >= 0 && p.time <= 72)
 
         });
@@ -1722,11 +1746,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
           // 투약기록 데이터
 
-          currentDosage={getTdmData(selectedDrug).dosage}
+          latestAdministration={latestAdministration}
 
-          currentUnit={getTdmData(selectedDrug).unit}
-
-          currentFrequency={getTdmData(selectedDrug).frequency}
+          drugAdministrations={drugAdministrations}
 
         />
 
@@ -1934,6 +1956,10 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
                 targetMax={getTargetBand().max}
 
+                drugAdministrations={drugAdministrations}
+
+                isEmptyChart={false}
+
                 recentAUC={tdmResult?.AUC_before}
 
                 recentMax={tdmResult?.CMAX_before}
@@ -1952,6 +1978,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
                 observedSeries={tdmExtraSeries?.observedSeries}
 
+                currentMethodSeries={tdmExtraSeries?.currentMethodSeries}
+
                 chartColor={card.type === 'dosage' ? 'pink' : 'green'}
 
                 // TDM 내역 데이터
@@ -1964,11 +1992,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
                 // 투약기록 데이터
 
-                currentDosage={getTdmData(selectedDrug).dosage}
-
-                currentUnit={getTdmData(selectedDrug).unit}
-
-                currentFrequency={getTdmData(selectedDrug).frequency}
+                latestAdministration={latestAdministration}
 
                 // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
 

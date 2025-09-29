@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { Pill, ArrowRight, ArrowLeft, CheckCircle, Plus } from "lucide-react";
 
@@ -32,12 +31,16 @@ interface PrescriptionStepProps {
   patients: Patient[];
   prescriptions: Prescription[];
   selectedPatient: Patient | null;
+  selectedPrescription: Prescription | null;
+  setSelectedPrescription: (prescription: Prescription | null) => void;
   onAddPrescription: (prescription: Prescription | undefined, updatedPrescriptions: Prescription[]) => void;
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
   bloodTests: BloodTest[];
+  setBloodTests: (bloodTests: BloodTest[]) => void;
   drugAdministrations: DrugAdministration[];
+  setDrugAdministrations: (drugAdministrations: DrugAdministration[]) => void;
   onClearLaterStepData: () => void;
   onResetWorkflow: () => void;
 }
@@ -98,12 +101,16 @@ const PrescriptionStep = ({
   patients,
   prescriptions,
   selectedPatient,
+  selectedPrescription,
+  setSelectedPrescription,
   onAddPrescription,
   onNext,
   onPrev,
   isCompleted,
   bloodTests,
+  setBloodTests,
   drugAdministrations,
+  setDrugAdministrations,
   onClearLaterStepData,
   onResetWorkflow
 }: PrescriptionStepProps) => {
@@ -115,28 +122,6 @@ const PrescriptionStep = ({
     tdmTargetValue: ""
   });
 
-  const [showWorkflowAlert, setShowWorkflowAlert] = useState(false);
-
-  // 진행 중인 워크플로우가 있는지 확인하는 함수
-  const hasOngoingWorkflow = (patient: Patient | null): boolean => {
-    if (!patient) return false;
-    // 해당 환자에게 prescriptions 데이터가 있는지 확인
-    const patientPrescriptions = prescriptions.filter(p => p.patientId === patient.id);
-    return patientPrescriptions.length > 0;
-  };
-
-  // 워크플로우 확인 로직은 StepWorkflow에서 처리하므로 제거
-
-  // 새로 시작 버튼 클릭 핸들러
-  const handleNewStart = () => {
-    onResetWorkflow();
-    setShowWorkflowAlert(false);
-  };
-
-  // 계속 진행 버튼 클릭 핸들러
-  const handleContinue = () => {
-    setShowWorkflowAlert(false);
-  };
 
   const [selectedTdmId, setSelectedTdmId] = useState<string | null>(null);
   const [newlyAddedTdmId, setNewlyAddedTdmId] = useState<string | null>(null);
@@ -147,7 +132,7 @@ const PrescriptionStep = ({
   };
 
 
-  // 과거 데이터(테스트 데이터)가 아니면 모두 신규 데이터로 판단
+  // 새로 추가된 TDM인지 확인 (temp로 시작하지 않는 ID는 모두 신규)
   const isNewlyAddedTdm = (prescriptionId: string): boolean => {
     return !isTempTdm(prescriptionId);
   };
@@ -185,27 +170,6 @@ const PrescriptionStep = ({
         const parsed = JSON.parse(savedData);
         if (parsed.selectedTdmId) {
           setSelectedTdmId(parsed.selectedTdmId);
-          
-          // selectedTdmId가 복원되면 해당 prescription을 찾아서 폼 데이터 설정
-          const currentPatientPrescriptions = selectedPatient 
-            ? prescriptions.filter(p => p.patientId === selectedPatient.id)
-            : [];
-          const selectedPrescription = currentPatientPrescriptions.find(p => p.id === parsed.selectedTdmId);
-          if (selectedPrescription) {
-            const formDataFromPrescription = {
-              drugName: selectedPrescription.drugName || "",
-              indication: selectedPrescription.indication || "",
-              additionalInfo: selectedPrescription.additionalInfo || "",
-              tdmTarget: selectedPrescription.tdmTarget || "Trough Concentration",
-              tdmTargetValue: selectedPrescription.tdmTargetValue || ""
-            };
-            setFormData(formDataFromPrescription);
-          } else if (parsed.formData) {
-            // prescription을 찾을 수 없는 경우에만 저장된 formData 사용
-            setFormData(parsed.formData);
-          }
-        } else if (parsed.formData) {
-          setFormData(parsed.formData);
         }
         
         if (parsed.newlyAddedTdmId) {
@@ -258,6 +222,7 @@ const PrescriptionStep = ({
   // TDM 내역 선택 시 폼에 자동 기입
   const handleTdmSelect = (prescription: Prescription) => {
     setSelectedTdmId(prescription.id);
+    setSelectedPrescription(prescription);
     // 기존 TDM을 선택할 때는 newlyAddedTdmId 클리어
     if (prescription.id !== newlyAddedTdmId) {
       setNewlyAddedTdmId(null);
@@ -407,18 +372,98 @@ const PrescriptionStep = ({
     if (!selectedPatient) return;
     
     
-    // 신규 TDM은 1개만 허용 - 기존 신규 TDM이 있는지 확인
-    const newlyAddedCount = getNewlyAddedTdmCount();
-    if (newlyAddedCount > 0) {
-      const confirmed = window.confirm("이미 신규 TDM이 등록되어 있습니다. 삭제 후 새로운 TDM을 추가하시겠습니까?");
+    // 신규 TDM은 약물별로 1개만 허용 - 해당 약물의 기존 신규 TDM 개수 확인
+    const existingNewTdmsForDrug = prescriptions.filter(p => 
+      p.patientId === selectedPatient.id && 
+      p.drugName === formData.drugName && 
+      isNewlyAddedTdm(p.id)
+    );
+    
+    const hasExistingNewTdmForDrug = existingNewTdmsForDrug.length > 0;
+    
+    console.log('Debug - hasExistingNewTdmForDrug:', hasExistingNewTdmForDrug);
+    console.log('Debug - formData.drugName:', formData.drugName);
+    console.log('Debug - selectedPatient.id:', selectedPatient.id);
+    console.log('Debug - prescriptions for patient:', prescriptions.filter(p => p.patientId === selectedPatient.id));
+    console.log('Debug - newlyAddedTdmId:', newlyAddedTdmId);
+    console.log('Debug - existingNewTdmsForDrug:', existingNewTdmsForDrug);
+    
+    if (hasExistingNewTdmForDrug) {
+      const confirmed = window.confirm(`${formData.drugName}에 대한 신규 TDM이 이미 등록되어 있습니다. 삭제 후 새로운 TDM을 추가하시겠습니까?`);
       if (!confirmed) {
         return;
       }
-      // 기존 신규 TDM만 삭제 (과거 데이터는 유지)
-      const filtered = prescriptions.filter(p => !(p.patientId === selectedPatient.id && isNewlyAddedTdm(p.id)));
-      onAddPrescription(undefined, filtered);
+      // 해당 약물의 기존 신규 TDM만 삭제 (과거 데이터는 유지)
+      console.log('Debug - Before filtering, prescriptions:', prescriptions);
+      
+      // 같은 환자, 같은 약물의 모든 신규 TDM 삭제
+      console.log('Debug - existingNewTdmsForDrug:', existingNewTdmsForDrug);
+      
+      const filtered = prescriptions.filter(p => {
+        // 다른 환자의 데이터는 모두 유지
+        if (p.patientId !== selectedPatient.id) {
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 다른 환자 - 유지`);
+          return true;
+        }
+        
+        // 다른 약물의 데이터는 모두 유지
+        if (p.drugName !== formData.drugName) {
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 다른 약물 - 유지`);
+          return true;
+        }
+        
+        // 같은 환자, 같은 약물인 경우
+        const isNewTdm = isNewlyAddedTdm(p.id);
+        if (isNewTdm) {
+          // 신규 TDM인 경우 - 모두 삭제
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 신규 TDM - 삭제`);
+          return false;
+        } else {
+          // 과거 데이터는 모두 유지
+          console.log(`Debug - Prescription ${p.id} (${p.drugName}): 과거 데이터 - 유지`);
+          return true;
+        }
+      });
+      
+      console.log('Debug - filtered prescriptions:', filtered);
+      
+      // 기존 신규 TDM 삭제 후 새 TDM 추가
+      const newPrescription: Prescription = {
+        id: Date.now().toString(),
+        patientId: selectedPatient.id,
+        drugName: formData.drugName,
+        dosage: 0,
+        unit: "",
+        frequency: "",
+        startDate: new Date(),
+        route: "",
+        prescribedBy: "",
+        indication: formData.indication,
+        tdmTarget: formData.tdmTarget,
+        tdmTargetValue: formData.tdmTargetValue,
+        additionalInfo: formData.additionalInfo
+      };
+      
+      const finalPrescriptions = [...filtered, newPrescription];
+      onAddPrescription(undefined, finalPrescriptions);
+      
+      // 신규 추가된 TDM ID 설정 및 즉시 선택
+      setNewlyAddedTdmId(newPrescription.id);
+      setSelectedTdmId(newPrescription.id);
+      
+      // 폼 초기화
+      setFormData({
+        drugName: "",
+        indication: "",
+        additionalInfo: "",
+        tdmTarget: "",
+        tdmTargetValue: ""
+      });
+      
+      return; // 함수 종료
     }
     
+    // 기존 신규 TDM이 없는 경우의 로직
     // 추가정보 필수 입력 체크
     if (formData.drugName === "Vancomycin" && 
         formData.indication === "Neurosurgical patients/Korean" && 
@@ -476,15 +521,81 @@ const PrescriptionStep = ({
       return;
     }
     
+    // 삭제할 TDM 정보 찾기
+    const prescriptionToDelete = prescriptions.find(p => p.id === id && p.patientId === selectedPatient.id);
+    if (!prescriptionToDelete) return;
+    
+    // 진행 중인 TDM 삭제 확인 얼럿
+    const confirmed = window.confirm(
+      `${prescriptionToDelete.drugName} TDM이 진행 중입니다.\n\n` +
+      `해당 TDM 내역을 삭제 시 관련된 Lab정보와 투약 기록, 시뮬레이션 데이터가 초기화 됩니다.\n\n` +
+      `삭제하시겠습니까?`
+    );
+    
+    if (!confirmed) return;
+    
+    // 해당 약품의 관련 데이터 삭제
+    const drugName = prescriptionToDelete.drugName;
+    
+    // 1. 처방전 데이터 삭제
     const filtered = prescriptions.filter(p => !(p.id === id && p.patientId === selectedPatient.id));
     onAddPrescription(undefined, filtered);
     
-    // 삭제된 TDM이 선택된 상태였다면 선택 해제
-    if (selectedTdmId === id) {
-      setSelectedTdmId(null);
+    // 2. 혈중 약물 농도 데이터 삭제 (해당 약품만)
+    const filteredBloodTests = bloodTests.filter(test => 
+      !(test.patientId === selectedPatient.id && test.drugName === drugName)
+    );
+    setBloodTests(filteredBloodTests);
+    
+    // 3. 투약 기록 데이터 삭제 (해당 약품만)
+    const filteredDrugAdministrations = drugAdministrations.filter(admin => 
+      !(admin.patientId === selectedPatient.id && admin.drugName === drugName)
+    );
+    setDrugAdministrations(filteredDrugAdministrations);
+    
+    // 4. 로컬스토리지에서 신기능 데이터 삭제
+    try {
+      localStorage.removeItem(`tdmfriends:renal:${selectedPatient.id}:${drugName}`);
+    } catch (error) {
+      console.error('Failed to clear renal data from localStorage:', error);
     }
     
-    // 삭제된 TDM이 새로 추가된 TDM이었다면 상태 초기화
+    // 5. 삭제 후 남아있는 최신 TDM 자동 선택
+    const remainingPrescriptions = filtered.filter(p => p.patientId === selectedPatient.id);
+    if (remainingPrescriptions.length > 0) {
+      // 시간순으로 정렬하여 최신 TDM 선택
+      const latestPrescription = remainingPrescriptions.sort((a, b) => {
+        const timeA = parseInt(a.id);
+        const timeB = parseInt(b.id);
+        return timeB - timeA; // 최신순
+      })[0];
+      
+      setSelectedTdmId(latestPrescription.id);
+      setSelectedPrescription(latestPrescription);
+      
+      // 최신 TDM이 신규 추가된 것인지 확인
+      if (isNewlyAddedTdm(latestPrescription.id)) {
+        setNewlyAddedTdmId(latestPrescription.id);
+      } else {
+        setNewlyAddedTdmId(null);
+      }
+      
+      // 폼 데이터 설정
+      const newFormData = {
+        drugName: latestPrescription.drugName || "",
+        indication: latestPrescription.indication || "",
+        additionalInfo: latestPrescription.additionalInfo || "",
+        tdmTarget: latestPrescription.tdmTarget || "Trough Concentration",
+        tdmTargetValue: latestPrescription.tdmTargetValue || ""
+      };
+      setFormData(newFormData);
+    } else {
+      // 남은 TDM이 없으면 선택 상태 초기화
+      setSelectedTdmId(null);
+      setSelectedPrescription(null);
+    }
+    
+    // 6. 삭제된 TDM이 새로 추가된 TDM이었다면 상태 초기화
     if (id === newlyAddedTdmId) {
       setNewlyAddedTdmId(null);
     }
@@ -707,34 +818,6 @@ const PrescriptionStep = ({
         </CardContent>
       </Card>
 
-      {/* 워크플로우 진행 중 알림 다이얼로그 */}
-      <Dialog open={showWorkflowAlert} onOpenChange={setShowWorkflowAlert}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold">
-              진행 중인 TDM 분석 워크플로우가 있습니다.
-            </DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-base">
-            {selectedPatient?.createdAt.toISOString().split('T')[0]}에 등록된 {selectedPatient?.name}환자의 워크플로우가 있습니다. 분석을 계속 진행할까요?
-          </DialogDescription>
-          <div className="flex gap-3 mt-6">
-            <Button 
-              variant="outline" 
-              onClick={handleNewStart}
-              className="flex-1"
-            >
-              새로 시작
-            </Button>
-            <Button 
-              onClick={handleContinue}
-              className="flex-1 bg-black text-white"
-            >
-              계속 진행
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
