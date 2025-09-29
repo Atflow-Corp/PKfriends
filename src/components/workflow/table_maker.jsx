@@ -1,5 +1,155 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// 주입시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
+const InjectionTimeInput = ({ row, onUpdate, isDarkMode }) => {
+  const [localValue, setLocalValue] = useState(row.injectionTime);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // 외부에서 row.injectionTime이 변경되면 로컬 값도 업데이트 (편집 중이 아닐 때만)
+  useEffect(() => {
+    if (!isEditing) {
+      setLocalValue(row.injectionTime);
+    }
+  }, [row.injectionTime, isEditing]);
+
+  const handleChange = (e) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleFocus = (e) => {
+    setIsEditing(true);
+    // 포커스 시 커서 위치를 끝으로 설정
+    e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+  };
+
+  const handleBlur = (e) => {
+    setIsEditing(false);
+    // 포커스 아웃 시에만 실제 데이터 업데이트
+    onUpdate(row.id, "injectionTime", e.target.value);
+  };
+
+  const handleKeyDown = (e) => {
+    // Enter 키로 편집 완료
+    if (e.key === 'Enter') {
+      e.target.blur();
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      value={localValue}
+      onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      style={{
+        border: "none",
+        background: "transparent",
+        textAlign: "center",
+        width: "100%",
+        color: isDarkMode ? "#e0e6f0" : undefined
+      }}
+    />
+  );
+};
+
+// 투약 시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
+const TimeInput = ({ row, onUpdate, isDarkMode }) => {
+  const [localValue, setLocalValue] = useState(row.timeStr);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // 외부에서 row.timeStr이 변경되면 로컬 값도 업데이트 (편집 중이 아닐 때만)
+  useEffect(() => {
+    if (!isEditing) {
+      setLocalValue(row.timeStr);
+    }
+  }, [row.timeStr, isEditing]);
+
+  const handleChange = (e) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleFocus = (e) => {
+    setIsEditing(true);
+    // 포커스 시 전체 텍스트 선택
+    e.target.select();
+  };
+
+  const handleBlur = (e) => {
+    setIsEditing(false);
+    // 포커스 아웃 시에만 실제 데이터 업데이트
+    let cleanValue = e.target.value.toString().replace(/undefined/g, '').trim();
+    
+    // 연속된 숫자 형식 (YYYYMMDDHHMM) 파싱
+    if (/^\d{12}$/.test(cleanValue)) {
+      // "20259181200" 형식인 경우
+      const year = cleanValue.substring(0, 4);
+      const month = cleanValue.substring(4, 6);
+      const day = cleanValue.substring(6, 8);
+      const hour = cleanValue.substring(8, 10);
+      const minute = cleanValue.substring(10, 12);
+      cleanValue = `${year}-${month}-${day} ${hour}:${minute}`;
+    }
+    // 연속된 숫자 형식 (YYYYMMDDHHM) 파싱 (분이 한자리인 경우)
+    else if (/^\d{11}$/.test(cleanValue)) {
+      // "20259181205" 형식인 경우
+      const year = cleanValue.substring(0, 4);
+      const month = cleanValue.substring(4, 6);
+      const day = cleanValue.substring(6, 8);
+      const hour = cleanValue.substring(8, 10);
+      const minute = cleanValue.substring(10, 11);
+      cleanValue = `${year}-${month}-${day} ${hour}:0${minute}`;
+    }
+    // 연속된 숫자 형식 (YYYYMMDDHH) 파싱 (분이 없는 경우)
+    else if (/^\d{10}$/.test(cleanValue)) {
+      // "2025918120" 형식인 경우
+      const year = cleanValue.substring(0, 4);
+      const month = cleanValue.substring(4, 6);
+      const day = cleanValue.substring(6, 8);
+      const hour = cleanValue.substring(8, 10);
+      cleanValue = `${year}-${month}-${day} ${hour}:00`;
+    }
+    // "YYYY MM DD HH:MM" 형식을 "YYYY-MM-DD HH:MM" 형식으로 변환
+    else if (cleanValue.includes(' ') && cleanValue.includes(':') && !cleanValue.includes('-')) {
+      // "YYYY MM DD HH:MM" 형식인 경우
+      const parts = cleanValue.split(' ');
+      if (parts.length === 4) {
+        const [year, month, day, time] = parts;
+        cleanValue = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${time}`;
+      }
+    }
+    
+    onUpdate(row.id, "timeStr", cleanValue);
+  };
+
+  const handleKeyDown = (e) => {
+    // Enter 키로 편집 완료
+    if (e.key === 'Enter') {
+      e.target.blur();
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      value={localValue}
+      onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      placeholder="YYYY-MM-DD HH:MM"
+      style={{
+        border: "none",
+        background: "transparent",
+        textAlign: "center",
+        width: "100%",
+        color: isDarkMode ? "#e0e6f0" : undefined
+      }}
+    />
+  );
+};
+
 function TablePage(props) {
   // 투약경로를 국문으로 변환하는 헬퍼 함수
   const convertRouteToKorean = (route) => {
@@ -85,7 +235,7 @@ function TablePage(props) {
           timeStr,
           amount: `${adm.dose} ${adm.unit || 'mg'}`,
           route: adm.route,
-          injectionTime: adm.isIVInfusion ? (adm.infusionTime ?? '-') : '-',
+          injectionTime: adm.isIVInfusion ? (adm.infusionTime !== undefined ? String(adm.infusionTime) : '0') : '-',
           isTitle: false
         };
       }).sort((a,b) => a.time - b.time);
@@ -141,7 +291,20 @@ function TablePage(props) {
     }
     if (props.initialTableData) {
       skipPropagateRef.current = true; // 부모에서 내려온 테이블 데이터 적용 시 전파 차단
-      setTableData(props.initialTableData);
+      
+      // 부모로부터 받은 데이터에서 주입시간 보존 로직
+      const preservedTableData = props.initialTableData.map(row => {
+        if (!row.isTitle && row.route === "정맥" && (!row.injectionTime || row.injectionTime === "-")) {
+          // 정맥 투여인데 주입시간이 없거나 "-"인 경우 "0"으로 설정
+          return { ...row, injectionTime: "0" };
+        } else if (!row.isTitle && row.route !== "정맥" && row.injectionTime === "0") {
+          // 정맥이 아닌데 주입시간이 "0"인 경우 "-"로 설정
+          return { ...row, injectionTime: "-" };
+        }
+        return row;
+      });
+      
+      setTableData(preservedTableData);
       changed = true;
     }
     if (props.initialIsTableGenerated !== undefined) {
@@ -157,30 +320,9 @@ function TablePage(props) {
   const routeOptions = [
     { value: "경구", label: "경구 (oral)" },
     { value: "정맥", label: "정맥 (IV)" },
-    { value: "피하", label: "피하 (SC)" },
-    { value: "수액", label: "수액 (IV infusion)" }
+    { value: "피하", label: "피하 (SC)" }
   ];
 
-  // 약물별 기본 투약용량 정의
-  const getDefaultDosage = (drugName, route, dosageForm) => {
-    if (!drugName || !route) return "";
-    
-    const drug = drugName.toLowerCase();
-    const routeLower = route.toLowerCase();
-    
-    if (drug === "vancomycin") {
-      if (routeLower === "정맥" || routeLower === "iv") return "10";
-    } else if (drug === "cyclosporin") {
-      if (routeLower === "정맥" || routeLower === "iv") return "10";
-      else if (routeLower === "경구" || routeLower === "oral") {
-        const form = (dosageForm || "capsule/tablet").toLowerCase();
-        if (form === "oral liquid") return "10";
-        return "25";
-      }
-    }
-    
-    return "";
-  };
 
   // 약물별 기본 단위 정의
   const getDefaultUnit = (drugName, route) => {
@@ -216,7 +358,7 @@ function TablePage(props) {
     setCurrentCondition(prev => {
       const newCondition = { ...prev, [field]: value };
       
-      // 투약 경로가 변경되면 기본 투약용량과 단위 설정
+      // 투약 경로가 변경되면 제형만 설정 (투약용량 자동 설정 제거)
       if (field === "route" && props.tdmDrug?.drugName) {
         // Cyclosporin 경구일 때 제형 기본값 지정
         if ((props.tdmDrug.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName?.toLowerCase() === "cyclosporine") && (value === "경구" || value === "oral")) {
@@ -224,19 +366,10 @@ function TablePage(props) {
         } else {
           newCondition.dosageForm = "";
         }
-        const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, value, newCondition.dosageForm);
+        // 단위만 설정하고 투약용량은 사용자가 직접 입력하도록 함
         const defaultUnit = getDefaultUnit(props.tdmDrug.drugName, value);
-        
-        if (defaultDosage) {
-          newCondition.dosage = defaultDosage;
+        if (defaultUnit) {
           newCondition.unit = defaultUnit;
-        }
-      }
-      // 제형이 변경되면 (Cyclosporin 경구) 기본 투약용량 갱신
-      if (field === "dosageForm" && props.tdmDrug?.drugName) {
-        const defaultDosage = getDefaultDosage(props.tdmDrug.drugName, newCondition.route, value);
-        if (defaultDosage) {
-          newCondition.dosage = defaultDosage;
         }
       }
       
@@ -466,18 +599,83 @@ function TablePage(props) {
         if (row.id === id) {
           const updatedRow = { ...row, [field]: value };
           
-          // 투약 경로가 변경되면 기본 투약용량과 단위 설정
-          if (field === "route" && props.tdmDrug?.drugName) {
-            const defaultDosage = getDefaultDosage(
-              props.tdmDrug.drugName,
-              value,
-              (row.dosageForm) || (currentCondition && currentCondition.dosageForm)
-            );
-            const defaultUnit = getDefaultUnit(props.tdmDrug.drugName, value);
+          // 투약 시간 수정 시 날짜와 시간 정보도 함께 업데이트
+          if (field === "timeStr" && value) {
+            // "undefined" 문자열 제거 (모든 발생 제거)
+            let cleanValue = value.toString().replace(/undefined/g, '').trim();
             
-            if (defaultDosage) {
-              updatedRow.amount = `${defaultDosage} ${defaultUnit}`;
+            // 연속된 숫자 형식 (YYYYMMDDHHMM) 파싱
+            if (/^\d{12}$/.test(cleanValue)) {
+              // "20259181200" 형식인 경우
+              const year = cleanValue.substring(0, 4);
+              const month = cleanValue.substring(4, 6);
+              const day = cleanValue.substring(6, 8);
+              const hour = cleanValue.substring(8, 10);
+              const minute = cleanValue.substring(10, 12);
+              cleanValue = `${year}-${month}-${day} ${hour}:${minute}`;
             }
+            // 연속된 숫자 형식 (YYYYMMDDHHM) 파싱 (분이 한자리인 경우)
+            else if (/^\d{11}$/.test(cleanValue)) {
+              // "20259181205" 형식인 경우
+              const year = cleanValue.substring(0, 4);
+              const month = cleanValue.substring(4, 6);
+              const day = cleanValue.substring(6, 8);
+              const hour = cleanValue.substring(8, 10);
+              const minute = cleanValue.substring(10, 11);
+              cleanValue = `${year}-${month}-${day} ${hour}:0${minute}`;
+            }
+            // 연속된 숫자 형식 (YYYYMMDDHH) 파싱 (분이 없는 경우)
+            else if (/^\d{10}$/.test(cleanValue)) {
+              // "2025918120" 형식인 경우
+              const year = cleanValue.substring(0, 4);
+              const month = cleanValue.substring(4, 6);
+              const day = cleanValue.substring(6, 8);
+              const hour = cleanValue.substring(8, 10);
+              cleanValue = `${year}-${month}-${day} ${hour}:00`;
+            }
+            // "YYYY MM DD HH:MM" 형식을 "YYYY-MM-DD HH:MM" 형식으로 변환
+            else if (cleanValue.includes(' ') && cleanValue.includes(':') && !cleanValue.includes('-')) {
+              // "YYYY MM DD HH:MM" 형식인 경우
+              const parts = cleanValue.split(' ');
+              if (parts.length === 4) {
+                const [year, month, day, time] = parts;
+                cleanValue = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${time}`;
+              }
+            }
+            
+            // "YYYY-MM-DD HH:MM" 형식인지 확인
+            if (cleanValue.includes(' ') && cleanValue.includes('-') && cleanValue.includes(':')) {
+              const parts = cleanValue.split(' ');
+              if (parts.length === 2) {
+                updatedRow.date = parts[0]; // "YYYY-MM-DD"
+                updatedRow.time = parts[1]; // "HH:MM"
+              }
+            } else if (cleanValue.includes(':')) {
+              // "HH:MM" 형식만 있는 경우 기존 날짜 유지
+              updatedRow.time = cleanValue;
+              if (!updatedRow.date) {
+                updatedRow.date = new Date().toISOString().split('T')[0];
+              }
+            }
+            
+            // 정리된 값으로 업데이트
+            updatedRow.timeStr = cleanValue;
+          }
+          
+          // 투약 경로가 변경되면 단위와 주입시간 설정 (투약용량 자동 설정 제거)
+          if (field === "route") {
+            // 투약용량 자동 설정 제거 - 사용자가 직접 입력하도록 함
+            
+            // 정맥으로 변경 시 주입시간을 0으로 자동 설정
+            if (value === "정맥") {
+              updatedRow.injectionTime = "0";
+            } else {
+              // 정맥이 아닌 경우 주입시간을 "-"로 설정
+              updatedRow.injectionTime = "-";
+            }
+            
+            // 디버깅용 로그
+            console.log(`투약 경로 변경: ${row.route} → ${value}, 주입시간: ${row.injectionTime} → ${updatedRow.injectionTime}`);
           }
           
           return updatedRow;
@@ -487,21 +685,156 @@ function TablePage(props) {
     );
   };
 
+  // 투약 시간 조정 함수 (1분 단위)
+  const adjustTime = (id, direction) => {
+    setTableData(prev => 
+      prev.map(row => {
+        if (row.id === id && !row.isTitle) {
+          // 현재 timeStr에서 날짜와 시간 분리
+          let currentTimeStr = row.timeStr || '';
+          currentTimeStr = currentTimeStr.toString().replace(/undefined/g, '').trim();
+          
+          let currentDate, currentTime;
+          
+          // "YYYY-MM-DD HH:MM" 형식인지 확인
+          if (currentTimeStr.includes(' ') && currentTimeStr.includes('-') && currentTimeStr.includes(':')) {
+            const parts = currentTimeStr.split(' ');
+            if (parts.length === 2) {
+              currentDate = parts[0]; // "YYYY-MM-DD"
+              currentTime = parts[1]; // "HH:MM"
+            }
+          } else if (currentTimeStr.includes(':')) {
+            // "HH:MM" 형식만 있는 경우
+            currentTime = currentTimeStr;
+            // 기존 날짜 정보가 있으면 사용, 없으면 오늘 날짜 사용
+            currentDate = row.date || new Date().toISOString().split('T')[0];
+          } else {
+            // 유효하지 않은 형식이면 기본값 설정
+            currentDate = new Date().toISOString().split('T')[0];
+            currentTime = '09:00';
+          }
+          
+          // 시간 파싱 (HH:MM 형식)
+          const timeParts = currentTime.split(':');
+          if (timeParts.length >= 2) {
+            let hours = parseInt(timeParts[0], 10);
+            let minutes = parseInt(timeParts[1], 10);
+            
+            // NaN 체크 및 범위 검증
+            if (isNaN(hours) || isNaN(minutes)) {
+              hours = 9;
+              minutes = 0;
+            }
+            
+            // 시간 범위 검증 (0-23, 0-59)
+            hours = Math.max(0, Math.min(23, hours));
+            minutes = Math.max(0, Math.min(59, minutes));
+            
+            // 현재 날짜와 시간으로 Date 객체 생성
+            const currentDateTime = new Date(`${currentDate}T${currentTime}`);
+            
+            // 1분 추가 또는 감소
+            const adjustedDateTime = new Date(currentDateTime);
+            adjustedDateTime.setMinutes(adjustedDateTime.getMinutes() + (direction === 'plus' ? 1 : -1));
+            
+            // 새로운 날짜와 시간 정보 추출
+            const newYear = adjustedDateTime.getFullYear();
+            const newMonth = (adjustedDateTime.getMonth() + 1).toString().padStart(2, '0');
+            const newDay = adjustedDateTime.getDate().toString().padStart(2, '0');
+            const newHours = adjustedDateTime.getHours().toString().padStart(2, '0');
+            const newMinutes = adjustedDateTime.getMinutes().toString().padStart(2, '0');
+            
+            // 새로운 날짜와 시간 문자열
+            const newDateStr = `${newYear}-${newMonth}-${newDay}`;
+            const newTimeStr = `${newHours}:${newMinutes}`;
+            const newFullTimeStr = `${newDateStr} ${newTimeStr}`;
+            
+            return { 
+              ...row, 
+              timeStr: newFullTimeStr,
+              date: newDateStr,
+              time: newTimeStr
+            };
+          } else {
+            // 시간 형식이 맞지 않으면 기본값 설정
+            const today = new Date();
+            const defaultDate = today.toISOString().split('T')[0];
+            const defaultTime = '09:00';
+            return { 
+              ...row, 
+              timeStr: `${defaultDate} ${defaultTime}`,
+              date: defaultDate,
+              time: defaultTime
+            };
+          }
+        }
+        return row;
+      })
+    );
+  };
+
   // 행 추가 함수
   const addRow = () => {
-    const newId = Math.max(0, ...tableData.filter(row => !row.isTitle).map(row => row.id)) + 1;
-    setTableData(prev => [
-      ...prev,
-      {
-        id: newId,
+    const newId = Math.max(0, ...tableData.filter(row => !row.isTitle).map(row => parseInt(row.id) || 0)) + 1;
+    
+    // 기존 투약 기록에서 마지막 투약 시간 찾기
+    const lastDoseRow = tableData
+      .filter(row => !row.isTitle && row.timeStr)
+      .sort((a, b) => {
+        // timeStr을 기준으로 정렬 (YYYY-MM-DD HH:MM 형식)
+        if (a.timeStr && b.timeStr) {
+          const dateA = new Date(a.timeStr);
+          const dateB = new Date(b.timeStr);
+          return dateB.getTime() - dateA.getTime(); // 최신순 정렬
+        }
+        return 0;
+      })[0];
+    
+    let nextDateTime;
+    if (lastDoseRow && lastDoseRow.timeStr) {
+      // 마지막 투약 시간에서 12시간 후로 계산 (기본 간격)
+      const lastDateTime = new Date(lastDoseRow.timeStr);
+      nextDateTime = new Date(lastDateTime.getTime() + 12 * 60 * 60 * 1000); // 12시간 추가
+    } else {
+      // 기존 투약 기록이 없으면 오늘 오전 9시로 설정
+      nextDateTime = new Date();
+      nextDateTime.setHours(9, 0, 0, 0);
+    }
+    
+    const nextDate = nextDateTime.toISOString().split('T')[0];
+    const nextTime = nextDateTime.toTimeString().slice(0, 5);
+    
+    // 기존 투약 기록에서 가장 많이 사용된 투약 용량 찾기
+    const existingAmounts = tableData
+      .filter(row => !row.isTitle && row.amount && row.amount !== "0")
+      .map(row => row.amount);
+    
+    let defaultAmount = "500 mg"; // 기본값
+    if (existingAmounts.length > 0) {
+      // 가장 많이 사용된 용량을 기본값으로 설정
+      const amountCounts = {};
+      existingAmounts.forEach(amount => {
+        amountCounts[amount] = (amountCounts[amount] || 0) + 1;
+      });
+      const mostCommonAmount = Object.keys(amountCounts).reduce((a, b) => 
+        amountCounts[a] > amountCounts[b] ? a : b
+      );
+      defaultAmount = mostCommonAmount;
+    }
+    
+    const newRow = {
+      id: String(newId),
         round: `${newId}회차`,
-        time: "",
-        amount: 0,
+      date: nextDate,
+      time: nextTime,
+      timeStr: `${nextDate} ${nextTime}`,
+      amount: defaultAmount,
         route: "경구",
         injectionTime: "-",
         isTitle: false
-      }
-    ]);
+    };
+    
+    setTableData(prev => [...prev, newRow]);
   };
 
   // 체크박스 선택 처리
@@ -623,10 +956,8 @@ function TablePage(props) {
                 • 처방 내역을 입력한 후 [처방 내역 입력 완료] 버튼을 클릭하면 하단에 자동으로 ‘상세 투약 기록’ 테이블이 생성됩니다.
               </div>
               <div>
-                • 처방 내역 변경이 있었다면 실제 처방에 일치하도록 새로운 처방 내역을 입력해야 합니다.
+                • 처방 내역 변경이 있었다면 실제 처방에 일치하도록 새로운 처방 내역을 입력해야 합니다. (예: 1월 4일은 경구 투약, 1월 5일부터는 정맥 주입한 경우 처방 내역을 2개 등록)
                 </div>
-               <div>  (예: 1월 4일은 경구 투약, 1월 5일부터는 정맥 주입한 경우 처방 내역을 2개 등록)
-              </div>
             </div>
 
                        {/* 현재 조건 입력 박스 */}
@@ -687,8 +1018,8 @@ function TablePage(props) {
                   }}
                 >
                   <option value="">제형을 선택해주세요</option>
-                  <option value="capsule/tablet">캡슐/정제 (25 mg)</option>
-                  <option value="oral liquid">경구현탁/액제 (10 mg)</option>
+                  <option value="capsule/tablet">캡슐/정제</option>
+                  <option value="oral liquid">경구현탁/액제</option>
                 </select>
               </div>
             )}
@@ -1034,7 +1365,7 @@ function TablePage(props) {
                           padding: "12px",
                           border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                           textAlign: "center",
-                          width: "19%",
+                          width: "12%",
                           color: isDarkMode ? "#e0e6f0" : undefined,
                           background: isDarkMode && row.isTitle ? "#2d3650" : undefined
                         }}>
@@ -1060,25 +1391,78 @@ function TablePage(props) {
                           padding: "12px",
                           border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                           textAlign: "center",
-                          width: "19%",
+                          width: "25%",
                           color: isDarkMode ? "#e0e6f0" : undefined,
                           background: isDarkMode && row.isTitle ? "#2d3650" : undefined
                         }}>
                           {row.isTitle ? (
                             row.time
                           ) : (
-                            <input
-                              type="text"
-                              value={row.timeStr}
-                              onChange={(e) => handleTableEdit(row.id, "timeStr", e.target.value)}
-                              style={{
-                                border: "none",
-                                background: "transparent",
-                                textAlign: "center",
-                                width: "100%",
-                                color: isDarkMode ? "#e0e6f0" : undefined
-                              }}
-                            />
+                            <div style={{ display: "flex", gap: "2px", alignItems: "center" }}>
+                            <div style={{ flex: 1 }}>
+                              <TimeInput
+                                row={row}
+                                onUpdate={handleTableEdit}
+                                isDarkMode={isDarkMode}
+                              />
+                            </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => adjustTime(row.id, 'plus')}
+                                  style={{
+                                    width: "20px",
+                                    height: "14px",
+                                    border: "1px solid #d1d5db",
+                                    borderRadius: "2px 2px 0 0",
+                                    background: isDarkMode ? "#374151" : "#f9fafb",
+                                    color: isDarkMode ? "#e0e6f0" : "#374151",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    padding: "0"
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.target.style.background = isDarkMode ? "#4b5563" : "#e5e7eb";
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.target.style.background = isDarkMode ? "#374151" : "#f9fafb";
+                                  }}
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => adjustTime(row.id, 'minus')}
+                                  style={{
+                                    width: "20px",
+                                    height: "14px",
+                                    border: "1px solid #d1d5db",
+                                    borderRadius: "0 0 2px 2px",
+                                    background: isDarkMode ? "#374151" : "#f9fafb",
+                                    color: isDarkMode ? "#e0e6f0" : "#374151",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "10px",
+                                    fontWeight: "bold",
+                                    padding: "0"
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.target.style.background = isDarkMode ? "#4b5563" : "#e5e7eb";
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.target.style.background = isDarkMode ? "#374151" : "#f9fafb";
+                                  }}
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </td>
                         {/* 투약 용량 */}
@@ -1086,7 +1470,7 @@ function TablePage(props) {
                           padding: "12px",
                           border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                           textAlign: "center",
-                          width: "19%",
+                          width: "18%",
                           color: isDarkMode ? "#e0e6f0" : undefined,
                           background: isDarkMode && row.isTitle ? "#2d3650" : undefined
                         }}>
@@ -1112,7 +1496,7 @@ function TablePage(props) {
                           padding: "12px",
                           border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                           textAlign: "center",
-                          width: "19%",
+                          width: "18%",
                           color: isDarkMode ? "#e0e6f0" : undefined,
                           background: isDarkMode && row.isTitle ? "#2d3650" : undefined
                         }}>
@@ -1142,24 +1526,17 @@ function TablePage(props) {
                           padding: "12px",
                           border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                           textAlign: "center",
-                          width: "19%",
+                          width: "18%",
                           color: isDarkMode ? "#e0e6f0" : undefined,
                           background: isDarkMode && row.isTitle ? "#2d3650" : undefined
                         }}>
                           {row.isTitle ? (
                             row.injectionTime
                           ) : (
-                            <input
-                              type="text"
-                              value={row.injectionTime}
-                              onChange={(e) => handleTableEdit(row.id, "injectionTime", e.target.value)}
-                              style={{
-                                border: "none",
-                                background: "transparent",
-                                textAlign: "center",
-                                width: "100%",
-                                color: isDarkMode ? "#e0e6f0" : undefined
-                              }}
+                            <InjectionTimeInput
+                              row={row}
+                              onUpdate={handleTableEdit}
+                              isDarkMode={isDarkMode}
                             />
                           )}
                         </td>
@@ -1168,7 +1545,7 @@ function TablePage(props) {
                           padding: "12px",
                           border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                           textAlign: "center",
-                          width: "5%",
+                          width: "10%",
                           color: isDarkMode ? "#e0e6f0" : undefined,
                           background: isDarkMode && row.isTitle ? "#2d3650" : undefined
                         }}>

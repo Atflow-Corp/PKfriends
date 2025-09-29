@@ -197,7 +197,7 @@ const DrugAdministrationStep = ({
                   dose: Number(row.amount.split(" ")[0]),
                   unit: row.amount.split(" ")[1] || "mg",
                   isIVInfusion: row.route === "정맥",
-                  infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
+                  infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : (row.route === "정맥" ? 0 : undefined),
                   administrationTime: undefined,
                   intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
                 }));
