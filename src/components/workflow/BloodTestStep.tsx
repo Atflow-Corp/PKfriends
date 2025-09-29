@@ -222,7 +222,11 @@ const BloodTestStep = ({
   }, [tdmDrug?.drugName]);
 
   const handleAddRenal = () => {
-    if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) return;
+    // 필수 데이터 입력 체크 (투석여부는 기본값 N이므로 검증에서 제외)
+    if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) {
+      alert("신기능 데이터의 필수 항목을 모두 입력해주세요. (혈청 크레아티닌, 검사일, 투석여부)");
+      return;
+    }
     
     // 투석 여부가 Y일 때 신 대체요법 입력 체크
     if (renalForm.dialysis === "Y" && !renalForm.renalReplacement.trim()) {
@@ -230,14 +234,9 @@ const BloodTestStep = ({
       return;
     }
     
-    // 신기능 데이터 추가 조건 체크
-    if (selectedPatient && selectedPatient.age > 20 && renalInfoList.length > 0) {
+    // 신 대체요법이 CRRT일 때만 모달 띄우기
+    if (renalForm.renalReplacement.toUpperCase() === "CRRT") {
       setShowAlertModal(true);
-      return;
-    }
-    // 조건에 부합하면 모달 띄우기 (데이터 추가 후 실행)
-   if (renalForm.dialysis === "Y" && renalForm.renalReplacement.toUpperCase() === "CRRT") {
-    setShowAlertModal(true);
     }
 
     const newRenalInfo: RenalInfo = {
@@ -246,7 +245,11 @@ const BloodTestStep = ({
       isSelected: true  // 새로 추가된 데이터는 자동으로 선택
     };
     
-    setRenalInfoList([...renalInfoList, newRenalInfo]);
+    // 기존 데이터들의 선택을 해제하고 새 데이터만 선택
+    const updatedRenalInfoList = renalInfoList.map(item => ({ ...item, isSelected: false }));
+    setRenalInfoList([...updatedRenalInfoList, newRenalInfo]);
+    
+    // 신기능 데이터 추가 후 폼 자동 초기화
     setRenalForm({
       creatinine: "",
       date: "",
@@ -254,13 +257,14 @@ const BloodTestStep = ({
       result: "",
       dialysis: "N",
       renalReplacement: "",
-      isBlack: false // 인종정보 필요 시 추가하며 임의로 흑인 아님으로 처리한다.
+      isBlack: false
     });
   };
 
   const handleDeleteRenal = (id: string) => {
     setRenalInfoList(renalInfoList.filter(item => item.id !== id));
   };
+
 
   const handleRenalSelectionChange = (id: string, checked: boolean) => {
     setRenalInfoList(renalInfoList.map(item => ({
@@ -397,7 +401,7 @@ const BloodTestStep = ({
           {/* 신기능 데이터 */}
           <Card>
             <CardHeader>
-              <CardTitle>신기능 데이터 ({renalInfoList.length + 1})</CardTitle>
+              <CardTitle>신기능 데이터 ({renalInfoList.length})</CardTitle>
               <CardDescription>
                 체크박스를 선택하면 해당 신기능 데이터가 시뮬레이션에 반영됩니다.
               </CardDescription>
