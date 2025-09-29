@@ -1730,6 +1730,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
           latestAdministration={latestAdministration}
 
+          drugAdministrations={drugAdministrations}
+
         />
 
       </div>
@@ -1935,6 +1937,10 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                 targetMin={getTargetBand().min}
 
                 targetMax={getTargetBand().max}
+
+                drugAdministrations={drugAdministrations}
+
+                isEmptyChart={false}
 
                 recentAUC={tdmResult?.AUC_before}
 

@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Legend } from "recharts";
 import { useMemo } from "react";
 import { ChartColumnIncreasing } from "lucide-react";
 
@@ -37,6 +37,13 @@ interface PKChartsProps {
     unit: string;
     intervalHours?: number;
   } | null;
+  drugAdministrations?: Array<{
+    id: string;
+    patientId: string;
+    drugName: string;
+    date: string; // YYYY-MM-DD
+    time: string; // HH:mm
+  }>;
 }
 
 const PKCharts = ({
@@ -59,8 +66,101 @@ const PKCharts = ({
   tdmTarget,
   tdmTargetValue,
   // 투약기록 데이터
-  latestAdministration
+  latestAdministration,
+  drugAdministrations = []
 }: PKChartsProps) => {
+  // 첫 투약 시간 기준점 설정
+  const getFirstDoseDateTime = () => {
+    if (!drugAdministrations || drugAdministrations.length === 0) return new Date();
+    
+    const sortedDoses = drugAdministrations
+      .filter(d => d.drugName === selectedDrug)
+      .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
+    
+    return sortedDoses.length > 0 
+      ? new Date(`${sortedDoses[0].date}T${sortedDoses[0].time}`)
+      : new Date();
+  };
+
+  // x축 틱 데이터 생성 (실제 투약 일시 + 예측 투약 일시)
+  const xAxisTicks = useMemo(() => {
+    if (!drugAdministrations || drugAdministrations.length === 0) {
+      return [0, 8, 16, 24, 32, 40, 48, 56, 64, 72]; // 기본 틱
+    }
+    
+    const firstDoseDateTime = getFirstDoseDateTime();
+    const selectedDrugDoses = drugAdministrations
+      .filter(d => d.drugName === selectedDrug)
+      .map(d => {
+        const doseDateTime = new Date(`${d.date}T${d.time}`);
+        const hoursFromFirst = (doseDateTime.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
+        return {
+          time: hoursFromFirst,
+          dateTime: doseDateTime
+        };
+      })
+      .sort((a, b) => a.time - b.time);
+    
+    // 실제 투약 시간들
+    const actualDoseTimes = selectedDrugDoses.map(d => d.time);
+    
+    // 마지막 투약 시간 이후의 예측 투약 시간들 계산
+    if (selectedDrugDoses.length > 0) {
+      const lastDoseTime = Math.max(...actualDoseTimes);
+      const intervalHours = selectedDrugDoses.length > 1 
+        ? selectedDrugDoses[1].time - selectedDrugDoses[0].time // 첫 두 투약 간격
+        : 12; // 기본 12시간 간격
+      
+      // 마지막 투약 시간부터 72시간까지 예측 투약 시간 추가
+      const predictedTimes = [];
+      let nextPredictedTime = lastDoseTime + intervalHours;
+      
+      while (nextPredictedTime <= 72) {
+        predictedTimes.push(nextPredictedTime);
+        nextPredictedTime += intervalHours;
+      }
+      
+      // 실제 투약 시간과 예측 투약 시간 합치기
+      return [...actualDoseTimes, ...predictedTimes].sort((a, b) => a - b);
+    }
+    
+    return actualDoseTimes;
+  }, [drugAdministrations, selectedDrug]);
+
+  // 마지막 실제 투약 시간 계산 (구분선용)
+  const lastActualDoseTime = useMemo(() => {
+    if (!drugAdministrations || drugAdministrations.length === 0) return null;
+    
+    const selectedDrugDoses = drugAdministrations
+      .filter(d => d.drugName === selectedDrug)
+      .map(d => {
+        const doseDateTime = new Date(`${d.date}T${d.time}`);
+        const firstDoseDateTime = getFirstDoseDateTime();
+        return (doseDateTime.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
+      })
+      .sort((a, b) => a - b);
+    
+    return selectedDrugDoses.length > 0 ? Math.max(...selectedDrugDoses) : null;
+  }, [drugAdministrations, selectedDrug]);
+
+  // 간단한 날짜/시간 포맷터 (24시간 방식)
+  const formatDateTimeForTick = (timeInHours: number) => {
+    if (!drugAdministrations || drugAdministrations.length === 0) {
+      return `${timeInHours}h`;
+    }
+    
+    const firstDoseDateTime = getFirstDoseDateTime();
+    const targetDateTime = new Date(firstDoseDateTime.getTime() + timeInHours * 60 * 60 * 1000);
+    
+    return targetDateTime.toLocaleString('ko-KR', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).replace(/\. /g, '.');
+  };
+
   // Merge separated series if provided; otherwise fall back to simulationData
   const data: SimulationDataPoint[] = useMemo(() => {
     if ((ipredSeries && ipredSeries.length) || (predSeries && predSeries.length) || (observedSeries && observedSeries.length)) {
@@ -247,8 +347,8 @@ const PKCharts = ({
             // 사이클로스포린 해석 가이드
             <>
               <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를 의미합니다.</p>
-              <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
-              <p><strong>(3)</strong> 회색 점선은 평균 약물 농도를, 파란색 range는 TDM목표치 범위를 의미합니다.</p>
+              <p><strong>(2)</strong> 일반 대조군 차트와 유사한 패턴을 보이고 TDM목표치 범위를 유지한다면 현용법이 적절하다고 해석할 수 있습니다.</p>
+              <p><strong>(3)</strong> 차트에서 빨간 점선을 기점으로 예측 데이터를 확인할 수 있습니다.</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 {/* 선택한 TDM 목표가 (3)의 range안에 모두 있다면 현 용법이 적절하다는 의미로 해석될 수 있습니다. */}
               </p>
@@ -258,17 +358,33 @@ const PKCharts = ({
       </div>
 
 
-      {/* 범례 */}
+
+      {/* 범례 - 스크롤에 영향받지 않음 */}
       <div className="flex justify-center gap-6 mb-4">
-      <div className="flex items-center gap-2">
-          <div className="w-4 h-0.5 bg-blue-500"></div>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-0.5 bg-blue-500"></div>
           <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-0.5 bg-orange-500"></div>
-          <span className="text-sm text-gray-600">일반 대조군 결과</span>
+          <div className="w-8 h-0.5 bg-orange-500"></div>
+          <span className="text-sm text-gray-600">일반 대조군</span>
         </div>
-
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+          <span className="text-sm text-gray-600">실제 혈중 농도</span>
+        </div>
+        {typeof averageConcentration === 'number' && (
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-0.5 border-dashed border-t-2 border-gray-500"></div>
+            <span className="text-sm text-gray-600">평균 농도</span>
+          </div>
+        )}
+        {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-4 bg-blue-500 bg-opacity-20"></div>
+            <span className="text-sm text-gray-600">TDM 목표치</span>
+          </div>
+        )}
       </div>
 
       {/* 메인 그래프 - 가로 스크롤 가능 */}
@@ -287,8 +403,8 @@ const PKCharts = ({
                   domain={[0, 72]}
                   type="number"
                   scale="linear"
-                  ticks={[0, 8, 16, 24, 32, 40, 48, 56, 64, 72]}
-                  tickFormatter={(value) => `${value}h`}
+                  ticks={xAxisTicks}
+                  tickFormatter={formatDateTimeForTick}
                 />
                 <YAxis 
                   label={{ value: 'Concentration(mg/L)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
@@ -301,6 +417,16 @@ const PKCharts = ({
                 {/* 목표 범위 (파란색 영역) */}
                 {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
                   <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
+                )}
+                {/* 실제 투약과 예측 투약 구분선 */}
+                {lastActualDoseTime && (
+                  <ReferenceLine 
+                    x={lastActualDoseTime} 
+                    stroke="#ff6b6b" 
+                    strokeWidth={2} 
+                    strokeDasharray="5 5"
+                    label={{ value: "실제 투약", position: "top", offset: 10 }}
+                  />
                 )}
                 {/* 평균 약물 농도 점선 */}
                 {typeof averageConcentration === 'number' && (
@@ -331,6 +457,21 @@ const PKCharts = ({
                     
                     if (hasObserved && data.actualTestTime) {
                       return <strong>검사 시간: {data.actualTestTime}</strong>;
+                    }
+                    
+                    // 실제 투약 일시로 변환
+                    if (drugAdministrations && drugAdministrations.length > 0) {
+                      const firstDoseDateTime = getFirstDoseDateTime();
+                      const targetDateTime = new Date(firstDoseDateTime.getTime() + Number(value) * 60 * 60 * 1000);
+                      const dateTimeStr = targetDateTime.toLocaleString('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                      }).replace(/\. /g, '.');
+                      return <strong>투약 일시: {dateTimeStr}</strong>;
                     }
                     
                     return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
@@ -365,8 +506,8 @@ const PKCharts = ({
                     domain={[0, 72]}
                     type="number"
                     scale="linear"
-                    ticks={[0, 8, 16, 24, 32, 40, 48, 56, 64, 72]}
-                    tickFormatter={(value) => `${value}h`}
+                    ticks={xAxisTicks}
+                    tickFormatter={formatDateTimeForTick}
                   />
                   <YAxis 
                     label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
@@ -379,6 +520,16 @@ const PKCharts = ({
                   {/* 목표 범위 (파란색 영역) */}
                   {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
                     <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
+                  )}
+                  {/* 실제 투약과 예측 투약 구분선 */}
+                  {lastActualDoseTime && (
+                    <ReferenceLine 
+                      x={lastActualDoseTime} 
+                      stroke="#ff6b6b" 
+                      strokeWidth={2} 
+                      strokeDasharray="5 5"
+                      label={{ value: "실제 투약", position: "top", offset: 10 }}
+                    />
                   )}
                   {/* 평균 약물 농도 점선 */}
                   {typeof averageConcentration === 'number' && (
@@ -403,16 +554,31 @@ const PKCharts = ({
                         name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'
                       ];
                     }}
-                    labelFormatter={(value, payload) => {
-                      const data = payload && payload[0] && payload[0].payload;
-                      const hasObserved = data && data.observed !== null && data.observed !== undefined;
-                      
-                      if (hasObserved && data.actualTestTime) {
-                        return <strong>검사 시간: {data.actualTestTime}</strong>;
-                      }
-                      
-                      return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
-                    }}
+                  labelFormatter={(value, payload) => {
+                    const data = payload && payload[0] && payload[0].payload;
+                    const hasObserved = data && data.observed !== null && data.observed !== undefined;
+                    
+                    if (hasObserved && data.actualTestTime) {
+                      return <strong>검사 시간: {data.actualTestTime}</strong>;
+                    }
+                    
+                    // 실제 투약 일시로 변환
+                    if (drugAdministrations && drugAdministrations.length > 0) {
+                      const firstDoseDateTime = getFirstDoseDateTime();
+                      const targetDateTime = new Date(firstDoseDateTime.getTime() + Number(value) * 60 * 60 * 1000);
+                      const dateTimeStr = targetDateTime.toLocaleString('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                      }).replace(/\. /g, '.');
+                      return <strong>투약 일시: {dateTimeStr}</strong>;
+                    }
+                    
+                    return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
+                  }}
                   />
                 {/* 대조군 (PRED_CONC, 주황색) */}
                 <Line 
@@ -450,7 +616,7 @@ const PKCharts = ({
         
         {/* 고정된 X축 라벨 */}
         <div className="flex justify-center mt-2">
-          <div className="text-sm text-gray-600 font-medium">Time (hours)</div>
+          <div className="text-sm text-gray-600 font-medium">투약 일시</div>
         </div>
       </div>
 
