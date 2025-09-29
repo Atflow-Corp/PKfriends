@@ -10,6 +10,7 @@ import Footer from '@/components/ui/Footer';
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const TDMReportPage = lazy(() => import('./components/TDMReportPage'));
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ function App() {
             }>
               <Routes>
                 <Route path="/" element={<Index onLogout={handleLogout} />} />
+                <Route path="/report" element={<TDMReportPage />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
