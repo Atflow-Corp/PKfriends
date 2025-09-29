@@ -203,7 +203,7 @@ const TDMPatientDetails = ({
               <div className="font-medium">
                 {latestBloodTest?.dialysis === 'Y' ? 
                   latestBloodTest?.renalReplacement || <span className="text-gray-400 italic">미입력</span> : 
-                  <span className="text-gray-400 italic">미입력</span>
+                  'N'
                 }
               </div>
             </div>
@@ -213,7 +213,7 @@ const TDMPatientDetails = ({
                 {/* 임시 데이터: 빈값으로 설정, 추후 백엔드에서 연결 예정 */}
                 {latestBloodTest?.dialysis === 'Y' && latestBloodTest?.renalReplacement === 'CRRT' ? 
                   '고위험군' : 
-                  <span className="text-gray-400 italic">미입력</span>
+                  <span className="text-gray-400 italic">-</span>
                 }
               </div>
             </div>

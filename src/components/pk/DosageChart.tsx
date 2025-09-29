@@ -33,9 +33,11 @@ interface DosageChartProps {
   tdmTarget?: string;
   tdmTargetValue?: string;
   // 투약기록 데이터
-  currentDosage?: number;
-  currentUnit?: string;
-  currentFrequency?: string;
+  latestAdministration?: {
+    dose: number;
+    unit: string;
+    intervalHours?: number;
+  } | null;
   // 빈 차트 상태 관리
   isEmptyChart?: boolean;
   selectedButton?: string;
@@ -64,9 +66,7 @@ const DosageChart = ({
   tdmTarget,
   tdmTargetValue,
   // 투약기록 데이터
-  currentDosage,
-  currentUnit,
-  currentFrequency,
+  latestAdministration,
   // 빈 차트 상태 관리
   isEmptyChart = false,
   selectedButton
@@ -502,13 +502,13 @@ const DosageChart = ({
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
                   <p className="leading-relaxed">
-                    <span className="font-semibold">현 용법 {currentFrequency || '시간'} 간격으로 {currentDosage || 0}{currentUnit || 'mg'} 투약 시</span> Steady State까지 
-                    TDM 목표인 <span className="font-semibold text-blue-600 dark:text-blue-400">{tdmTarget || '목표 유형'}</span>는 
+                    <span className="font-semibold">현 용법 {latestAdministration?.intervalHours || '시간'} 간격으로 {latestAdministration?.dose || 0}{latestAdministration?.unit || 'mg'} 투약 시</span> Steady State까지 
+                    TDM 목표 <span className="font-semibold text-blue-600 dark:text-blue-400">{tdmTarget || '목표 유형'}</span>는 
                     <span className="font-semibold text-red-600 dark:text-red-400"> {getTdmTargetValue().value}</span>으로 
                     {isWithinTargetRange() ? (
-                      <>적절한 용법입니다.</>
+                      <> 적절한 용법입니다.</>
                     ) : (
-                      <>치료 범위를 벗어납니다.</>
+                      <> 치료 범위를 벗어납니다.</>
                     )}
                   </p>
       </div>

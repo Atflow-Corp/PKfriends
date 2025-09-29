@@ -176,6 +176,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   const [selectedDrug, setSelectedDrug] = useState("");
 
+  // 투약기록 데이터 계산 (TDMPatientDetails와 동일한 로직)
+  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === selectedPatient?.id);
+  const latestAdministration = patientDrugAdministrations.length > 0 
+    ? [...patientDrugAdministrations].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())[patientDrugAdministrations.length - 1]
+    : null;
+
   const [simulationParams, setSimulationParams] = useState({
 
     dose: "",
@@ -1722,11 +1728,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
           // 투약기록 데이터
 
-          currentDosage={getTdmData(selectedDrug).dosage}
-
-          currentUnit={getTdmData(selectedDrug).unit}
-
-          currentFrequency={getTdmData(selectedDrug).frequency}
+          latestAdministration={latestAdministration}
 
         />
 
@@ -1964,11 +1966,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
                 // 투약기록 데이터
 
-                currentDosage={getTdmData(selectedDrug).dosage}
-
-                currentUnit={getTdmData(selectedDrug).unit}
-
-                currentFrequency={getTdmData(selectedDrug).frequency}
+                latestAdministration={latestAdministration}
 
                 // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
 

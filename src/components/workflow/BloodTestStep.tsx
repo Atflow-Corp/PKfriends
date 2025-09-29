@@ -455,7 +455,12 @@ const BloodTestStep = ({
                         <TableCell>{renalInfo.formula}</TableCell>
                         <TableCell>{renalInfo.result || "-"}</TableCell>
                         <TableCell>{renalInfo.dialysis}</TableCell>
-                        <TableCell>{renalInfo.renalReplacement || "-"}</TableCell>
+                        <TableCell>
+                          {renalInfo.dialysis === "Y" 
+                            ? (renalInfo.renalReplacement || "-") 
+                            : "N"
+                          }
+                        </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
