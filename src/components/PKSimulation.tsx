@@ -218,7 +218,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
   const [tdmChartDataInterval, setTdmChartDataInterval] = useState<ChartPoint[]>([]);
 
-  const [tdmExtraSeries, setTdmExtraSeries] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
+  const [tdmExtraSeries, setTdmExtraSeries] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[]; currentMethodSeries: { time: number; value: number }[] } | null>(null);
 
   const [tdmExtraSeriesDose, setTdmExtraSeriesDose] = useState<{ ipredSeries: { time: number; value: number }[]; predSeries: { time: number; value: number }[]; observedSeries: { time: number; value: number }[] } | null>(null);
 
@@ -600,13 +600,19 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
       setTdmChartDataMain(toChartData(cached.data, cached.dataset || []));
 
+      const currentMethodData = (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72);
+      console.log('PKSimulation currentMethodSeries (cached):', currentMethodData);
+      console.log('PKSimulation PRED_CONC raw:', cached.data?.PRED_CONC);
+
       setTdmExtraSeries({
 
         ipredSeries: (cached.data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
 
         predSeries: (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
 
-        observedSeries: (cached.dataset || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+        observedSeries: (cached.dataset || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72),
+
+        currentMethodSeries: currentMethodData
 
       });
 
@@ -958,7 +964,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
           .map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72))
+          .filter((p) => p.time >= 0 && p.time <= 72)),
+
+        currentMethodSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
+
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 }))
+
+          .filter((p) => p.time >= 0 && p.time <= 72)
 
       });
 
@@ -1214,7 +1226,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
 
             predSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
 
-            observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72)
+            observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72),
+
+            currentMethodSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72)
 
           });
 
@@ -1557,6 +1571,12 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
             .filter(r => r.EVID === 0 && r.DV != null)
 
             .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+
+            .filter(p => p.time >= 0 && p.time <= 72),
+
+          currentMethodSeries: (data?.PRED_CONC || [])
+
+            .map((p: { time: number; PRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.PRED ?? 0) || 0) }))
 
             .filter(p => p.time >= 0 && p.time <= 72)
 
@@ -1959,6 +1979,8 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, dr
                 predSeries={tdmExtraSeries?.predSeries}
 
                 observedSeries={tdmExtraSeries?.observedSeries}
+
+                currentMethodSeries={tdmExtraSeries?.currentMethodSeries}
 
                 chartColor={card.type === 'dosage' ? 'pink' : 'green'}
 

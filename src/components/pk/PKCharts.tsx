@@ -227,6 +227,10 @@ const PKCharts = ({
     }));
   }, [data, averageConcentration]);
 
+  // 디버깅: observed 데이터 확인
+  console.log('PKCharts observedSeries:', observedSeries);
+  console.log('PKCharts data with observed:', data.filter(d => d.observed !== null && d.observed !== undefined));
+
   // Y축 상한: 반코마이신 데이터에 최적화된 범위 (0~0.2 mg/L)
   const yMax = useMemo(() => {
     const dataMax = (data || []).reduce((m, p) => {
@@ -337,11 +341,9 @@ const PKCharts = ({
             // 반코마이신 해석 가이드
             <>
               <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를 의미합니다.</p>
-              <p><strong>(2)</strong> 빨간색 점은 혈액 검사 결과 측정된 실제 혈중 약물 농도입니다.</p>
-              <p><strong>(3)</strong> AUC 데이터는 차트의 누적 면적이 목표 범위 내 있을 때 용법이 적절하다고 해석할 수 있습니다.</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                * 현 용법이 적절하다면 일반 대조군의 차트 면적과 유사한 패턴을 보여야 합니다.
-              </p>
+              <p><strong>(2)</strong> AUC 데이터는 차트의 누적 면적이 목표 범위 내 있을 때 용법이 적절하다고 해석할 수 있습니다.</p>
+              <p><strong>(3)</strong> 현 용법이 적절하다면 일반 대조군의 차트 면적과 유사한 패턴을 보여야 합니다.</p>
+             
             </>
           ) : (
             // 사이클로스포린 해석 가이드
@@ -357,13 +359,11 @@ const PKCharts = ({
             </div>
       </div>
 
-
-
       {/* 범례 - 스크롤에 영향받지 않음 */}
       <div className="flex justify-center gap-6 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
+          <span className="text-sm text-gray-600">{currentPatientName || '환자'}의 현용법</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-orange-500"></div>
@@ -373,7 +373,8 @@ const PKCharts = ({
           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
           <span className="text-sm text-gray-600">실제 혈중 농도</span>
         </div>
-        {typeof averageConcentration === 'number' && (
+        {/* 평균 농도 - Area Chart가 아닐 때만 표시 */}
+        {!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' && (
           <div className="flex items-center gap-2">
             <div className="w-8 h-0.5 border-dashed border-t-2 border-gray-500"></div>
             <span className="text-sm text-gray-600">평균 농도</span>
@@ -393,8 +394,8 @@ const PKCharts = ({
         <div className="h-96 overflow-x-auto overflow-y-hidden">
           <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
              <ResponsiveContainer width="100%" height="100%">
-               {selectedDrug === 'Vancomycin' ? (
-                 // 반코마이신: Area Chart
+               {selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc') ? (
+                 // 반코마이신 + AUC: Area Chart
                  <AreaChart data={dataWithAverage}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
@@ -494,6 +495,15 @@ const PKCharts = ({
                     fill="#3b82f6"
                     fillOpacity={0.3}
                     name="환자 현용법"
+                  />
+                  {/* 실제 측정값 (빨간 점) */}
+                  <Line 
+                    type="monotone" 
+                    dataKey="observed" 
+                    stroke="#dc2626" 
+                    strokeWidth={0}
+                    dot={{ fill: "#dc2626", r: 4 }}
+                    name="실제 혈중 농도"
                   />
                 </AreaChart>
                ) : (
