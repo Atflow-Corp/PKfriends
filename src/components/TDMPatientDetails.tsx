@@ -7,15 +7,25 @@ interface TDMPatientDetailsProps {
   selectedPrescription: Prescription | null;
   latestBloodTest: BloodTest | null;
   drugAdministrations?: DrugAdministration[];
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
+  disableHover?: boolean;
 }
 
 const TDMPatientDetails = ({ 
   currentPatient, 
   selectedPrescription, 
   latestBloodTest,
-  drugAdministrations = []
+  drugAdministrations = [],
+  isExpanded: externalIsExpanded,
+  onToggleExpanded,
+  disableHover = false
 }: TDMPatientDetailsProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalIsExpanded, setInternalIsExpanded] = useState(false);
+  
+  // 외부에서 isExpanded를 제어하는 경우 외부 값을 사용, 아니면 내부 상태 사용
+  const isExpanded = externalIsExpanded !== undefined ? externalIsExpanded : internalIsExpanded;
+  const setIsExpanded = onToggleExpanded || setInternalIsExpanded;
   
   // 투약기록 데이터 계산
   const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === currentPatient?.id);
@@ -29,8 +39,8 @@ const TDMPatientDetails = ({
   return (
     <div className="bg-white dark:bg-slate-900 rounded-lg p-6 shadow mb-6 border border-gray-200 dark:border-gray-700">
       <div 
-        className="flex items-center justify-between cursor-pointer mb-4"
-        onClick={() => setIsExpanded(!isExpanded)}
+        className={`flex items-center justify-between mb-4 ${!disableHover ? 'cursor-pointer' : ''}`}
+        onClick={!disableHover ? () => setIsExpanded(!isExpanded) : undefined}
       >
         <div className="text-md">{currentPatient?.name || '환자'} 환자의 정보 보기</div>
         <div className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
