@@ -100,49 +100,20 @@ const DosageChart = ({
       : new Date();
   };
 
-  // x축 틱 데이터 생성 (실제 투약 일시 + 예측 투약 일시)
+  // x축 틱 데이터 생성 (실제 투약 일시만 표시)
   const xAxisTicks = useMemo(() => {
     if (!drugAdministrations || drugAdministrations.length === 0) {
-      return [0, 8, 16, 24, 32, 40, 48, 56, 64, 72]; // 기본 틱
+      return undefined as unknown as number[];
     }
-    
     const firstDoseDateTime = getFirstDoseDateTime();
-    const selectedDrugDoses = drugAdministrations
+    return drugAdministrations
       .filter(d => d.drugName === selectedDrug)
       .map(d => {
         const doseDateTime = new Date(`${d.date}T${d.time}`);
         const hoursFromFirst = (doseDateTime.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
-        return {
-          time: hoursFromFirst,
-          dateTime: doseDateTime
-        };
+        return hoursFromFirst;
       })
-      .sort((a, b) => a.time - b.time);
-    
-    // 실제 투약 시간들
-    const actualDoseTimes = selectedDrugDoses.map(d => d.time);
-    
-    // 마지막 투약 시간 이후의 예측 투약 시간들 계산
-    if (selectedDrugDoses.length > 0) {
-      const lastDoseTime = Math.max(...actualDoseTimes);
-      const intervalHours = selectedDrugDoses.length > 1 
-        ? selectedDrugDoses[1].time - selectedDrugDoses[0].time // 첫 두 투약 간격
-        : 12; // 기본 12시간 간격
-      
-      // 마지막 투약 시간부터 72시간까지 예측 투약 시간 추가
-      const predictedTimes = [];
-      let nextPredictedTime = lastDoseTime + intervalHours;
-      
-      while (nextPredictedTime <= 72) {
-        predictedTimes.push(nextPredictedTime);
-        nextPredictedTime += intervalHours;
-      }
-      
-      // 실제 투약 시간과 예측 투약 시간 합치기
-      return [...actualDoseTimes, ...predictedTimes].sort((a, b) => a - b);
-    }
-    
-    return actualDoseTimes;
+      .sort((a, b) => a - b);
   }, [drugAdministrations, selectedDrug]);
 
   // 마지막 실제 투약 시간 계산 (구분선용)
@@ -199,24 +170,30 @@ const DosageChart = ({
         return created;
       };
 
+      const toDisplay = (y: number | null | undefined) => {
+        if (y == null) return 0;
+        const isCyclosporin = (selectedDrug || '').toLowerCase().includes('cyclospor');
+        return isCyclosporin ? Number(y) * 1000 : Number(y);
+      };
+
       // IPRED_CONC -> predicted (용법 조정 후 농도)
       for (const p of ipredSeries || []) {
         const t = Number(p.time) || 0;
-        const y = (Number(p.value) || 0);
+        const y = toDisplay(Number(p.value) || 0);
         const pt = getPoint(t);
         pt.predicted = y;
       }
       // 환자의 현용법 데이터
       for (const p of currentMethodSeries || []) {
         const t = Number(p.time) || 0;
-        const y = Number(p.value) || 0;
+        const y = toDisplay(Number(p.value) || 0);
         const pt = getPoint(t);
         pt.currentMethod = y;
       }
       // Observed from input dataset DV (mg/L -> ng/mL)
       for (const p of observedSeries || []) {
         const t = Number(p.time) || 0;
-        const y = Number(p.value);
+        const y = toDisplay(Number(p.value));
         const pt = getPoint(t);
         pt.observed = y;
       }
@@ -224,7 +201,7 @@ const DosageChart = ({
       return result;
     }
     return simulationData;
-  }, [simulationData, ipredSeries, predSeries, observedSeries, currentMethodSeries, isEmptyChart]);
+  }, [simulationData, ipredSeries, predSeries, observedSeries, currentMethodSeries, isEmptyChart, selectedDrug]);
 
   // Calculate recent and predicted values
   const recentAUC = propRecentAUC ?? 335;
@@ -424,9 +401,8 @@ const DosageChart = ({
        {/* 메인 그래프 */}
        <div className="mb-2">
          {/* 차트 영역 */}
-         <div className={`h-96 ${isEmptyChart ? '' : 'overflow-x-auto overflow-y-hidden'}`}>
-           <div className={`h-full ${isEmptyChart ? '' : 'min-w-[1800px]'}`} style={isEmptyChart ? {} : { width: '300%' }}>
-            <ResponsiveContainer width="100%" height="100%">
+         <div className={`h-96`}>
+           <ResponsiveContainer width="100%" height="100%">
                {selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc') ? (
                  // 반코마이신 + AUC: Area Chart
                  <AreaChart data={dataWithAverage}>
@@ -434,10 +410,10 @@ const DosageChart = ({
                 <XAxis 
                   dataKey="time" 
                   tick={{ fontSize: 12 }}
-                  domain={isEmptyChart ? [0, 24] : [0, 72]}
+                  domain={["dataMin", "dataMax"]}
                   type="number"
                   scale="linear"
-                  ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : xAxisTicks}
+                  ticks={xAxisTicks}
                   tickFormatter={formatDateTimeForTick}
                   interval="preserveStartEnd"
                 />
@@ -512,16 +488,7 @@ const DosageChart = ({
                     return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
                   }}
                 />
-                 {/* 환자의 현용법 */}
-                 <Line 
-                   type="monotone" 
-                   dataKey="currentMethod" 
-                   stroke="#3b82f6" 
-                   strokeWidth={2}
-                   name="환자 현용법"
-                   dot={false}
-                 />
-                 {/* 용법 조정 후 농도 */}
+                 {/* 용법 조정 후 농도 (먼저 그려서 배경으로) */}
                  <Area 
                    type="monotone" 
                    dataKey="predicted" 
@@ -530,6 +497,15 @@ const DosageChart = ({
                    fillOpacity={selectedColor.fillOpacity}
                    strokeWidth={2}
                    name="용법 조정 결과"
+                 />
+                 {/* 환자의 현용법 (위에 그려서 가려지지 않게) */}
+                 <Line 
+                   type="monotone" 
+                   dataKey="currentMethod" 
+                   stroke="#3b82f6" 
+                   strokeWidth={2}
+                   name="환자 현용법"
+                   dot={false}
                  />
                  {/* 실제 측정값 (빨간 점) */}
                 <Line 
@@ -548,10 +524,10 @@ const DosageChart = ({
                  <XAxis 
                    dataKey="time" 
                    tick={{ fontSize: 12 }}
-                   domain={isEmptyChart ? [0, 24] : [0, 72]}
+                   domain={["dataMin", "dataMax"]}
                    type="number"
                    scale="linear"
-                   ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : xAxisTicks}
+                   ticks={xAxisTicks}
                    tickFormatter={formatDateTimeForTick}
                    interval="preserveStartEnd"
                  />
@@ -626,25 +602,24 @@ const DosageChart = ({
                      return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
                    }}
                  />
-                 {/* 현용법 */}
-                {/* 환자의 현용법 */}
-                <Line 
-                  type="monotone" 
-                  dataKey="currentMethod" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  name="환자 현용법"
-                  dot={false}
-                />
-                {/* 용법 조정 후 농도 */}
-                <Line 
-                  type="monotone" 
-                  dataKey="predicted" 
-                   stroke={selectedColor.stroke}
-                  strokeWidth={2}
-                   name="용법 조정 결과"
-                  dot={false}
-                />
+               {/* 용법 조정 후 농도 */}
+               <Line 
+                 type="monotone" 
+                 dataKey="predicted" 
+                  stroke={selectedColor.stroke}
+                 strokeWidth={2}
+                  name="용법 조정 결과"
+                 dot={false}
+               />
+               {/* 환자의 현용법 (위에 그려서 가려지지 않게) */}
+               <Line 
+                 type="monotone" 
+                 dataKey="currentMethod" 
+                 stroke="#3b82f6" 
+                 strokeWidth={2}
+                 name="환자 현용법"
+                 dot={false}
+               />
                 {/* 실제 측정값 (빨간 점) */}
                 <Line 
                   type="monotone" 
