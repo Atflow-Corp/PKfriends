@@ -82,49 +82,21 @@ const PKCharts = ({
       : new Date();
   };
 
-  // x축 틱 데이터 생성 (실제 투약 일시 + 예측 투약 일시)
+  // x축 틱 데이터 생성 (실제 투약 일시만 표시, 예측 구간은 자동 눈금)
   const xAxisTicks = useMemo(() => {
     if (!drugAdministrations || drugAdministrations.length === 0) {
-      return [0, 8, 16, 24, 32, 40, 48, 56, 64, 72]; // 기본 틱
+      return undefined as unknown as number[];
     }
-    
     const firstDoseDateTime = getFirstDoseDateTime();
     const selectedDrugDoses = drugAdministrations
       .filter(d => d.drugName === selectedDrug)
       .map(d => {
         const doseDateTime = new Date(`${d.date}T${d.time}`);
         const hoursFromFirst = (doseDateTime.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
-        return {
-          time: hoursFromFirst,
-          dateTime: doseDateTime
-        };
+        return hoursFromFirst;
       })
-      .sort((a, b) => a.time - b.time);
-    
-    // 실제 투약 시간들
-    const actualDoseTimes = selectedDrugDoses.map(d => d.time);
-    
-    // 마지막 투약 시간 이후의 예측 투약 시간들 계산
-    if (selectedDrugDoses.length > 0) {
-      const lastDoseTime = Math.max(...actualDoseTimes);
-      const intervalHours = selectedDrugDoses.length > 1 
-        ? selectedDrugDoses[1].time - selectedDrugDoses[0].time // 첫 두 투약 간격
-        : 12; // 기본 12시간 간격
-      
-      // 마지막 투약 시간부터 72시간까지 예측 투약 시간 추가
-      const predictedTimes = [];
-      let nextPredictedTime = lastDoseTime + intervalHours;
-      
-      while (nextPredictedTime <= 72) {
-        predictedTimes.push(nextPredictedTime);
-        nextPredictedTime += intervalHours;
-      }
-      
-      // 실제 투약 시간과 예측 투약 시간 합치기
-      return [...actualDoseTimes, ...predictedTimes].sort((a, b) => a - b);
-    }
-    
-    return actualDoseTimes;
+      .sort((a, b) => a - b);
+    return selectedDrugDoses;
   }, [drugAdministrations, selectedDrug]);
 
   // 마지막 실제 투약 시간 계산 (구분선용)
@@ -388,12 +360,11 @@ const PKCharts = ({
         )}
       </div>
 
-      {/* 메인 그래프 - 가로 스크롤 가능 */}
+      {/* 메인 그래프 */}
       <div className="mb-2">
         {/* 차트 영역 */}
-        <div className="h-96 overflow-x-auto overflow-y-hidden">
-          <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
-             <ResponsiveContainer width="100%" height="100%">
+        <div className="h-96">
+          <ResponsiveContainer width="100%" height="100%">
                {selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc') ? (
                  // 반코마이신 + AUC: Area Chart
                  <AreaChart data={dataWithAverage}>
@@ -401,7 +372,7 @@ const PKCharts = ({
                 <XAxis 
                   dataKey="time" 
                   tick={{ fontSize: 12 }}
-                  domain={[0, 72]}
+                  domain={["dataMin", "dataMax"]}
                   type="number"
                   scale="linear"
                   ticks={xAxisTicks}
@@ -513,7 +484,7 @@ const PKCharts = ({
                   <XAxis 
                     dataKey="time" 
                     tick={{ fontSize: 12 }}
-                    domain={[0, 72]}
+                    domain={["dataMin", "dataMax"]}
                     type="number"
                     scale="linear"
                     ticks={xAxisTicks}

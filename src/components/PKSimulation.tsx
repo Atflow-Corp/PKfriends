@@ -116,6 +116,8 @@ type ConcentrationPoint = {
 
   IPRED?: number;
 
+  PRED?: number;
+
 };
 
 
@@ -822,7 +824,11 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       const pointMap = new Map<number, (ChartPoint & { controlGroup?: number })>();
 
-
+      const toDisplay = (y: number | null | undefined) => {
+        if (y == null) return 0;
+        const isCyclosporin = (selectedDrug || '').toLowerCase().includes('cyclospor');
+        return isCyclosporin ? Number(y) * 1000 : Number(y);
+      };
 
       // helper to get or create point
 
@@ -842,69 +848,42 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       };
 
-
-
-      // IPRED_CONC -> predicted (use API unit as-is)
-
+      // IPRED_CONC -> predicted (display)
       for (const p of ipred as Array<{ time: number; IPRED?: number }>) {
-
         const t = Number(p.time) || 0;
-
-        const y = (Number((p.IPRED ?? 0)) || 0);
-
+        const y = toDisplay(Number((p.IPRED ?? 0)) || 0);
         const pt = getPoint(t);
-
         pt.predicted = y;
-
       }
 
-      // PRED_CONC -> controlGroup
-
-      for (const p of pred as Array<{ time: number; IPRED?: number }>) {
-
+      // PRED_CONC -> controlGroup (use PRED field)
+      for (const p of pred as Array<{ time: number; PRED?: number }>) {
         const t = Number(p.time) || 0;
-
-        const y = (Number((p.IPRED ?? 0)) || 0);
-
+        const y = toDisplay(Number((p.PRED ?? 0)) || 0);
         const pt = getPoint(t);
-
         pt.controlGroup = y;
-
       }
 
-      // Observed from input dataset DV (mg/L -> ng/mL)
-
+      // Observed from input dataset DV (convert if needed)
       if (obsDataset && obsDataset.length > 0) {
-
         for (const row of obsDataset) {
-
           if (row.EVID === 0 && row.DV != null) {
-
             const t = Number(row.TIME) || 0;
-
-            const y = Number(row.DV);
-
+            const y = toDisplay(Number(row.DV));
             const pt = getPoint(t);
-
             pt.observed = y;
-
           }
-
         }
-
       }
 
       const result = Array.from(pointMap.values()).sort((a, b) => a.time - b.time);
-
       return result;
 
     } catch {
-
       return [];
-
     }
 
-  }, []);
+  }, [selectedDrug]);
 
 
 
@@ -942,34 +921,22 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       setTdmChartDataMain(toChartData(data, (body.dataset as TdmDatasetRow[]) || []));
 
+      const toDisp = (y: number | null | undefined) => {
+        if (y == null) return 0;
+        const isCyc = (selectedDrug || '').toLowerCase().includes('cyclospor');
+        return isCyc ? Number(y) * 1000 : Number(y);
+      };
+
       setTdmExtraSeries({
-
         ipredSeries: ((data?.IPRED_CONC || []) as ConcentrationPoint[])
-
-          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
-
-          .filter((p) => p.time >= 0 && p.time <= 72),
-
+          .map((p) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.IPRED ?? 0) || 0) })),
         predSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
-
-          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
-
-          .filter((p) => p.time >= 0 && p.time <= 72),
-
+          .map((p) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.PRED ?? 0) || 0) })),
         observedSeries: (((body.dataset as TdmDatasetRow[]) || [])
-
           .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
-
-          .map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
-
-          .filter((p) => p.time >= 0 && p.time <= 72)),
-
+          .map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: toDisp(Number(r.DV)) }))),
         currentMethodSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
-
-          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 }))
-
-          .filter((p) => p.time >= 0 && p.time <= 72)
-
+          .map((p) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.PRED ?? 0) || 0) }))
       });
 
     } catch (e) {
@@ -1547,38 +1514,30 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
         setTdmResult(data);
 
         const bodyForObs = buildTdmRequestBody();
-
-        setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
-
+        const obsDataset = (bodyForObs?.dataset as TdmDatasetRow[]) || [];
+        setTdmChartDataMain(toChartData(data, obsDataset));
+        const toDisp = (y: number | null | undefined) => {
+          if (y == null) return 0;
+          const isCyc = (selectedDrug || '').toLowerCase().includes('cyclospor');
+          return isCyc ? Number(y) * 1000 : Number(y);
+        };
         setTdmExtraSeries({
-
-          ipredSeries: (data?.IPRED_CONC || [])
-
-            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72),
-
-          predSeries: (data?.PRED_CONC || [])
-
-            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72),
-
-          observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[]) || [])
-
-            .filter(r => r.EVID === 0 && r.DV != null)
-
-            .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72),
-
-          currentMethodSeries: (data?.PRED_CONC || [])
-
-            .map((p: { time: number; PRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.PRED ?? 0) || 0) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72)
-
+          ipredSeries: (data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.IPRED ?? 0) || 0) })),
+          predSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.PRED ?? 0) || 0) })),
+          observedSeries: obsDataset.filter(r => r.EVID === 0 && r.DV != null).map(r => ({ time: Number(r.TIME) || 0, value: toDisp(Number(r.DV)) })),
+          currentMethodSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.PRED ?? 0) || 0) }))
         });
+        // Persist baseline for report
+        try {
+          if (selectedPatientId && selectedDrug) {
+            const baseline = {
+              ipredSeries: (data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.IPRED ?? 0) || 0) })),
+              predSeries: (data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: toDisp(Number(p.PRED ?? 0) || 0) })),
+              observedSeries: obsDataset.filter(r => r.EVID === 0 && r.DV != null).map(r => ({ time: Number(r.TIME) || 0, value: toDisp(Number(r.DV)) })),
+            } as any;
+            window.localStorage.setItem(`tdmfriends:pkBaseline:${selectedPatientId}:${selectedDrug}`, JSON.stringify(baseline));
+          }
+        } catch {}
 
         setShowSimulation(true);
 

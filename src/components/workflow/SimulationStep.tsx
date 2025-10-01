@@ -57,6 +57,37 @@ const SimulationStep = ({
   // 보고서 생성 확인 핸들러
   const handleConfirmReport = () => {
     setShowReportAlert(false);
+    // Freeze current PK chart data for report
+    try {
+      if (selectedPatient && selectedPrescription) {
+        const patientId = selectedPatient.id;
+        const drug = selectedPrescription.drugName;
+        // Gather baseline chart data saved by PKSimulation
+        const baselineSeriesRaw = window.localStorage.getItem(`tdmfriends:pkBaseline:${patientId}:${drug}`);
+        // Build simple results summary for report
+        const summaryRaw = window.localStorage.getItem(`tdmfriends:tdmResult:${patientId}`);
+        const summary = summaryRaw ? JSON.parse(summaryRaw) : null;
+        const targetMinMax = (() => {
+          const val = (selectedPrescription.tdmTargetValue || '').match(/(\d+\.?\d*)\s*-\s*(\d+\.?\d*)/);
+          if (!val) return { targetMin: undefined, targetMax: undefined } as any;
+          return { targetMin: parseFloat(val[1]), targetMax: parseFloat(val[2]) } as any;
+        })();
+        const tdmResultsForReport = {
+          targetMin: targetMinMax.targetMin,
+          targetMax: targetMinMax.targetMax,
+          recentAUC: summary?.AUC_before,
+          recentMax: summary?.CMAX_before,
+          recentTrough: summary?.CTROUGH_before,
+          predictedAUC: summary?.AUC_after,
+          predictedMax: summary?.CMAX_after,
+          predictedTrough: summary?.CTROUGH_after,
+        } as any;
+        if (baselineSeriesRaw) {
+          window.localStorage.setItem(`tdmfriends:tdmExtraSeries:${patientId}:${drug}`, baselineSeriesRaw);
+        }
+        window.localStorage.setItem(`tdmfriends:tdmResults:${patientId}:${drug}`, JSON.stringify(tdmResultsForReport));
+      }
+    } catch {}
     // 새 탭에서 보고서 페이지 열기 (동적 URL 구성)
     const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
     const reportUrl = `${baseUrl}/report?patientId=${selectedPatient.id}`;
