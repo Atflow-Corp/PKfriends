@@ -7,14 +7,21 @@ TDM 시뮬레이션 API 통합 가이드
 - POST `http://tdm-tdm-1b97e-108747164-7c031844d2ae.kr.lb.naverncp.com/tdm`
 
 요청 본문
-- 전역 파라미터: `input_tau`, `input_amount`, `input_WT`, `input_CRCL`, `input_AGE`, `input_SEX`, `input_TOXI`, `input_AUC`, `input_CTROUGH`, `model_name`
+- 전역 파라미터: `input_tau_before`, `input_amount_before`, `input_rate_before`, `input_cmt_before`, `input_tau_after`, `input_amount_after`, `input_rate_after`, `input_cmt_after`, `input_WT`, `input_CRCL`, `input_AGE`, `input_SEX`, `input_TOXI`, `input_AUC`, `input_CTROUGH`, `model_name`
+- cmt 매핑: IV는 `1`, PO는 `2`
 - dataset: 최소 1개의 투여 이벤트(EVID:1)와 1개의 관찰 이벤트(EVID:0) 포함
 
 예시
 ```
 {
-  "input_tau": 12,
-  "input_amount": 1000,
+  "input_tau_before": 12,
+  "input_amount_before": 1000,
+  "input_rate_before": 500,
+  "input_cmt_before": 1,
+  "input_tau_after": 24,
+  "input_amount_after": 1500,
+  "input_rate_after": 500,
+  "input_cmt_after": 1,
   "input_WT": 70,
   "input_CRCL": 90,
   "input_AGE": 65,
@@ -31,7 +38,7 @@ TDM 시뮬레이션 API 통합 가이드
 ```
 
 응답 본문
-- 요약 지표: `AUC_before`, `CMAX_before`, `CTROUGH_before`, `AUC_after`, `CMAX_after`, `CTROUGH_after`
+- 요약 지표: `AUCtau_before`, `AUC24h_before`, `CMAX_before`, `CTROUGH_before`, `AUCtau_after`, `AUC24h_after`, `CMAX_after`, `CTROUGH_after`
 - 농도–시간 프로파일: `PRED_CONC`, `IPRED_CONC` (예: `{ "time": 1.5, "IPRED": 14.32 }`)
 
 앱 통합 포인트

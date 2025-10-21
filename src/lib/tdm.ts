@@ -216,6 +216,22 @@ export const parseTargetValue = (
   return {};
 };
 
+type ExtendedDrugAdministration = DrugAdministration & {
+  isIVInfusion?: boolean;
+  infusionTime?: number; // minutes
+};
+
+const computeInfusionRateFromAdministration = (
+  admin?: ExtendedDrugAdministration
+): number => {
+  if (!admin) return 0;
+  const { isIVInfusion, infusionTime, dose } = admin;
+  if (isIVInfusion && typeof infusionTime === "number" && infusionTime > 0) {
+    return dose / (infusionTime / 60); // mg per hour
+  }
+  return 0;
+};
+
 export const buildTdmRequestBody = (args: {
   patients: Patient[];
   prescriptions: Prescription[];
@@ -260,15 +276,42 @@ export const buildTdmRequestBody = (args: {
             toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
         )[patientDoses.length - 1]
       : undefined;
-  const amount = overrides?.amount ?? (lastDose ? lastDose.dose : undefined);
-  const tau = overrides?.tau ?? inferredTau;
+  const amountBefore = lastDose ? lastDose.dose : undefined;
+  const amount = overrides?.amount ?? amountBefore;
+  const tauBefore = inferredTau;
+  const tau = overrides?.tau ?? tauBefore;
   const toxi = 1;
   const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(
     tdmPrescription.tdmTarget,
     tdmPrescription.tdmTargetValue
   );
 
-  const dataset: unknown[] = [];
+  // dose rate (mg/h) for IV infusion; 0 for bolus/oral
+  const rateBefore = computeInfusionRateFromAdministration(
+    lastDose as ExtendedDrugAdministration
+  );
+  const rateAfter = rateBefore;
+
+  // cmt mapping: IV -> 1, PO -> 2; fallback to 1 if unknown
+  const route = (tdmPrescription as Prescription & { route?: string }).route;
+  const routeNorm = (route || "").toLowerCase();
+  const cmtMapped =
+    routeNorm.includes("po") || routeNorm.includes("경구") ? 2 : 1;
+
+  const dataset: Array<{
+    ID: string;
+    TIME: number;
+    DV: number | null;
+    AMT: number;
+    RATE: number;
+    CMT: number;
+    WT: number;
+    SEX: number;
+    AGE: number;
+    CRCL: number;
+    TOXI: number;
+    EVID: number;
+  }> = [];
   // Dosing events
   const sortedDoses = [...patientDoses].sort(
     (a, b) =>
@@ -280,16 +323,16 @@ export const buildTdmRequestBody = (args: {
       : undefined;
   if (sortedDoses.length > 0 && anchorDoseTime) {
     for (const d of sortedDoses) {
+      const ext = d as ExtendedDrugAdministration;
       const t = Math.max(0, hoursDiff(toDate(d.date, d.time), anchorDoseTime));
-      const rate =
-        d.isIVInfusion && d.infusionTime ? d.dose / (d.infusionTime / 60) : 0;
+      const rate = computeInfusionRateFromAdministration(ext);
       dataset.push({
         ID: selectedPatientId,
         TIME: t,
         DV: null,
         AMT: d.dose,
         RATE: rate,
-        CMT: 1,
+        CMT: cmtMapped,
         WT: weight,
         SEX: sex,
         AGE: age,
@@ -305,7 +348,7 @@ export const buildTdmRequestBody = (args: {
       DV: null,
       AMT: amount,
       RATE: 0,
-      CMT: 1,
+      CMT: cmtMapped,
       WT: weight,
       SEX: sex,
       AGE: age,
@@ -339,7 +382,7 @@ export const buildTdmRequestBody = (args: {
         DV: dvMgPerL,
         AMT: 0,
         RATE: 0,
-        CMT: 1,
+        CMT: cmtMapped,
         WT: weight,
         SEX: sex,
         AGE: age,
@@ -355,7 +398,7 @@ export const buildTdmRequestBody = (args: {
       DV: null,
       AMT: 0,
       RATE: 0,
-      CMT: 1,
+      CMT: cmtMapped,
       WT: weight,
       SEX: sex,
       AGE: age,
@@ -374,7 +417,9 @@ export const buildTdmRequestBody = (args: {
     lastDoseDate: lastDose ? toDate(lastDose.date, lastDose.time) : undefined,
   });
 
-  return {
+  // New API fields (_before/_after) with legacy fields for compatibility
+  const body = {
+    // legacy
     input_tau: tau ?? 12,
     input_amount: amount ?? 100,
     input_WT: weight,
@@ -384,14 +429,66 @@ export const buildTdmRequestBody = (args: {
     input_TOXI: toxi,
     input_AUC: aucTarget ?? undefined,
     input_CTROUGH: cTroughTarget ?? undefined,
+    // new before/after
+    input_tau_before: tauBefore ?? tau ?? 12,
+    input_amount_before: amountBefore ?? amount ?? 100,
+    input_rate_before: rateBefore,
+    input_cmt_before: cmtMapped,
+    input_tau_after: tau ?? tauBefore ?? 12,
+    input_amount_after: amount ?? amountBefore ?? 100,
+    input_rate_after: rateAfter,
+    input_cmt_after: cmtMapped,
     model_name: modelName,
     dataset,
   };
+
+  return body;
 };
 
+type TdmHistoryEntry = {
+  id: string;
+  timestamp: string;
+  model_name?: string;
+  summary: {
+    AUCtau_before?: number;
+    AUC24h_before?: number;
+    CMAX_before?: number;
+    CTROUGH_before?: number;
+    AUCtau_after?: number;
+    AUC24h_after?: number;
+    CMAX_after?: number;
+    CTROUGH_after?: number;
+  };
+  dataset: unknown[];
+  data: unknown;
+};
+
+type TdmApiMinimal = {
+  AUCtau_before?: number;
+  AUC_before?: number;
+  AUC24h_before?: number;
+  CMAX_before?: number;
+  CTROUGH_before?: number;
+  AUCtau_after?: number;
+  AUC_after?: number;
+  AUC24h_after?: number;
+  CMAX_after?: number;
+  CTROUGH_after?: number;
+};
+
+type TdmRequestBodyWithOptionalModel = {
+  model_name?: string;
+  dataset?: unknown[];
+} & Record<string, unknown>;
+
 // Unified TDM API caller. If persist=true and patientId provided, the result is saved to localStorage.
-export const runTdmApi = async (args: { body: unknown; persist?: boolean; patientId?: string }): Promise<unknown> => {
-  const { body, persist, patientId } = args;
+export const runTdmApi = async (args: {
+  body: unknown;
+  persist?: boolean;
+  patientId?: string;
+  drugName?: string;
+}): Promise<unknown> => {
+  const { body, persist, patientId, drugName } = args;
   const response = await fetch(
     "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
     {
@@ -401,16 +498,82 @@ export const runTdmApi = async (args: { body: unknown; persist?: boolean; patien
     }
   );
   if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
-  const data = await response.json();
+  const data: TdmApiMinimal = await response.json();
+
   if (persist && patientId) {
     try {
       window.localStorage.setItem(
         `tdmfriends:tdmResult:${patientId}`,
         JSON.stringify(data)
       );
+
+      if (drugName) {
+        const historyKey = `tdmfriends:tdmResults:${patientId}:${drugName}`;
+        const raw = window.localStorage.getItem(historyKey);
+        const list: TdmHistoryEntry[] = raw
+          ? (JSON.parse(raw) as TdmHistoryEntry[])
+          : [];
+        const typedBody = body as TdmRequestBodyWithOptionalModel;
+        const entry: TdmHistoryEntry = {
+          id: `${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          model_name: typedBody?.model_name,
+          summary: {
+            AUCtau_before: data?.AUCtau_before ?? data?.AUC_before,
+            AUC24h_before: data?.AUC24h_before,
+            CMAX_before: data?.CMAX_before,
+            CTROUGH_before: data?.CTROUGH_before,
+            AUCtau_after: data?.AUCtau_after ?? data?.AUC_after,
+            AUC24h_after: data?.AUC24h_after,
+            CMAX_after: data?.CMAX_after,
+            CTROUGH_after: data?.CTROUGH_after,
+          },
+          dataset: typedBody?.dataset || [],
+          data,
+        };
+        list.push(entry);
+        window.localStorage.setItem(historyKey, JSON.stringify(list));
+        // Also persist latest result per patient+drug
+        window.localStorage.setItem(
+          `tdmfriends:tdmResult:${patientId}:${drugName}`,
+          JSON.stringify(data)
+        );
+      }
     } catch (e) {
-      console.error("Failed to save TDM result to localStorage", e);
+      console.error("Failed to save TDM result/history to localStorage", e);
     }
   }
   return data;
+};
+
+export const setActiveTdm = (
+  patientId: string,
+  drugName: string | undefined,
+  active: boolean
+) => {
+  try {
+    if (!patientId || !drugName) return;
+    const key = `tdmfriends:activeTdm:${patientId}:${drugName}`;
+    if (active)
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({ active: true, at: Date.now() })
+      );
+    else window.localStorage.removeItem(key);
+  } catch {
+    console.warn("setActiveTdm failed");
+  }
+};
+
+export const isActiveTdmExists = (
+  patientId: string,
+  drugName: string | undefined
+): boolean => {
+  try {
+    if (!patientId || !drugName) return false;
+    const key = `tdmfriends:activeTdm:${patientId}:${drugName}`;
+    return !!window.localStorage.getItem(key);
+  } catch {
+    return false;
+  }
 };

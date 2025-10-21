@@ -16,9 +16,13 @@ import TDMPatientDetails from "./TDMPatientDetails";
 
 import { Button } from "@/components/ui/button";
 
-import { runTdmApi, buildTdmRequestBody as buildTdmBody } from "@/lib/tdm";
+import { runTdmApi, buildTdmRequestBody as buildTdmBody, isActiveTdmExists, setActiveTdm } from "@/lib/tdm";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+
+// TDM 히스토리 타입 (간단 요약 정보만 사용)
+type TdmHistorySummary = { AUC24h_before?: number; AUC24h_after?: number; CTROUGH_before?: number; CTROUGH_after?: number };
+type TdmHistoryItem = { id: string; timestamp: string; summary?: TdmHistorySummary; data?: TdmApiResponse };
 
 
 
@@ -116,6 +120,8 @@ type ConcentrationPoint = {
 
   IPRED?: number;
 
+  PRED?: number;
+
 };
 
 
@@ -134,10 +140,15 @@ interface TdmApiResponse {
 
   CTROUGH_after?: number;
 
+  // New detailed AUC fields
+  AUCtau_before?: number;
+  AUC24h_before?: number;
+  AUCtau_after?: number;
+  AUC24h_after?: number;
+  // Optional meta
+  beforeWindowHours?: number;
   IPRED_CONC?: ConcentrationPoint[];
-
   PRED_CONC?: ConcentrationPoint[];
-
 }
 
 
@@ -469,34 +480,26 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
   // 용법 조정 버튼 핸들러
 
   const handleDosageAdjustment = () => {
-
+    if (isActiveTdmExists(selectedPatientId, selectedDrug)) {
+      // already active, block adding new
+      return;
+    }
     const newCardNumber = adjustmentCards.length + 1;
-
     setAdjustmentCards(prev => [...prev, { id: newCardNumber, type: 'dosage' }]);
-
-    setCardChartData(prev => ({ ...prev, [newCardNumber]: false })); // 빈 차트로 초기화
-
-    // compute suggestions asynchronously (debounced)
-
+    setCardChartData(prev => ({ ...prev, [newCardNumber]: false }));
+    setActiveTdm(selectedPatientId, selectedDrug, true);
     triggerDosageSuggestions(newCardNumber);
-
   };
-
-
 
   const handleIntervalAdjustment = () => {
-
+    if (isActiveTdmExists(selectedPatientId, selectedDrug)) {
+      return;
+    }
     const newCardNumber = adjustmentCards.length + 1;
-
     setAdjustmentCards(prev => [...prev, { id: newCardNumber, type: 'interval' }]);
-
-    setCardChartData(prev => ({ ...prev, [newCardNumber]: false })); // 빈 차트로 초기화
-
+    setCardChartData(prev => ({ ...prev, [newCardNumber]: false }));
+    setActiveTdm(selectedPatientId, selectedDrug, true);
   };
-
-
-
-  // 카드 삭제 확인 다이얼로그 열기
 
   const handleRemoveCardClick = (cardId: number) => {
 
@@ -548,6 +551,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       });
 
+      // if no more cards, unset active
+      setTimeout(() => {
+        if (adjustmentCards.filter(c => c.id !== cardToDelete).length === 0) {
+          setActiveTdm(selectedPatientId, selectedDrug, false);
+        }
+      }, 0);
+
     }
 
     setShowDeleteAlert(false);
@@ -598,17 +608,33 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       setTdmChartDataMain(toChartData(cached.data, cached.dataset || []));
 
-      const currentMethodData = (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72);
+      const currentMethodData = ((cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || [])
+        .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+        .filter((p) => p.time >= 0 && p.time <= 72);
       console.log('PKSimulation currentMethodSeries (cached):', currentMethodData);
       console.log('PKSimulation PRED_CONC raw:', cached.data?.PRED_CONC);
 
       setTdmExtraSeries({
 
-        ipredSeries: (cached.data?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+        ipredSeries: ((cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || [])
 
-        predSeries: (cached.data?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
 
-        observedSeries: (cached.dataset || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72),
+          .filter((p) => p.time >= 0 && p.time <= 72),
+
+        predSeries: ((cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
+
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+
+          .filter((p) => p.time >= 0 && p.time <= 72),
+
+        observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
+
+          .filter((r) => r.EVID === 0 && r.DV != null)
+
+          .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+
+          .filter((p) => p.time >= 0 && p.time <= 72),
 
         currentMethodSeries: currentMethodData
 
@@ -858,13 +884,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       }
 
-      // PRED_CONC -> controlGroup
+      // PRED_CONC -> controlGroup (prefer PRED field if available)
 
-      for (const p of pred as Array<{ time: number; IPRED?: number }>) {
+      for (const p of pred as Array<{ time: number; IPRED?: number; PRED?: number }>) {
 
         const t = Number(p.time) || 0;
 
-        const y = (Number((p.IPRED ?? 0)) || 0);
+        const y = (Number((p.PRED ?? p.IPRED ?? 0)) || 0);
 
         const pt = getPoint(t);
 
@@ -936,7 +962,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       if (!body) return;
 
-      const data = (await runTdmApi({ body })) as TdmApiResponse;
+      const data = (await runTdmApi({ body, persist: true, patientId: selectedPatientId, drugName: selectedDrug })) as TdmApiResponse;
 
       setTdmResult(data);
 
@@ -944,17 +970,17 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       setTdmExtraSeries({
 
-        ipredSeries: ((data?.IPRED_CONC || []) as ConcentrationPoint[])
+        ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]) || [])
 
           .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72),
+          .filter((p) => p.time >= 0),
 
-        predSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
+        predSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
 
           .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72),
+          .filter((p) => p.time >= 0),
 
         observedSeries: (((body.dataset as TdmDatasetRow[]) || [])
 
@@ -962,15 +988,24 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
           .map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72)),
+          .filter((p) => p.time >= 0)),
 
-        currentMethodSeries: ((data?.PRED_CONC || []) as ConcentrationPoint[])
+        currentMethodSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
 
-          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 }))
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72)
+          .filter((p) => p.time >= 0)
 
       });
+      try {
+        const key = `tdmfriends:tdmExtraSeries:${selectedPatientId}:${selectedDrug}`;
+        window.localStorage.setItem(key, JSON.stringify({
+          ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0)),
+          predSeries: ((data?.PRED_CONC as ConcentrationPoint[]).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0)),
+          observedSeries: (((body.dataset as TdmDatasetRow[]) || []).filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null).map((r: TdmDatasetRow) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p) => p.time >= 0)),
+          currentMethodSeries: ((data?.PRED_CONC as ConcentrationPoint[]).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0))
+        }));
+      } catch { console.warn('failed to persist tdmExtraSeries'); }
 
     } catch (e) {
 
@@ -1096,9 +1131,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       // For each candidate, call API with override amount
 
-      const results = await Promise.all(
+      const results: Array<{ amt: number; score: number; resp: TdmApiResponse | null; dataset: TdmDatasetRow[] }> = await Promise.all(
 
-        candidates.map(async amt => {
+        candidates.map(async (amt) => {
 
           const body = buildTdmBody({
 
@@ -1114,51 +1149,34 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
             selectedDrugName: prescription.drugName,
 
-            overrides: { amount: amt }
+            overrides: { amount: amt },
 
           });
 
           try {
 
-            const resp = (await runTdmApi({ body })) as any;
-
+            const resp = (await runTdmApi({ body })) as TdmApiResponse;
             const trough = Number(((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0);
-
-            const auc = Number(((resp?.AUC_after ?? resp?.AUC_before) as number) || 0);
-
+            const auc = Number(((resp?.AUC24h_after ?? resp?.AUC_after ?? resp?.AUC24h_before ?? resp?.AUC_before) as number) || 0);
             // score: distance to target range (prefer within range)
-
             let value = 0;
-
             if (target.includes('auc') && (targetMin || targetMax)) {
-
-              const mid = (auc || 0);
-
+              const mid = auc || 0;
               const cmin = targetMin ?? mid; const cmax = targetMax ?? mid;
-
               value = mid < cmin ? (cmin - mid) : (mid > cmax ? (mid - cmax) : 0);
-
             } else if ((target.includes('trough') || target.includes('cmax')) && (targetMin || targetMax)) {
-
-              const mid = (trough || 0);
-
+              const mid = trough || 0;
               const cmin = targetMin ?? mid; const cmax = targetMax ?? mid;
-
               value = mid < cmin ? (cmin - mid) : (mid > cmax ? (mid - cmax) : 0);
-
             } else {
-
-              // fallback to smaller predicted trough distance to previous result
-
+              // fallback: smaller trough distance to previous result
               value = Math.abs((trough || 0) - (tdmResult?.CTROUGH_before || 0));
-
             }
-
-            return { amt, score: value, resp, dataset: (body?.dataset as TdmDatasetRow[]) || [] };
+            return { amt, score: value, resp, dataset: ((body?.dataset as TdmDatasetRow[]) || []) };
 
           } catch {
 
-            return { amt, score: Number.POSITIVE_INFINITY, resp: null, dataset: (body?.dataset as TdmDatasetRow[]) || [] } as any;
+            return { amt, score: Number.POSITIVE_INFINITY, resp: null, dataset: ((body?.dataset as TdmDatasetRow[]) || []) };
 
           }
 
@@ -1182,9 +1200,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       // 결과 캐싱
 
-      setDosageSuggestionResults(prev => {
+      setDosageSuggestionResults((prev) => {
 
-        const next = { ...(prev || {}) } as any;
+        const next: { [cardId: number]: { [amount: number]: { data: TdmApiResponse; dataset: TdmDatasetRow[] } } } = { ...(prev || {}) } as { [cardId: number]: { [amount: number]: { data: TdmApiResponse; dataset: TdmDatasetRow[] } } };
 
         next[cardId] = next[cardId] || {};
 
@@ -1220,13 +1238,31 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
           setTdmExtraSeries({
 
-            ipredSeries: ((cached.resp as any)?.IPRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+            ipredSeries: (((cached.resp as TdmApiResponse)?.IPRED_CONC as ConcentrationPoint[] | undefined) || [])
 
-            predSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72),
+              .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
 
-            observedSeries: ((cached.dataset as TdmDatasetRow[]) || []).filter((r: any) => r.EVID === 0 && r.DV != null).map((r: any) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter((p: any) => p.time >= 0 && p.time <= 72),
+              .filter((p) => p.time >= 0 && p.time <= 72),
 
-            currentMethodSeries: ((cached.resp as any)?.PRED_CONC || []).map((p: any) => ({ time: Number(p.time) || 0, value: Number(p.PRED ?? 0) || 0 })).filter((p: any) => p.time >= 0 && p.time <= 72)
+            predSeries: (((cached.resp as TdmApiResponse)?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
+
+              .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+
+              .filter((p) => p.time >= 0 && p.time <= 72),
+
+            observedSeries: (((cached.dataset as TdmDatasetRow[] | undefined) || [])
+
+              .filter((r) => r.EVID === 0 && r.DV != null)
+
+              .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+
+              .filter((p) => p.time >= 0 && p.time <= 72)),
+
+            currentMethodSeries: ((((cached.resp as TdmApiResponse)?.PRED_CONC as ConcentrationPoint[] | undefined) || []))
+
+              .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+
+              .filter((p) => p.time >= 0 && p.time <= 72)
 
           });
 
@@ -1248,7 +1284,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
     }
 
-  }, [patients, prescriptions, bloodTests, drugAdministrations, currentPatient, selectedDrug, patientPrescriptions, tdmResult]);
+  }, [patients, prescriptions, bloodTests, drugAdministrations, currentPatient, selectedDrug, patientPrescriptions, tdmResult, toChartData]);
 
 
 
@@ -1538,73 +1574,123 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
     try {
 
-      const raw = window.localStorage.getItem(`tdmfriends:tdmResult:${selectedPatientId}`);
-
-      if (raw) {
-
-        const data = JSON.parse(raw);
-
-        setTdmResult(data);
-
-        const bodyForObs = buildTdmRequestBody();
-
-        setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
-
-        setTdmExtraSeries({
-
-          ipredSeries: (data?.IPRED_CONC || [])
-
-            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72),
-
-          predSeries: (data?.PRED_CONC || [])
-
-            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72),
-
-          observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[]) || [])
-
-            .filter(r => r.EVID === 0 && r.DV != null)
-
-            .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72),
-
-          currentMethodSeries: (data?.PRED_CONC || [])
-
-            .map((p: { time: number; PRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.PRED ?? 0) || 0) }))
-
-            .filter(p => p.time >= 0 && p.time <= 72)
-
-        });
-
-        setShowSimulation(true);
-
-      } else {
-
-        setTdmChartDataMain([]);
-
+      // Prefer patient+drug history latest entry
+      if (selectedDrug) {
+        const histKey = `tdmfriends:tdmResults:${selectedPatientId}:${selectedDrug}`;
+        const rawHist = window.localStorage.getItem(histKey);
+        if (rawHist) {
+          const list = JSON.parse(rawHist) as Array<{ id: string; timestamp: string; data?: TdmApiResponse }>;
+          const latest = [...list].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+          if (latest && (latest as { data?: TdmApiResponse }).data) {
+            const data = (latest as { data?: TdmApiResponse }).data as TdmApiResponse;
+            setTdmResult(data);
+            const bodyForObs = buildTdmRequestBody();
+            setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
+            setTdmExtraSeries({
+              ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[] | undefined) || [])
+                .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+                .filter((p) => p.time >= 0),
+              predSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
+                .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+                .filter((p) => p.time >= 0),
+              observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[] | undefined) || [])
+                .filter(r => r.EVID === 0 && r.DV != null)
+                .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+                .filter(p => p.time >= 0),
+              currentMethodSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
+                .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+                .filter((p) => p.time >= 0)
+            });
+            setShowSimulation(true);
+            return;
+          }
+        }
       }
-
+      // Legacy single-result fallback
+      const raw = window.localStorage.getItem(`tdmfriends:tdmResult:${selectedPatientId}`);
+      if (raw) {
+        const data = JSON.parse(raw);
+        setTdmResult(data);
+        const bodyForObs = buildTdmRequestBody();
+        setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
+        setTdmExtraSeries({
+          ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[] | undefined) || [])
+            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
+            .filter(p => p.time >= 0),
+          predSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
+            .map((p: { time: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: (Number(p.IPRED ?? 0) || 0) }))
+            .filter(p => p.time >= 0),
+          observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[] | undefined) || [])
+            .filter(r => r.EVID === 0 && r.DV != null)
+            .map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+            .filter(p => p.time >= 0),
+          currentMethodSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
+            .map((p: { time: number; PRED?: number; IPRED?: number }) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+            .filter(p => p.time >= 0)
+        });
+        setShowSimulation(true);
+      } else {
+        setTdmChartDataMain([]);
+      }
     } catch (e) {
-
       console.warn('Failed to read TDM result from localStorage', e);
-
     }
-
     // reset per-tab results when patient changes
-
     setTdmResultDose(null);
-
     setTdmResultInterval(null);
-
     setTdmChartDataDose([]);
-
     setTdmChartDataInterval([]);
+  }, [selectedPatientId, selectedDrug, toChartData, buildTdmRequestBody]);
 
-  }, [selectedPatientId, toChartData, buildTdmRequestBody]);
+
+
+  // 최근 선택한 약물 복원
+  useEffect(() => {
+    if (!selectedPatientId) return;
+    try {
+      const saved = window.localStorage.getItem(`tdmfriends:selectedDrug:${selectedPatientId}`);
+      if (saved) setSelectedDrug(saved);
+    } catch { console.warn('failed to restore selectedDrug from localStorage'); }
+  }, [selectedPatientId]);
+
+  // 약물 변경 시 저장
+  useEffect(() => {
+    if (!selectedPatientId || !selectedDrug) return;
+    try {
+      window.localStorage.setItem(`tdmfriends:selectedDrug:${selectedPatientId}`, selectedDrug);
+    } catch { console.warn('failed to persist selectedDrug to localStorage'); }
+  }, [selectedPatientId, selectedDrug]);
+
+  // 환자+약물별 최근 TDM 히스토리(최대 5개)
+  const [tdmHistory, setTdmHistory] = useState<TdmHistoryItem[]>([]);
+  const [isCompletedView, setIsCompletedView] = useState<boolean>(false);
+  const loadCompletedView = useCallback((item: TdmHistoryItem) => {
+    if (!item?.data) return;
+    setIsCompletedView(true);
+    const data = item.data as TdmApiResponse;
+    setTdmResult(data);
+    const bodyForObs = buildTdmRequestBody();
+    setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
+    setTdmExtraSeries({
+      ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0),
+      predSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || []).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0),
+      observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[] | undefined) || []).filter(r => r.EVID === 0 && r.DV != null).map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter(p => p.time >= 0),
+      currentMethodSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || []).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0),
+    });
+  }, [buildTdmRequestBody, toChartData]);
+  const exitCompletedView = useCallback(() => setIsCompletedView(false), []);
+  useEffect(() => {
+    try {
+      if (!selectedPatientId || !selectedDrug) { setTdmHistory([]); return; }
+      const key = `tdmfriends:tdmResults:${selectedPatientId}:${selectedDrug}`;
+      const raw = window.localStorage.getItem(key);
+      const list: TdmHistoryItem[] = raw ? JSON.parse(raw) as TdmHistoryItem[] : [];
+      const latest = [...list].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
+      setTdmHistory(latest);
+    } catch {
+      setTdmHistory([]);
+    }
+  }, [selectedPatientId, selectedDrug, tdmResult]);
 
 
 
@@ -1705,60 +1791,57 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
       {/* PK Simulation 그래프 (가로 전체) */}
 
       <div className="w-full">
-
+        {tdmHistory.length > 0 && (
+          <div className="mb-4 text-xs text-muted-foreground">
+            <div className="font-semibold mb-1">최근 TDM 히스토리 (최대 5개)</div>
+            <ul className="list-disc pl-5 space-y-1">
+              {tdmHistory.map(h => (
+                <li key={h.id} className="flex items-center gap-2">
+                  <span>
+                    {new Date(h.timestamp).toLocaleString()} — AUC24h(before/after): {h.summary?.AUC24h_before ?? '-'} / {h.summary?.AUC24h_after ?? '-'}, Ctrough(before/after): {h.summary?.CTROUGH_before ?? '-'} / {h.summary?.CTROUGH_after ?? '-'}
+                  </span>
+                  <button className="underline" onClick={() => loadCompletedView(h)}>불러오기</button>
+                </li>
+              ))}
+            </ul>
+            {isCompletedView && (
+              <div className="mt-2 text-[11px]">완료 보기 모드: 용법 조정 UI가 숨겨집니다. <button className="underline" onClick={exitCompletedView}>종료</button></div>
+            )}
+          </div>
+        )}
+        {tdmResult?.beforeWindowHours != null && (
+          <div className="mb-2 text-[11px] text-muted-foreground">Before window: {tdmResult.beforeWindowHours}h</div>
+        )}
         <PKCharts
-
           showSimulation={true}
-
           currentPatientName={currentPatient.name}
-
           selectedDrug={selectedDrug}
-
           targetMin={getTargetBand().min}
-
           targetMax={getTargetBand().max}
-
-          recentAUC={tdmResult?.AUC_before}
-
+          recentAUC={tdmResult?.AUC24h_before ?? tdmResult?.AUC_before}
           recentMax={tdmResult?.CMAX_before}
-
           recentTrough={tdmResult?.CTROUGH_before}
-
-          predictedAUC={tdmResult?.AUC_after}
-
+          predictedAUC={tdmResult?.AUC24h_after ?? tdmResult?.AUC_after}
           predictedMax={tdmResult?.CMAX_after}
-
           predictedTrough={tdmResult?.CTROUGH_after}
-
           ipredSeries={tdmExtraSeries?.ipredSeries}
-
           predSeries={tdmExtraSeries?.predSeries}
-
           observedSeries={tdmExtraSeries?.observedSeries}
-
           // TDM 내역 데이터
-
           tdmIndication={getTdmData(selectedDrug).indication}
-
           tdmTarget={getTdmData(selectedDrug).target}
-
           tdmTargetValue={getTdmData(selectedDrug).targetValue}
-
           // 투약기록 데이터
-
           latestAdministration={latestAdministration}
-
           drugAdministrations={drugAdministrations}
-
         />
-
       </div>
 
 
 
       {/* 용법 조정 카드들 */}
 
-      {adjustmentCards.map((card) => (
+      {!isCompletedView && adjustmentCards.map((card) => (
 
         <div key={`adjustment-${card.id}`} className={`bg-white dark:bg-slate-900 rounded-lg p-6 mt-6 shadow-lg border-2 ${
 
@@ -1957,49 +2040,25 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
                 targetMax={getTargetBand().max}
 
                 drugAdministrations={drugAdministrations}
-
-                isEmptyChart={false}
-
-                recentAUC={tdmResult?.AUC_before}
-
+                recentAUC={tdmResult?.AUC24h_before ?? tdmResult?.AUC_before}
                 recentMax={tdmResult?.CMAX_before}
-
                 recentTrough={tdmResult?.CTROUGH_before}
-
-                predictedAUC={tdmResult?.AUC_after}
-
+                predictedAUC={tdmResult?.AUC24h_after ?? tdmResult?.AUC_after}
                 predictedMax={tdmResult?.CMAX_after}
-
                 predictedTrough={tdmResult?.CTROUGH_after}
-
                 ipredSeries={tdmExtraSeries?.ipredSeries}
-
                 predSeries={tdmExtraSeries?.predSeries}
-
                 observedSeries={tdmExtraSeries?.observedSeries}
-
                 currentMethodSeries={tdmExtraSeries?.currentMethodSeries}
-
                 chartColor={card.type === 'dosage' ? 'pink' : 'green'}
-
                 // TDM 내역 데이터
-
                 tdmIndication={getTdmData(selectedDrug).indication}
-
                 tdmTarget={getTdmData(selectedDrug).target}
-
                 tdmTargetValue={getTdmData(selectedDrug).targetValue}
-
                 // 투약기록 데이터
-
-                latestAdministration={latestAdministration}
-
                 // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
-
                 isEmptyChart={!cardChartData[card.id] || (dosageLoading[card.id] && (!dosageSuggestions[card.id] || dosageSuggestions[card.id].length === 0))}
-
                 selectedButton={card.type === 'dosage' ? selectedDosage[card.id] : selectedIntervalOption[card.id]}
-
               />
 
                 </div>
@@ -2012,45 +2071,28 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
       {/* 용법 조정 시뮬레이션 영역 */}
 
+      {!isCompletedView && (
       <div className="bg-white dark:bg-slate-900 rounded-lg p-6 mt-6">
-
         <div className="text-center mb-6">
-
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">용법 조정 시뮬레이션을 진행하시겠습니까?</h2>
-
           
-
           <div className="flex justify-center gap-4">
-
             <Button 
-
               onClick={handleDosageAdjustment}
-
               className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
-
             >
-
               투약 용량 조정
-
             </Button>
-
             <Button 
-
               onClick={handleIntervalAdjustment}
-
               className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
-
             >
-
               투약 시간 조정
-
             </Button>
-
             </div>
-
         </div>
-
       </div>
+      )}
 
 
 
