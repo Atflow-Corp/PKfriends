@@ -22,7 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 // TDM 히스토리 타입 (간단 요약 정보만 사용)
 type TdmHistorySummary = { AUC24h_before?: number; AUC24h_after?: number; CTROUGH_before?: number; CTROUGH_after?: number };
-type TdmHistoryItem = { id: string; timestamp: string; summary?: TdmHistorySummary; data?: TdmApiResponse };
+type TdmHistoryItem = { id: string; timestamp: string; summary?: TdmHistorySummary; data?: TdmApiResponse; dataset?: TdmDatasetRow[] };
 
 
 
@@ -620,13 +620,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
           .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72),
+          .filter((p) => p.time >= 0),
 
         predSeries: ((cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || [])
 
-          .map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 }))
+          .map((p) => ({ time: Number(p.time) || 0, value: Number(((p as any).PRED ?? (p as any).IPRED ?? 0)) || 0 }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72),
+          .filter((p) => p.time >= 0),
 
         observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
 
@@ -634,7 +634,7 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
 
           .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
-          .filter((p) => p.time >= 0 && p.time <= 72),
+          .filter((p) => p.time >= 0),
 
         currentMethodSeries: currentMethodData
 
@@ -1669,12 +1669,13 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
     setIsCompletedView(true);
     const data = item.data as TdmApiResponse;
     setTdmResult(data);
-    const bodyForObs = buildTdmRequestBody();
-    setTdmChartDataMain(toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []));
+    // 우선 저장된 dataset을 사용(없으면 현재 데이터로 대체)
+    const obsDataset = ((item?.dataset as TdmDatasetRow[] | undefined) || (buildTdmRequestBody()?.dataset as TdmDatasetRow[] | undefined) || []) as TdmDatasetRow[];
+    setTdmChartDataMain(toChartData(data, obsDataset));
     setTdmExtraSeries({
       ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0),
       predSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || []).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0),
-      observedSeries: ((bodyForObs?.dataset as TdmDatasetRow[] | undefined) || []).filter(r => r.EVID === 0 && r.DV != null).map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter(p => p.time >= 0),
+      observedSeries: (obsDataset || []).filter(r => r.EVID === 0 && r.DV != null).map(r => ({ time: Number(r.TIME) || 0, value: Number(r.DV) })).filter(p => p.time >= 0),
       currentMethodSeries: ((data?.PRED_CONC as ConcentrationPoint[] | undefined) || []).map((p) => ({ time: Number(p.time) || 0, value: Number(p.IPRED ?? 0) || 0 })).filter((p) => p.time >= 0),
     });
   }, [buildTdmRequestBody, toChartData]);
@@ -1801,16 +1802,19 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
                     {new Date(h.timestamp).toLocaleString()} — AUC24h(before/after): {h.summary?.AUC24h_before ?? '-'} / {h.summary?.AUC24h_after ?? '-'}, Ctrough(before/after): {h.summary?.CTROUGH_before ?? '-'} / {h.summary?.CTROUGH_after ?? '-'}
                   </span>
                   <button className="underline" onClick={() => loadCompletedView(h)}>불러오기</button>
+                  {onDownloadPDF && (
+                    <button className="underline" onClick={() => { loadCompletedView(h); setTimeout(() => { try { onDownloadPDF?.(); } catch {} }, 0); }}>리포트</button>
+                  )}
                 </li>
               ))}
             </ul>
             {isCompletedView && (
-              <div className="mt-2 text-[11px]">완료 보기 모드: 용법 조정 UI가 숨겨집니다. <button className="underline" onClick={exitCompletedView}>종료</button></div>
+              <div className="mt-2 text-[11px]">완료 보기 모드: 용법 조정 UI가 숨겨집니다. <button className="underline" onClick={exitCompletedView}>종료</button> {onDownloadPDF && (<button className="underline ml-2" onClick={() => { try { onDownloadPDF?.(); } catch {} }}>리포트 보기</button>)}</div>
             )}
           </div>
         )}
-        {tdmResult?.beforeWindowHours != null && (
-          <div className="mb-2 text-[11px] text-muted-foreground">Before window: {tdmResult.beforeWindowHours}h</div>
+        {tdmResult && (
+          <div className="mb-2 text-[11px] text-muted-foreground">Before window: {Number(tdmResult.beforeWindowHours ?? 72)}h</div>
         )}
         <PKCharts
           showSimulation={true}
@@ -1821,9 +1825,9 @@ const PKSimulation = ({ patients, prescriptions, bloodTests, selectedPatient, se
           recentAUC={tdmResult?.AUC24h_before ?? tdmResult?.AUC_before}
           recentMax={tdmResult?.CMAX_before}
           recentTrough={tdmResult?.CTROUGH_before}
-          predictedAUC={tdmResult?.AUC24h_after ?? tdmResult?.AUC_after}
-          predictedMax={tdmResult?.CMAX_after}
-          predictedTrough={tdmResult?.CTROUGH_after}
+          predictedAUC={isCompletedView ? null : (tdmResult?.AUC24h_after ?? tdmResult?.AUC_after)}
+          predictedMax={isCompletedView ? null : tdmResult?.CMAX_after}
+          predictedTrough={isCompletedView ? null : tdmResult?.CTROUGH_after}
           ipredSeries={tdmExtraSeries?.ipredSeries}
           predSeries={tdmExtraSeries?.predSeries}
           observedSeries={tdmExtraSeries?.observedSeries}

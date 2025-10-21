@@ -170,22 +170,24 @@ const PKCharts = ({
         map.set(key, created);
         return created;
       };
+      // Scale factor by drug (Cyclosporin -> ng/mL)
+      const scale = selectedDrug === 'Cyclosporin' ? 1000 : 1;
       for (const p of ipredSeries || []) {
         const pt = getPoint(p.time);
-        pt.predicted = p.value;
+        pt.predicted = (p.value ?? 0) * scale;
       }
       for (const p of predSeries || []) {
         const pt = getPoint(p.time) as SimulationDataPoint & { controlGroup?: number; averageLine?: number };
-        pt.controlGroup = p.value;
+        pt.controlGroup = (p.value ?? 0) * scale;
       }
       for (const p of observedSeries || []) {
         const pt = getPoint(p.time);
-        pt.observed = p.value;
+        pt.observed = (p.value ?? 0) * scale;
       }
       return Array.from(map.values()).sort((a, b) => a.time - b.time);
     }
     return [];
-  }, [ipredSeries, predSeries, observedSeries]);
+  }, [ipredSeries, predSeries, observedSeries, selectedDrug]);
 
   // API 응답 혹은 기본값 (기본값을 null로 두고 표시 시 단위 없이 '-')
   const recentAUC: number | null = typeof propRecentAUC === 'number' ? propRecentAUC : null;
@@ -420,7 +422,7 @@ const PKCharts = ({
                     tickFormatter={formatDateTimeForTick}
                   />
                   <YAxis 
-                    label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
+                    label={{ value: `Concentration(${getConcentrationUnit(selectedDrug)})`, angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
                     tick={{ fontSize: 12 }}
                     domain={[0, yMax]}
                     tickCount={6}
@@ -438,8 +440,9 @@ const PKCharts = ({
                   )}
                   <Tooltip 
                     formatter={(value: unknown, name: string) => {
-                      if (name === '실제 혈중 농도') return [`${(value as number).toFixed(2)} ng/mL`, '실제 혈중 농도'];
-                      return [typeof value === 'number' ? `${value.toFixed(2)} ng/mL` : 'N/A', name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'];
+                      const unit = getConcentrationUnit(selectedDrug);
+                      if (name === '실제 혈중 농도') return [`${(value as number).toFixed(2)} ${unit}`, '실제 혈중 농도'];
+                      return [typeof value === 'number' ? `${value.toFixed(2)} ${unit}` : 'N/A', name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'];
                     }}
                     labelFormatter={(value) => {
                       if (drugAdministrations && drugAdministrations.length > 0) {

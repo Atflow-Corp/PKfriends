@@ -226,8 +226,15 @@ const computeInfusionRateFromAdministration = (
 ): number => {
   if (!admin) return 0;
   const { isIVInfusion, infusionTime, dose } = admin;
-  if (isIVInfusion && typeof infusionTime === "number" && infusionTime > 0) {
-    return dose / (infusionTime / 60); // mg per hour
+  // 정맥 주사/수액 IV 통합: 정맥(IV)이고 infusionTime 지정 시 rate 계산, bolus는 0으로 간주
+  if (isIVInfusion) {
+    if (typeof infusionTime === "number") {
+      if (infusionTime > 0) return dose / (infusionTime / 60); // mg per hour
+      // bolus (infusionTime === 0)
+      return 0;
+    }
+    // 명시되지 않은 경우도 주입시간 없음으로 간주
+    return 0;
   }
   return 0;
 };
@@ -514,6 +521,7 @@ export const runTdmApi = async (args: {
           ? (JSON.parse(raw) as TdmHistoryEntry[])
           : [];
         const typedBody = body as TdmRequestBodyWithOptionalModel;
+        const typedBody = body as TdmRequestBodyWithOptionalModel;
         const entry: TdmHistoryEntry = {
           id: `${Date.now()}`,
           timestamp: new Date().toISOString(),
@@ -528,7 +536,7 @@ export const runTdmApi = async (args: {
             CMAX_after: data?.CMAX_after,
             CTROUGH_after: data?.CTROUGH_after,
           },
-          dataset: typedBody?.dataset || [],
+          dataset: (typedBody?.dataset as unknown[]) || [],
           data,
         };
         list.push(entry);
