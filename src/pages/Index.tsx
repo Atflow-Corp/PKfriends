@@ -104,11 +104,11 @@ const Index = ({ onLogout }: IndexProps) => {
   // Load persisted data on mount
   useEffect(() => {
     const savedPatients = storage.getJSON<Patient[]>(STORAGE_KEYS.patients, [] as Patient[]);
-    const revivePatients = (savedPatients || []).map((p: any) => ({ ...p, createdAt: p.createdAt ? new Date(p.createdAt) : new Date() }));
+    const revivePatients = (savedPatients || []).map((p: Patient) => ({ ...p, createdAt: p.createdAt ? new Date(p.createdAt) : new Date() }));
     setPatients(revivePatients);
 
     const savedPrescriptions = storage.getJSON<Prescription[]>(STORAGE_KEYS.prescriptions, [] as Prescription[]);
-    const revivePrescriptions = (savedPrescriptions || []).map((pr: any) => ({
+    const revivePrescriptions = (savedPrescriptions || []).map((pr: Prescription) => ({
       ...pr,
       startDate: pr.startDate ? new Date(pr.startDate) : new Date(),
       endDate: pr.endDate ? new Date(pr.endDate) : undefined
@@ -116,7 +116,7 @@ const Index = ({ onLogout }: IndexProps) => {
     setPrescriptions(revivePrescriptions);
 
     const savedBloodTests = storage.getJSON<BloodTest[]>(STORAGE_KEYS.bloodTests, [] as BloodTest[]);
-    const reviveBloodTests = (savedBloodTests || []).map((bt: any) => ({
+    const reviveBloodTests = (savedBloodTests || []).map((bt: BloodTest) => ({
       ...bt,
       testDate: bt.testDate ? new Date(bt.testDate) : new Date()
     }));

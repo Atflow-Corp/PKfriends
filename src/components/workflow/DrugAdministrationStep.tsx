@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Patient, Prescription, DrugAdministration } from "@/pages/Index";
+import { Patient, Prescription, DrugAdministration, BloodTest } from "@/pages/Index";
 import dayjs from "dayjs";
 import { ArrowLeft, ArrowRight, History, CheckCircle } from "lucide-react";
 import TablePage from "./table_maker.jsx";
@@ -18,6 +18,7 @@ interface DrugAdministrationStepProps {
   onAddDrugAdministration: (drugAdministration: DrugAdministration) => void;
   setDrugAdministrations: (records: unknown[]) => void;
   drugAdministrations: DrugAdministration[];
+  bloodTests: BloodTest[];
   onNext: () => void;
   onPrev: () => void;
   isCompleted: boolean;
@@ -31,6 +32,7 @@ const DrugAdministrationStep = ({
   onAddDrugAdministration,
   setDrugAdministrations,
   drugAdministrations,
+  bloodTests,
   onNext,
   onPrev,
   isCompleted
@@ -48,7 +50,8 @@ const DrugAdministrationStep = ({
   });
   const [tableReady, setTableReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [conditions, setConditions] = useState<any[]>([]);
+  type ConditionItem = { intervalHours?: number; [key: string]: string | number | boolean | null | undefined };
+  const [conditions, setConditions] = useState<ConditionItem[]>([]);
 
   // 날짜 오늘 이후 선택 불가
   const today = dayjs().format("YYYY-MM-DD");
@@ -90,7 +93,11 @@ const DrugAdministrationStep = ({
     : [];
 
   // localStorage 키 생성
-  const getStorageKey = () => selectedPatient ? `tdmfriends:conditions:${selectedPatient.id}` : null;
+  const getStorageKey = useCallback(() => (
+    selectedPatient && tdmDrug?.drugName
+      ? `tdmfriends:conditions:${selectedPatient.id}:${tdmDrug.drugName}`
+      : null
+  ), [selectedPatient, tdmDrug?.drugName]);
 
   // 컴포넌트 마운트 시 저장된 conditions 복원
   useEffect(() => {
@@ -111,7 +118,7 @@ const DrugAdministrationStep = ({
     } catch (error) {
       console.error('Failed to restore conditions:', error);
     }
-  }, [selectedPatient?.id]);
+  }, [selectedPatient, tdmDrug?.drugName, getStorageKey]);
 
   // conditions 변경 시 localStorage에 저장
   useEffect(() => {
@@ -125,7 +132,7 @@ const DrugAdministrationStep = ({
     } catch (error) {
       console.error('Failed to save conditions:', error);
     }
-  }, [conditions, selectedPatient?.id]);
+  }, [conditions, selectedPatient, tdmDrug?.drugName, getStorageKey]);
 
   useEffect(() => {
     // no-op
@@ -227,7 +234,7 @@ const DrugAdministrationStep = ({
                   const body = buildTdmRequestBody({
                     patients,
                     prescriptions,
-                    bloodTests: [],
+                    bloodTests,
                     drugAdministrations,
                     selectedPatientId: selectedPatient.id,
                     selectedDrugName: tdmDrug?.drugName,

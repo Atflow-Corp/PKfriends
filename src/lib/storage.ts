@@ -21,7 +21,7 @@ export const storage = {
     } catch (_err) {
       // no-op
     }
-  }
+  },
 };
 
 export const STORAGE_KEYS = {
@@ -31,5 +31,8 @@ export const STORAGE_KEYS = {
   drugAdministrations: "tdmfriends:drugAdministrations",
   selectedPatientId: "tdmfriends:selectedPatientId",
   tdmResultPrefix: "tdmfriends:tdmResult:",
+  tdmResultsPrefix: "tdmfriends:tdmResults:",
+  tdmExtraSeriesPrefix: "tdmfriends:tdmExtraSeries:",
+  selectedDrugPrefix: "tdmfriends:selectedDrug:",
+  activeTdmPrefix: "tdmfriends:activeTdm:",
 } as const;
-
