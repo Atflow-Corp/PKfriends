@@ -479,7 +479,7 @@ const DosageChart = ({
                   />
                 )}
                 <Tooltip 
-                  formatter={(value: any, name: string) => {
+                  formatter={(value: unknown, name: string) => {
                     if (name === '실제 혈중 농도') {
                       return [`${(value as number).toFixed(2)} mg/L`, '실제 혈중 농도'];
                     }
@@ -593,7 +593,7 @@ const DosageChart = ({
                    />
                  )}
                  <Tooltip 
-                   formatter={(value: any, name: string) => {
+                   formatter={(value: unknown, name: string) => {
                      if (name === '실제 혈중 농도') {
                        return [`${(value as number).toFixed(2)} ng/mL`, '실제 혈중 농도'];
                      }

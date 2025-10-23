@@ -333,13 +333,15 @@ export const buildTdmRequestBody = (args: {
       const ext = d as ExtendedDrugAdministration;
       const t = Math.max(0, hoursDiff(toDate(d.date, d.time), anchorDoseTime));
       const rate = computeInfusionRateFromAdministration(ext);
+      const cmt =
+        ext.route.includes("po") || ext.route.includes("경구") ? 2 : 1;
       dataset.push({
         ID: selectedPatientId,
         TIME: t,
         DV: null,
         AMT: d.dose,
         RATE: rate,
-        CMT: cmtMapped,
+        CMT: cmt,
         WT: weight,
         SEX: sex,
         AGE: age,
@@ -436,6 +438,7 @@ export const buildTdmRequestBody = (args: {
     input_TOXI: toxi,
     input_AUC: aucTarget ?? undefined,
     input_CTROUGH: cTroughTarget ?? undefined,
+
     // new before/after
     input_tau_before: tauBefore ?? tau ?? 12,
     input_amount_before: amountBefore ?? amount ?? 100,
@@ -520,7 +523,6 @@ export const runTdmApi = async (args: {
         const list: TdmHistoryEntry[] = raw
           ? (JSON.parse(raw) as TdmHistoryEntry[])
           : [];
-        const typedBody = body as TdmRequestBodyWithOptionalModel;
         const typedBody = body as TdmRequestBodyWithOptionalModel;
         const entry: TdmHistoryEntry = {
           id: `${Date.now()}`,
