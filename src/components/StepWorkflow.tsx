@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -51,6 +51,20 @@ const StepWorkflow = ({
 }: StepWorkflowProps) => {
   const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Hydrate selectedPrescription from localStorage so steps 3/4/5 can work after refresh
+  useEffect(() => {
+    if (!selectedPatient) { setSelectedPrescription(null); return; }
+    try {
+      const raw = window.localStorage.getItem(`tdmfriends:prescription:${selectedPatient.id}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { selectedTdmId?: string; newlyAddedTdmId?: string };
+      const targetId = parsed.selectedTdmId || parsed.newlyAddedTdmId;
+      if (!targetId) return;
+      const found = prescriptions.find(p => p.id === targetId && p.patientId === selectedPatient.id) || null;
+      if (found) setSelectedPrescription(found);
+    } catch (_err) { /* no-op */ }
+  }, [selectedPatient, selectedPatient?.id, prescriptions]);
 
   const steps = [
     { id: 1, title: "환자 등록 및 선택", icon: User, description: "환자를 선택하거나 신규 등록해주세요." },
@@ -256,6 +270,7 @@ const StepWorkflow = ({
             onAddDrugAdministration={onAddDrugAdministration}
             setDrugAdministrations={setDrugAdministrations}
             drugAdministrations={drugAdministrations}
+            bloodTests={bloodTests}
             onNext={handleNextStep}
             onPrev={handlePrevStep}
             isCompleted={isStepCompleted(4)}

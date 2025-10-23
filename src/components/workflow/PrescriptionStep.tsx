@@ -170,6 +170,11 @@ const PrescriptionStep = ({
         const parsed = JSON.parse(savedData);
         if (parsed.selectedTdmId) {
           setSelectedTdmId(parsed.selectedTdmId);
+          // 선택된 TDM도 즉시 복원하여 하위 단계가 약물별 데이터를 로드할 수 있게 함
+          const restored = prescriptions.find(p => p.id === parsed.selectedTdmId && p.patientId === selectedPatient.id);
+          if (restored) {
+            setSelectedPrescription(restored);
+          }
         }
         
         if (parsed.newlyAddedTdmId) {
@@ -179,7 +184,7 @@ const PrescriptionStep = ({
     } catch (error) {
       console.error('Failed to restore prescription data:', error);
     }
-  }, [selectedPatient, prescriptions]);
+  }, [selectedPatient, prescriptions, setSelectedPrescription, selectedPatient?.id]);
 
   // selectedTdmId나 formData 변경 시 localStorage에 저장
   useEffect(() => {
@@ -198,6 +203,13 @@ const PrescriptionStep = ({
       console.error('Failed to save prescription data:', error);
     }
   }, [selectedTdmId, newlyAddedTdmId, formData, selectedPatient, selectedPatient?.id]);
+
+  // selectedTdmId가 변경될 때, 상위의 selectedPrescription을 동기화
+  useEffect(() => {
+    if (!selectedPatient || !selectedTdmId) return;
+    const p = prescriptions.find(x => x.id === selectedTdmId && x.patientId === selectedPatient.id);
+    if (p) setSelectedPrescription(p);
+  }, [selectedTdmId, prescriptions, selectedPatient, selectedPatient?.id, setSelectedPrescription]);
 
   // 신규 TDM이 추가되면 자동으로 선택되도록 하는 useEffect
   useEffect(() => {

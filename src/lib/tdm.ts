@@ -226,8 +226,15 @@ const computeInfusionRateFromAdministration = (
 ): number => {
   if (!admin) return 0;
   const { isIVInfusion, infusionTime, dose } = admin;
-  if (isIVInfusion && typeof infusionTime === "number" && infusionTime > 0) {
-    return dose / (infusionTime / 60); // mg per hour
+  // 정맥 주사/수액 IV 통합: 정맥(IV)이고 infusionTime 지정 시 rate 계산, bolus는 0으로 간주
+  if (isIVInfusion) {
+    if (typeof infusionTime === "number") {
+      if (infusionTime > 0) return dose / (infusionTime / 60); // mg per hour
+      // bolus (infusionTime === 0)
+      return 0;
+    }
+    // 명시되지 않은 경우도 주입시간 없음으로 간주
+    return 0;
   }
   return 0;
 };
@@ -326,13 +333,15 @@ export const buildTdmRequestBody = (args: {
       const ext = d as ExtendedDrugAdministration;
       const t = Math.max(0, hoursDiff(toDate(d.date, d.time), anchorDoseTime));
       const rate = computeInfusionRateFromAdministration(ext);
+      const cmt =
+        ext.route.includes("po") || ext.route.includes("경구") ? 2 : 1;
       dataset.push({
         ID: selectedPatientId,
         TIME: t,
         DV: null,
         AMT: d.dose,
         RATE: rate,
-        CMT: cmtMapped,
+        CMT: cmt,
         WT: weight,
         SEX: sex,
         AGE: age,
@@ -429,6 +438,7 @@ export const buildTdmRequestBody = (args: {
     input_TOXI: toxi,
     input_AUC: aucTarget ?? undefined,
     input_CTROUGH: cTroughTarget ?? undefined,
+
     // new before/after
     input_tau_before: tauBefore ?? tau ?? 12,
     input_amount_before: amountBefore ?? amount ?? 100,
@@ -528,7 +538,7 @@ export const runTdmApi = async (args: {
             CMAX_after: data?.CMAX_after,
             CTROUGH_after: data?.CTROUGH_after,
           },
-          dataset: typedBody?.dataset || [],
+          dataset: (typedBody?.dataset as unknown[]) || [],
           data,
         };
         list.push(entry);
