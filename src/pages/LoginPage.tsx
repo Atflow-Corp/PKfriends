@@ -9,12 +9,13 @@ import Footer from '@/components/ui/Footer';
 
 interface LoginPageProps {
   onLogin: () => void;
+  onShowTermsAgreement: () => void;
 }
 
 // Demo: List of invited phone numbers
 const invitedPhoneNumbers = ["01012345678", "01087654321"];
 
-const LoginPage = ({ onLogin }: LoginPageProps) => {
+const LoginPage = ({ onLogin, onShowTermsAgreement }: LoginPageProps) => {
   const [view, setView] = useState<'login' | 'signup'>('login');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isVerificationSent, setIsVerificationSent] = useState(false);
@@ -94,7 +95,7 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
                 </Button>
                 <div className="text-center">
                   <span className="text-sm text-muted-foreground mr-2">아직 회원이 아니신가요?</span>
-                  <Button variant="link" className="text-blue-600 hover:text-blue-800" onClick={() => setView('signup')}>
+                  <Button variant="link" className="text-blue-600 hover:text-blue-800" onClick={onShowTermsAgreement}>
                     회원가입
                   </Button>
                 </div>
