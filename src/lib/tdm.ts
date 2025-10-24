@@ -378,8 +378,14 @@ export const buildTdmRequestBody = (args: {
           b.patientId === selectedPatientId && b.drugName === selectedDrugName
       )
     : bloodTests.filter((b) => b.patientId === selectedPatientId);
-  if (relatedTests.length > 0) {
-    for (const b of relatedTests) {
+
+  // 관찰 이벤트는 시간순(오름차순)으로 정렬하여 추가해, 마지막 행이 항상 혈중농도(EVID:0) 되도록 보장
+  const testsSorted = [...relatedTests].sort(
+    (a, b) => a.testDate.getTime() - b.testDate.getTime()
+  );
+
+  if (testsSorted.length > 0) {
+    for (const b of testsSorted) {
       const t = hoursDiff(b.testDate, anchor);
       const dvMgPerL =
         b.unit && b.unit.toLowerCase().includes("ng/ml")
