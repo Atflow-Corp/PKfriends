@@ -9,14 +9,16 @@ import Footer from '@/components/ui/Footer';
 
 interface LoginPageProps {
   onLogin: () => void;
+  onShowTermsAgreement: () => void;
 }
 
 // Demo: List of invited phone numbers
 const invitedPhoneNumbers = ["01012345678", "01087654321"];
 
-const LoginPage = ({ onLogin }: LoginPageProps) => {
+const LoginPage = ({ onLogin, onShowTermsAgreement }: LoginPageProps) => {
   const [view, setView] = useState<'login' | 'signup'>('login');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [isVerificationSent, setIsVerificationSent] = useState(false);
 
   const handleLogin = () => {
     console.log("실제 앱에서는 여기서 휴대폰 인증 팝업을 띄웁니다.");
@@ -40,7 +42,7 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900">
       <Header />
       <div className="flex flex-1 items-center justify-center">
         <Card className="w-full max-w-sm">
@@ -51,16 +53,49 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
           <CardContent>
             {view === 'login' && (
               <div className="space-y-4">
-                <div className="text-center text-sm text-muted-foreground space-y-1">
+                {/* <div className="text-center text-sm text-muted-foreground space-y-1">
                   <p>TDM Friends는 초대 기반으로 운영하고 있습니다.</p>
                   <p>사용에 관심있으신 분은 contact@pkfriend.co.kr로 문의주세요.</p>
+                </div> */}
+                <div className="space-y-2">
+                  <label htmlFor="phone" className="text-sm font-medium">
+                    본인 인증 후 서비스를 이용할 수 있습니다.
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="휴대폰 번호 ('-' 제외)"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      className="flex-1 h-10"
+                    />
+                    <Button 
+                      variant="outline" 
+                      className="text-gray-600 border-gray-300 hover:bg-gray-50 h-10"
+                      onClick={() => {
+                        if (!phoneNumber) {
+                          toast.error("휴대폰 번호를 입력해주세요.");
+                          return;
+                        }
+                        setIsVerificationSent(true);
+                        toast.success("인증번호가 전송되었습니다.");
+                      }}
+                    >
+                      인증번호 전송
+                    </Button>
+                  </div>
                 </div>
-                <Button onClick={handleLogin} className="w-full flex items-center gap-2">
-                  <Smartphone className="h-4 w-4" />
-                  본인 간편 인증 후 로그인
+                <Button 
+                  onClick={handleLogin} 
+                  className="w-full flex items-center gap-2"
+                  disabled={!isVerificationSent}
+                >
+                  로그인
                 </Button>
                 <div className="text-center">
-                  <Button variant="link" onClick={() => setView('signup')}>
+                  <span className="text-sm text-muted-foreground mr-2">아직 회원이 아니신가요?</span>
+                  <Button variant="link" className="text-blue-600 hover:text-blue-800" onClick={onShowTermsAgreement}>
                     회원가입
                   </Button>
                 </div>
