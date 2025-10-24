@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from "recharts";
-import { useMemo } from "react";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Brush } from "recharts";
+import { useMemo, useState, useCallback } from "react";
 import { ChartColumnIncreasing } from "lucide-react";
 
 interface SimulationDataPoint {
@@ -88,7 +88,33 @@ const DosageChart = ({
   selectedButton
 }: DosageChartProps) => {
   // 첫 투약 시간 기준점 설정
-  const getFirstDoseDateTime = () => {
+  const [xDomain, setXDomain] = useState<[number, number]>([0, 72]);
+  const clampDomain = (min: number, max: number) => {
+    const clampedMin = Math.max(0, Math.min(min, max - 0.5));
+    const clampedMax = Math.max(clampedMin + 0.5, max);
+    return [clampedMin, clampedMax] as [number, number];
+  };
+  const handleWheelZoom: React.WheelEventHandler<HTMLDivElement> = (e) => {
+    if (isEmptyChart) return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.2 : 0.8; // up: zoom in, down: zoom out
+    const center = (xDomain[0] + xDomain[1]) / 2;
+    const half = (xDomain[1] - xDomain[0]) / 2;
+    const newHalf = Math.max(0.5, half / factor);
+    setXDomain(clampDomain(center - newHalf, center + newHalf));
+  };
+  const handleBrushChange = (range: { startIndex?: number; endIndex?: number } | undefined) => {
+    if (!range || range.startIndex == null || range.endIndex == null) return;
+    const s = Math.max(0, Math.min(range.startIndex, range.endIndex));
+    const e = Math.max(range.startIndex, range.endIndex);
+    // Brush는 차트 data의 인덱스를 반환하므로, dataWithAverage를 기준으로 시간 값을 가져온다
+    const d = dataWithAverage || [];
+    if (d.length === 0) return;
+    const min = d[Math.max(0, Math.min(d.length - 1, s))]?.time ?? 0;
+    const max = d[Math.max(0, Math.min(d.length - 1, e))]?.time ?? 72;
+    setXDomain(clampDomain(min, max));
+  };
+  const getFirstDoseDateTime = useCallback(() => {
     if (!drugAdministrations || drugAdministrations.length === 0) return new Date();
     
     const sortedDoses = drugAdministrations
@@ -98,7 +124,7 @@ const DosageChart = ({
     return sortedDoses.length > 0 
       ? new Date(`${sortedDoses[0].date}T${sortedDoses[0].time}`)
       : new Date();
-  };
+  }, [drugAdministrations, selectedDrug]);
 
   // x축 틱 데이터 생성 (실제 투약 일시 + 예측 투약 일시)
   const xAxisTicks = useMemo(() => {
@@ -143,7 +169,7 @@ const DosageChart = ({
     }
     
     return actualDoseTimes;
-  }, [drugAdministrations, selectedDrug]);
+  }, [drugAdministrations, selectedDrug, getFirstDoseDateTime]);
 
   // 마지막 실제 투약 시간 계산 (구분선용)
   const lastActualDoseTime = useMemo(() => {
@@ -159,7 +185,7 @@ const DosageChart = ({
       .sort((a, b) => a - b);
     
     return selectedDrugDoses.length > 0 ? Math.max(...selectedDrugDoses) : null;
-  }, [drugAdministrations, selectedDrug]);
+  }, [drugAdministrations, selectedDrug, getFirstDoseDateTime]);
 
   // 간단한 날짜/시간 포맷터 (24시간 방식)
   const formatDateTimeForTick = (timeInHours: number) => {
@@ -227,7 +253,7 @@ const DosageChart = ({
       return result;
     }
     return simulationData;
-  }, [simulationData, ipredSeries, predSeries, observedSeries, currentMethodSeries, isEmptyChart]);
+  }, [simulationData, ipredSeries, predSeries, observedSeries, currentMethodSeries, isEmptyChart, selectedDrug]);
 
   // Calculate recent and predicted values
   const recentAUC = propRecentAUC ?? 335;
@@ -425,25 +451,26 @@ const DosageChart = ({
        )}
 
        {/* 메인 그래프 */}
-       <div className="mb-2">
-         {/* 차트 영역 */}
-         <div className={`h-96 ${isEmptyChart ? '' : 'overflow-x-auto overflow-y-hidden'}`}>
-           <div className={`h-full ${isEmptyChart ? '' : 'min-w-[1800px]'}`} style={isEmptyChart ? {} : { width: '300%' }}>
+      <div className="mb-2">
+        {/* 차트 영역: 가로 스크롤 제거, 100% 폭 */}
+        <div className={`h-96`} onWheel={handleWheelZoom}>
+          <div className={`h-full`}>
             <ResponsiveContainer width="100%" height="100%">
                {selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc') ? (
                  // 반코마이신 + AUC: Area Chart
-                 <AreaChart data={dataWithAverage}>
+                <AreaChart data={dataWithAverage}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
+                  <XAxis 
                   dataKey="time" 
                   tick={{ fontSize: 12 }}
-                  domain={isEmptyChart ? [0, 24] : [0, 72]}
+                    domain={[0,72]}
                   type="number"
                   scale="linear"
-                  ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : xAxisTicks}
+                    ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : xAxisTicks}
                   tickFormatter={formatDateTimeForTick}
                   interval="preserveStartEnd"
                 />
+                  {!isEmptyChart && (<Brush dataKey="time" height={20} travellerWidth={10} stroke="#8884d8" tickFormatter={(v)=>formatDateTimeForTick(Number(v))} onChange={handleBrushChange} />)}
                 <YAxis 
                    label={{ value: 'Concentration(mg/L)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
                   tick={{ fontSize: 12 }}
@@ -546,18 +573,19 @@ const DosageChart = ({
                </AreaChart>
                ) : (
                  // 기타 약물: Line Chart
-                 <LineChart data={dataWithAverage}>
+                <LineChart data={dataWithAverage}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                 <XAxis 
+                  <XAxis 
                    dataKey="time" 
                    tick={{ fontSize: 12 }}
-                   domain={isEmptyChart ? [0, 24] : [0, 72]}
+                    domain={[0,72]}
                    type="number"
                    scale="linear"
                    ticks={isEmptyChart ? [0, 4, 8, 12, 16, 20, 24] : xAxisTicks}
                    tickFormatter={formatDateTimeForTick}
                    interval="preserveStartEnd"
                  />
+                  {!isEmptyChart && (<Brush dataKey="time" height={20} travellerWidth={10} stroke="#8884d8" tickFormatter={(v)=>formatDateTimeForTick(Number(v))} onChange={handleBrushChange} />)}
                  <YAxis 
                    label={{ value: 'Concentration(ng/mL)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
                    tick={{ fontSize: 12 }}
