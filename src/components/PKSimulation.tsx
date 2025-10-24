@@ -1554,8 +1554,13 @@ const PKSimulation = ({
         ? patientBloodTests.filter((b) => b.drugName === selectedDrug)
         : patientBloodTests;
 
-      if (relatedTests.length > 0) {
-        for (const b of relatedTests) {
+      // 관찰 이벤트는 시간 오름차순으로 정렬하여 추가해, 마지막 행이 항상 혈중농도(EVID:0) 되도록 보장
+      const testsSorted = [...relatedTests].sort(
+        (a, b) => a.testDate.getTime() - b.testDate.getTime(),
+      );
+
+      if (testsSorted.length > 0) {
+        for (const b of testsSorted) {
           const t = hoursDiff(b.testDate, anchor);
 
           // Convert ng/mL -> mg/L if needed
