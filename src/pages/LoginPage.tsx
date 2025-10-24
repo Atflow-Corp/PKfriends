@@ -16,13 +16,29 @@ interface LoginPageProps {
 const invitedPhoneNumbers = ["01012345678", "01087654321"];
 
 const LoginPage = ({ onLogin, onShowTermsAgreement }: LoginPageProps) => {
-  const [view, setView] = useState<'login' | 'signup'>('login');
+  const [view, setView] = useState<'login' | 'signup' | 'invitation-check'>('login');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isVerificationSent, setIsVerificationSent] = useState(false);
 
   const handleLogin = () => {
     console.log("실제 앱에서는 여기서 휴대폰 인증 팝업을 띄웁니다.");
     onLogin();
+  };
+
+  const handleInvitationCheck = () => {
+    if (!phoneNumber) {
+      toast.error("휴대폰 번호를 입력해주세요.");
+      return;
+    }
+
+    // 임시: 전화번호 형식이 올바르면 통과 (010으로 시작하고 11자리)
+    const phoneRegex = /^010\d{8}$/;
+    if (phoneRegex.test(phoneNumber)) {
+      toast.success("초대된 사용자입니다. 약관 동의를 진행합니다.");
+      onShowTermsAgreement();
+    } else {
+      toast.error("올바른 휴대폰 번호 형식을 입력해주세요. (010으로 시작하는 11자리)");
+    }
   };
 
   const handleSignupCheck = () => {
@@ -45,7 +61,7 @@ const LoginPage = ({ onLogin, onShowTermsAgreement }: LoginPageProps) => {
     <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900">
       <Header />
       <div className="flex flex-1 items-center justify-center">
-        <Card className="w-full max-w-sm">
+        <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">TDM Friends</CardTitle>
             <CardDescription>Precision Medicine의 시작</CardDescription>
@@ -53,14 +69,14 @@ const LoginPage = ({ onLogin, onShowTermsAgreement }: LoginPageProps) => {
           <CardContent>
             {view === 'login' && (
               <div className="space-y-4">
-                {/* <div className="text-center text-sm text-muted-foreground space-y-1">
+                 <div className="text-center text-sm text-muted-foreground space-y-1">
                   <p>TDM Friends는 초대 기반으로 운영하고 있습니다.</p>
                   <p>사용에 관심있으신 분은 contact@pkfriend.co.kr로 문의주세요.</p>
-                </div> */}
+                </div>
                 <div className="space-y-2">
-                  <label htmlFor="phone" className="text-sm font-medium">
+                 {/*} <label htmlFor="phone" className="text-sm font-medium">
                     본인 인증 후 서비스를 이용할 수 있습니다.
-                  </label>
+                  </label>*/}
                   <div className="flex gap-2">
                     <Input
                       id="phone"
@@ -95,10 +111,32 @@ const LoginPage = ({ onLogin, onShowTermsAgreement }: LoginPageProps) => {
                 </Button>
                 <div className="text-center">
                   <span className="text-sm text-muted-foreground mr-2">아직 회원이 아니신가요?</span>
-                  <Button variant="link" className="text-blue-600 hover:text-blue-800" onClick={onShowTermsAgreement}>
+                  <Button variant="link" className="text-blue-600 hover:text-blue-800" onClick={() => setView('invitation-check')}>
                     회원가입
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {view === 'invitation-check' && (
+              <div className="space-y-4">
+                <div className="text-center text-sm text-muted-foreground space-y-1">
+                  <p>TDM Friends는 초대 기반으로 운영하고 있습니다.</p>
+                  <p>초대받은 휴대폰 번호를 입력해주세요.</p>
+                </div>
+                <Input
+                  type="tel"
+                  placeholder="휴대폰 번호 ('-' 제외)"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                />
+                <Button onClick={handleInvitationCheck} className="w-full">
+                  확인
+                </Button>
+                <Button variant="ghost" onClick={() => setView('login')} className="w-full flex items-center gap-2 text-sm">
+                  <ArrowLeft className="h-4 w-4" />
+                  로그인으로 돌아가기
+                </Button>
               </div>
             )}
 
