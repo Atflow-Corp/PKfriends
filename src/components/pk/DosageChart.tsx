@@ -481,7 +481,7 @@ const DosageChart = ({
             options={{
               responsive: true,
               maintainAspectRatio: false,
-              parsing: true,
+              parsing: false,
               animation: false,
               plugins: {
                 legend: { display: true },

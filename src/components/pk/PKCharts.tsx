@@ -347,11 +347,10 @@ const PKCharts = ({
           <Line
             ref={chartRef}
             data={{
-              labels: data.map(d => d.time),
               datasets: [
                 {
                   label: '환자 현용법',
-                  data: data.map(d => d.predicted),
+                  data: data.map(d => ({ x: d.time, y: d.predicted })),
                   borderColor: '#3b82f6',
                   backgroundColor: 'rgba(59,130,246,0.25)',
                   pointRadius: 0,
@@ -360,7 +359,7 @@ const PKCharts = ({
                 },
                 {
                   label: '일반 대조군',
-                  data: data.map(d => d.controlGroup ?? null),
+                  data: data.map(d => ({ x: d.time, y: d.controlGroup ?? null })),
                   borderColor: '#f97316',
                   backgroundColor: 'rgba(249,115,22,0.25)',
                   pointRadius: 0,
@@ -369,7 +368,7 @@ const PKCharts = ({
                 },
                 {
                   label: '실제 혈중 농도',
-                  data: data.map(d => d.observed),
+                  data: data.map(d => ({ x: d.time, y: d.observed })),
                   borderColor: '#dc2626',
                   backgroundColor: '#dc2626',
                   showLine: false,
