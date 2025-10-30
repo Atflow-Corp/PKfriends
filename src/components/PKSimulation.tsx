@@ -14,9 +14,12 @@ import TDMPatientDetails from "./TDMPatientDetails";
 import { Button } from "@/components/ui/button";
 import {
   runTdmApi,
-  buildTdmRequestBody as buildTdmBody,
+  buildTdmRequestBody as buildTdmRequestBodyCore,
   isActiveTdmExists,
   setActiveTdm,
+  computeCRCL,
+  computeTauFromAdministrations,
+  parseTargetValue,
 } from "@/lib/tdm";
 import {
   AlertDialog,
@@ -678,134 +681,10 @@ const PKSimulation = ({
     }
   }, [selectedPatientId]);
 
-  const computeCRCL = useCallback(
-    (weightKg: number, ageYears: number, sex01: number) => {
-      const renal = getSelectedRenalInfo();
-
-      if (renal) {
-        const parsedResult = parseFloat(
-          (renal.result || "").toString().replace(/[^0-9.-]/g, ""),
-        );
-
-        // If result field already has a numeric value, prefer it
-
-        if (!Number.isNaN(parsedResult) && parsedResult > 0) {
-          return parsedResult; // assume mL/min
-        }
-
-        const scrMgDl = parseFloat((renal.creatinine || "").toString());
-
-        const isFemale = sex01 === 0;
-
-        const heightCm = currentPatient?.height ?? 0;
-
-        const bsa =
-          heightCm > 0 && weightKg > 0
-            ? Math.sqrt((weightKg * heightCm) / 3600)
-            : 1.73; // Mosteller
-
-        if (!Number.isNaN(scrMgDl) && scrMgDl > 0) {
-          if (renal.formula === "cockcroft-gault") {
-            const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-
-            return isFemale ? base * 0.85 : base;
-          }
-
-          if (renal.formula === "mdrd") {
-            // MDRD (IDMS-traceable, race ignored)
-
-            const eGFR =
-              175 *
-              Math.pow(scrMgDl, -1.154) *
-              Math.pow(ageYears, -0.203) *
-              (isFemale ? 0.742 : 1);
-
-            return eGFR * (bsa / 1.73);
-          }
-
-          if (renal.formula === "ckd-epi") {
-            // CKD-EPI 2009 (race ignored)
-
-            const k = isFemale ? 0.7 : 0.9;
-
-            const a = isFemale ? -0.329 : -0.411;
-
-            const minScrK = Math.min(scrMgDl / k, 1);
-
-            const maxScrK = Math.max(scrMgDl / k, 1);
-
-            const eGFR =
-              141 *
-              Math.pow(minScrK, a) *
-              Math.pow(maxScrK, -1.209) *
-              Math.pow(0.993, ageYears) *
-              (isFemale ? 1.018 : 1);
-
-            return eGFR * (bsa / 1.73);
-          }
-
-          // Fallback to Cockcroft-Gault if unknown formula label
-
-          const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-
-          return isFemale ? base * 0.85 : base;
-        }
-      }
-
-      return 90; // fallback if data unavailable
-    },
-    [currentPatient, getSelectedRenalInfo],
-  );
-
-  const parseTargetValue = (target?: string, value?: string) => {
-    // returns { auc?: number, trough?: number }
-
-    if (!value) return {} as { auc?: number; trough?: number };
-
-    const nums = (value.match(/\d+\.?\d*/g) || []).map((v) => parseFloat(v));
-
-    if (nums.length === 0) return {} as { auc?: number; trough?: number };
-
-    const mid = nums.length === 1 ? nums[0] : (nums[0] + nums[1]) / 2;
-
-    if (target && target.toLowerCase().includes("auc")) {
-      return { auc: mid };
-    }
-
-    if (target && target.toLowerCase().includes("trough")) {
-      return { trough: mid };
-    }
-
-    return {} as { auc?: number; trough?: number };
-  };
-
   const toDate = (d: string, t: string) => new Date(`${d}T${t}`);
 
   const hoursDiff = (later: Date, earlier: Date) =>
     (later.getTime() - earlier.getTime()) / 36e5;
-
-  const computeTauFromAdministrations = useCallback(
-    (events: DrugAdministration[]) => {
-      if (events.length < 2) return undefined;
-
-      const sorted = [...events].sort(
-        (a, b) =>
-          toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
-      );
-
-      const last = sorted[sorted.length - 1];
-
-      const prev = sorted[sorted.length - 2];
-
-      const tauHours = hoursDiff(
-        toDate(last.date, last.time),
-        toDate(prev.date, prev.time),
-      );
-
-      return tauHours > 0 ? tauHours : undefined;
-    },
-    [],
-  );
 
   // 차트 데이터로 변환 (API 응답 -> 시계열)
 
@@ -875,7 +754,8 @@ const PKSimulation = ({
           pt.controlGroup = y;
         }
 
-        // Observed from input dataset DV (mg/L -> ng/mL)
+        // Observed from input dataset DV (use as-is, no unit conversion)
+        // Vancomycin: mg/L, Cyclosporine: ng/mL
 
         if (obsDataset && obsDataset.length > 0) {
           for (const row of obsDataset) {
@@ -904,14 +784,13 @@ const PKSimulation = ({
   );
 
   // 선택한 용량으로 메인 차트/요약 업데이트
-
   const applyDoseScenario = useCallback(
     async (amountMg: number) => {
       try {
         if (!selectedPatientId || !selectedDrug) return;
         setShowSimulation(false);
 
-        const body = buildTdmBody({
+        const body = buildTdmRequestBodyCore({
           patients,
           prescriptions,
           bloodTests,
@@ -1022,7 +901,7 @@ const PKSimulation = ({
       try {
         if (!selectedPatientId || !selectedDrug) return;
         setShowSimulation(false);
-        const body = buildTdmBody({
+        const body = buildTdmRequestBodyCore({
           patients,
           prescriptions,
           bloodTests,
@@ -1205,7 +1084,7 @@ const PKSimulation = ({
         const targetMax = nums[1] ? parseFloat(nums[1]) : undefined;
 
         // quick sanity: ensure we can build a body
-        const bodyBase = buildTdmBody({
+        const bodyBase = buildTdmRequestBodyCore({
           patients,
           prescriptions,
           bloodTests,
@@ -1225,7 +1104,7 @@ const PKSimulation = ({
           dataset: TdmDatasetRow[];
         }> = await Promise.all(
           candidates.map(async (amt) => {
-            const body = buildTdmBody({
+            const body = buildTdmRequestBodyCore({
               patients,
               prescriptions,
               bloodTests,
@@ -1433,200 +1312,29 @@ const PKSimulation = ({
 
   // 선택한 용량으로 메인 차트/요약 업데이트 (정의 위치: toChartData 이후)
 
-  // TDM API integration
-
+  // TDM API integration - using unified buildTdmRequestBody from tdm.ts
+  
   const buildTdmRequestBody = useCallback(
     (overrides?: { amount?: number; tau?: number }) => {
-      const currentPatient = patients.find((p) => p.id === selectedPatientId);
-
-      const tdmPrescription = prescriptions.find(
-        (p) => p.patientId === selectedPatientId,
-      );
-
-      if (!currentPatient || !tdmPrescription) return null;
-
-      // Map from available data
-      const weight = currentPatient.weight;
-      const age = currentPatient.age;
-      const sex = currentPatient.gender === "male" ? 1 : 0;
-      const crcl = computeCRCL(weight, age, sex);
-      const patientDoses = (drugAdministrations || []).filter(
-        (d) => d.patientId === selectedPatientId,
-      );
-
-      const uiTau = parseFloat((simulationParams.halfLife || "").toString());
-      const tau =
-        overrides?.tau ??
-        (Number.isFinite(uiTau) && uiTau > 0
-          ? uiTau
-          : (computeTauFromAdministrations(patientDoses) ?? undefined));
-
-      const lastDose =
-        patientDoses.length > 0
-          ? [...patientDoses].sort(
-              (a, b) =>
-                toDate(a.date, a.time).getTime() -
-                toDate(b.date, b.time).getTime(),
-            )[patientDoses.length - 1]
-          : undefined;
-
-      const parseDose = (val: unknown) => {
-        const num = parseFloat((val ?? "").toString().replace(/[^0-9.-]/g, ""));
-        return Number.isFinite(num) && num > 0 ? num : undefined;
-      };
-
-      const amount =
-        overrides?.amount ??
-        (lastDose ? lastDose.dose : parseDose(simulationParams.dose));
-
-      const toxi = 1;
-      const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(
-        tdmPrescription.tdmTarget,
-        tdmPrescription.tdmTargetValue,
-      );
-
-      const dataset: TdmDatasetRow[] = [];
-
-      // Build dosing events relative to first dose time
-
-      const sortedDoses = [...patientDoses].sort(
-        (a, b) =>
-          toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
-      );
-
-      const anchorDoseTime =
-        sortedDoses.length > 0
-          ? toDate(sortedDoses[0].date, sortedDoses[0].time)
-          : undefined;
-
-      if (sortedDoses.length > 0 && anchorDoseTime) {
-        for (const d of sortedDoses) {
-          const t = hoursDiff(toDate(d.date, d.time), anchorDoseTime);
-
-          const rate =
-            d.isIVInfusion && d.infusionTime
-              ? d.dose / (d.infusionTime / 60)
-              : 0;
-
-          dataset.push({
-            ID: selectedPatientId,
-            TIME: Math.max(0, t),
-            DV: null,
-            AMT: d.dose,
-            RATE: rate,
-            CMT: 1,
-            WT: weight,
-            SEX: sex,
-            AGE: age,
-            CRCL: crcl,
-            TOXI: toxi,
-            EVID: 1,
-          });
-        }
-      } else if (amount !== undefined) {
-        // single immediate dose if no history exists
-
-        dataset.push({
-          ID: selectedPatientId,
-          TIME: 0.0,
-          DV: null,
-          AMT: amount,
-          RATE: 0,
-          CMT: 1,
-          WT: weight,
-          SEX: sex,
-          AGE: age,
-          CRCL: crcl,
-          TOXI: toxi,
-          EVID: 1,
-        });
-      }
-
-      // Observation events
-
-      const anchor =
-        anchorDoseTime ||
-        (sortedDoses.length > 0
-          ? toDate(sortedDoses[0].date, sortedDoses[0].time)
-          : new Date());
-
-      const relatedTests = selectedDrug
-        ? patientBloodTests.filter((b) => b.drugName === selectedDrug)
-        : patientBloodTests;
-
-      // 관찰 이벤트는 시간 오름차순으로 정렬하여 추가해, 마지막 행이 항상 혈중농도(EVID:0) 되도록 보장
-      const testsSorted = [...relatedTests].sort(
-        (a, b) => a.testDate.getTime() - b.testDate.getTime(),
-      );
-
-      if (testsSorted.length > 0) {
-        for (const b of testsSorted) {
-          const t = hoursDiff(b.testDate, anchor);
-
-          // Convert ng/mL -> mg/L if needed
-
-          const dvMgPerL =
-            b.unit && b.unit.toLowerCase().includes("ng/ml")
-              ? b.concentration / 1000
-              : b.concentration;
-
-          dataset.push({
-            ID: selectedPatientId,
-            TIME: Math.max(0, t),
-            DV: dvMgPerL,
-            AMT: 0,
-            RATE: 0,
-            CMT: 1,
-            WT: weight,
-            SEX: sex,
-            AGE: age,
-            CRCL: crcl,
-            TOXI: toxi,
-            EVID: 0,
-          });
-        }
-      } else {
-        // Add one observation point without DV at tau or 2h if tau unavailable
-
-        dataset.push({
-          ID: selectedPatientId,
-          TIME: tau ?? 2.0,
-          DV: null,
-          AMT: 0,
-          RATE: 0,
-          CMT: 1,
-          WT: weight,
-          SEX: sex,
-          AGE: age,
-          CRCL: crcl,
-          TOXI: toxi,
-          EVID: 0,
-        });
-      }
-
-      return {
-        input_tau: tau ?? 12,
-        input_amount: amount ?? 100,
-        input_WT: weight,
-        input_CRCL: crcl,
-        input_AGE: age,
-        input_SEX: sex,
-        input_TOXI: toxi,
-        input_AUC: aucTarget ?? undefined,
-        input_CTROUGH: cTroughTarget ?? undefined,
-        dataset,
-      };
+      if (!selectedPatientId) return null;
+      
+      return buildTdmRequestBodyCore({
+        patients,
+        prescriptions,
+        bloodTests,
+        drugAdministrations,
+        selectedPatientId,
+        selectedDrugName: selectedDrug,
+        overrides,
+      });
     },
     [
       patients,
-      selectedPatientId,
       prescriptions,
+      bloodTests,
       drugAdministrations,
-      simulationParams,
+      selectedPatientId,
       selectedDrug,
-      patientBloodTests,
-      computeCRCL,
-      computeTauFromAdministrations,
     ],
   );
 

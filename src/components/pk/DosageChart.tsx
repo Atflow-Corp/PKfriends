@@ -171,27 +171,27 @@ const DosageChart = ({
         return created;
       };
 
-      // 약물 단위 스케일: Cyclosporin은 ng/mL로 표기하므로 mg/L 데이터를 1000배
-      const scale = selectedDrug === 'Cyclosporin' ? 1000 : 1;
+      // API returns values in correct units already (Vancomycin: mg/L, Cyclosporin: ng/mL)
+      // No scaling needed
 
       // IPRED_CONC -> predicted (용법 조정 후 농도)
       for (const p of ipredSeries || []) {
         const t = Number(p.time) || 0;
-        const y = (Number(p.value) || 0) * scale;
+        const y = Number(p.value) || 0;
         const pt = getPoint(t);
         pt.predicted = y;
       }
       // 환자의 현용법 데이터
       for (const p of currentMethodSeries || []) {
         const t = Number(p.time) || 0;
-        const y = (Number(p.value) || 0) * scale;
+        const y = Number(p.value) || 0;
         const pt = getPoint(t);
         pt.currentMethod = y;
       }
-      // Observed from input dataset DV (mg/L -> ng/mL)
+      // Observed from input dataset DV
       for (const p of observedSeries || []) {
         const t = Number(p.time) || 0;
-        const y = Number(p.value) * scale;
+        const y = Number(p.value) || 0;
         const pt = getPoint(t);
         pt.observed = y;
       }
@@ -199,7 +199,7 @@ const DosageChart = ({
       return result;
     }
     return simulationData;
-  }, [simulationData, ipredSeries, predSeries, observedSeries, currentMethodSeries, isEmptyChart, selectedDrug]);
+  }, [simulationData, ipredSeries, predSeries, observedSeries, currentMethodSeries, isEmptyChart]);
 
   // Calculate recent and predicted values
   const recentAUC = propRecentAUC ?? 335;
@@ -555,6 +555,10 @@ const DosageChart = ({
                 y: {
                   min: 0,
                   max: yMax,
+                  title: {
+                    display: true,
+                    text: `Concentration (${getConcentrationUnit(selectedDrug)})`
+                  },
                   ticks: { callback: (v) => `${Number(v).toFixed(2)}` }
                 }
               }

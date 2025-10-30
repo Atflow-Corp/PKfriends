@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { savePrescriptionInfo } from '../../lib/tdm';
 
 // 주입시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
 const InjectionTimeInput = ({ row, onUpdate, isDarkMode }) => {
@@ -434,6 +435,24 @@ function TablePage(props) {
       };
 
       setConditions(prev => [...prev, newCondition]);
+    }
+
+    // 처방 내역을 localStorage에 저장 (추가/수정 모두 적용)
+    if (props.selectedPatient && props.tdmDrug) {
+      const routeKorean = convertRouteToKorean(currentCondition.route);
+      // CMT 매핑: 정맥(IV) -> 1, 경구(oral) -> 2
+      const cmt = routeKorean === "정맥" ? 1 : 2;
+      
+      savePrescriptionInfo(
+        props.selectedPatient.id,
+        props.tdmDrug.drugName,
+        {
+          amount: parseFloat(currentCondition.dosage) || 0,
+          tau: parseFloat(currentCondition.intervalHours) || 12,
+          cmt: cmt,
+          route: routeKorean
+        }
+      );
     }
 
     // 현재 조건 초기화

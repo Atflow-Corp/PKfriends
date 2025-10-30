@@ -138,24 +138,24 @@ const PKCharts = ({
         map.set(key, created);
         return created;
       };
-      // Scale factor by drug (Cyclosporin -> ng/mL)
-      const scale = selectedDrug === 'Cyclosporin' ? 1000 : 1;
+      // API returns values in correct units already (Vancomycin: mg/L, Cyclosporin: ng/mL)
+      // No scaling needed
       for (const p of ipredSeries || []) {
         const pt = getPoint(p.time);
-        pt.predicted = (p.value ?? 0) * scale;
+        pt.predicted = p.value ?? 0;
       }
       for (const p of predSeries || []) {
         const pt = getPoint(p.time) as SimulationDataPoint & { controlGroup?: number; averageLine?: number };
-        pt.controlGroup = (p.value ?? 0) * scale;
+        pt.controlGroup = p.value ?? 0;
       }
       for (const p of observedSeries || []) {
         const pt = getPoint(p.time);
-        pt.observed = (p.value ?? 0) * scale;
+        pt.observed = p.value ?? 0;
       }
       return Array.from(map.values()).sort((a, b) => a.time - b.time);
     }
     return [];
-  }, [ipredSeries, predSeries, observedSeries, selectedDrug]);
+  }, [ipredSeries, predSeries, observedSeries]);
 
   // API 응답 혹은 기본값
   const recentAUC: number | null = typeof propRecentAUC === 'number' ? propRecentAUC : null;
@@ -456,6 +456,10 @@ const PKCharts = ({
                 y: {
                   min: 0,
                   max: yMax,
+                  title: {
+                    display: true,
+                    text: `Concentration (${getConcentrationUnit(selectedDrug)})`
+                  },
                   ticks: { callback: (v) => `${Number(v).toFixed(2)}` }
                 }
               }

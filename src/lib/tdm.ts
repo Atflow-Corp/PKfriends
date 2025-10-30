@@ -21,13 +21,16 @@ const hoursDiff = (later: Date, earlier: Date) =>
   (later.getTime() - earlier.getTime()) / 36e5;
 
 const getSelectedRenalInfo = (
-  selectedPatientId: string | null | undefined
+  selectedPatientId: string | null | undefined,
+  drugName?: string
 ): RenalInfo | null => {
   try {
     if (!selectedPatientId) return null;
-    const raw = window.localStorage.getItem(
-      `tdmfriends:renal:${selectedPatientId}`
-    );
+    // drugName이 있으면 포함, 없으면 이전 키 형식 사용 (하위 호환성)
+    const key = drugName
+      ? `tdmfriends:renal:${selectedPatientId}:${drugName}`
+      : `tdmfriends:renal:${selectedPatientId}`;
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const list = JSON.parse(raw) as RenalInfo[];
     const chosen =
@@ -89,7 +92,7 @@ const inferModelName = (args: {
   if (!table) return undefined;
 
   // Detect CRRT from saved renal info
-  const renal = getSelectedRenalInfo(patientId);
+  const renal = getSelectedRenalInfo(patientId, drugName);
   const isCRRT = /crrt/i.test(renal?.renalReplacement || "");
 
   // Compute within 72h from last dosing time
@@ -138,13 +141,25 @@ export const computeCRCL = (
   weightKg: number,
   ageYears: number,
   sex01: number,
-  heightCm: number
+  heightCm: number,
+  drugName?: string
 ): number => {
-  const renal = getSelectedRenalInfo(selectedPatientId);
+  const renal = getSelectedRenalInfo(selectedPatientId, drugName);
   if (renal) {
-    const parsedResult = parseFloat(
-      (renal.result || "").toString().replace(/[^0-9.-]/g, "")
-    );
+    // CRCL = 90.5 mL/min 형식에서 숫자만 추출
+    const resultStr = (renal.result || "").toString();
+    if (resultStr.includes("CRCL")) {
+      // "CRCL = 90.5 mL/min" -> "90.5" 추출
+      const match = resultStr.match(/CRCL\s*=\s*([\d.]+)/i);
+      if (match && match[1]) {
+        const parsedResult = parseFloat(match[1]);
+        if (!Number.isNaN(parsedResult) && parsedResult > 0) {
+          return parsedResult;
+        }
+      }
+    }
+    // 일반적인 숫자 파싱 (fallback)
+    const parsedResult = parseFloat(resultStr.replace(/[^0-9.-]/g, ""));
     if (!Number.isNaN(parsedResult) && parsedResult > 0) {
       return parsedResult;
     }
@@ -221,6 +236,48 @@ type ExtendedDrugAdministration = DrugAdministration & {
   infusionTime?: number; // minutes
 };
 
+// 처방 내역 정보 타입
+type PrescriptionInfo = {
+  amount: number;
+  tau: number;
+  cmt: number;
+  route: string;
+  timestamp: number;
+};
+
+// 처방 내역 저장
+export const savePrescriptionInfo = (
+  patientId: string,
+  drugName: string,
+  info: Omit<PrescriptionInfo, "timestamp">
+) => {
+  try {
+    const key = `tdmfriends:prescription:${patientId}:${drugName}`;
+    const data: PrescriptionInfo = {
+      ...info,
+      timestamp: Date.now(),
+    };
+    window.localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error("Failed to save prescription info", e);
+  }
+};
+
+// 처방 내역 불러오기
+const getSavedPrescriptionInfo = (
+  patientId: string,
+  drugName: string
+): PrescriptionInfo | null => {
+  try {
+    const key = `tdmfriends:prescription:${patientId}:${drugName}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as PrescriptionInfo;
+  } catch {
+    return null;
+  }
+};
+
 const computeInfusionRateFromAdministration = (
   admin?: ExtendedDrugAdministration
 ): number => {
@@ -270,12 +327,27 @@ export const buildTdmRequestBody = (args: {
   const age = patient.age;
   const sex = patient.gender === "male" ? 1 : 0;
   const height = patient.height;
-  const crcl = computeCRCL(selectedPatientId, weight, age, sex, height);
+
+  // 3단계(Lab)에서 저장된 CRCL 값 사용
+  const crcl = computeCRCL(
+    selectedPatientId,
+    weight,
+    age,
+    sex,
+    height,
+    selectedDrugName
+  );
 
   const patientDoses = (drugAdministrations || []).filter(
     (d) => d.patientId === selectedPatientId
   );
-  const inferredTau = computeTauFromAdministrations(patientDoses);
+
+  // 4단계에서 저장된 처방 내역 불러오기
+  const savedPrescription = getSavedPrescriptionInfo(
+    selectedPatientId,
+    selectedDrugName || tdmPrescription.drugName
+  );
+
   const lastDose =
     patientDoses.length > 0
       ? [...patientDoses].sort(
@@ -283,27 +355,26 @@ export const buildTdmRequestBody = (args: {
             toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
         )[patientDoses.length - 1]
       : undefined;
-  const amountBefore = lastDose ? lastDose.dose : undefined;
-  const amount = overrides?.amount ?? amountBefore;
-  const tauBefore = inferredTau;
-  const tau = overrides?.tau ?? tauBefore;
+
+  // before 값: 저장된 처방 내역 사용
+  const amountBefore =
+    savedPrescription?.amount ?? (lastDose ? lastDose.dose : 100);
+  const tauBefore =
+    savedPrescription?.tau ?? computeTauFromAdministrations(patientDoses) ?? 12;
+  const cmtBefore = savedPrescription?.cmt ?? 1;
+
+  // after 값: overrides가 있으면 사용, 없으면 before 값 사용
+  const amountAfter = overrides?.amount ?? amountBefore;
+  const tauAfter = overrides?.tau ?? tauBefore;
+  const cmtAfter = cmtBefore; // CMT는 일반적으로 변경하지 않음
+
   const toxi = 1;
-  const { auc: aucTarget, trough: cTroughTarget } = parseTargetValue(
-    tdmPrescription.tdmTarget,
-    tdmPrescription.tdmTargetValue
-  );
 
   // dose rate (mg/h) for IV infusion; 0 for bolus/oral
   const rateBefore = computeInfusionRateFromAdministration(
     lastDose as ExtendedDrugAdministration
   );
   const rateAfter = rateBefore;
-
-  // cmt mapping: IV -> 1, PO -> 2; fallback to 1 if unknown
-  const route = (tdmPrescription as Prescription & { route?: string }).route;
-  const routeNorm = (route || "").toLowerCase();
-  const cmtMapped =
-    routeNorm.includes("po") || routeNorm.includes("경구") ? 2 : 1;
 
   const dataset: Array<{
     ID: string;
@@ -319,25 +390,36 @@ export const buildTdmRequestBody = (args: {
     TOXI: number;
     EVID: number;
   }> = [];
-  // Dosing events
+
+  // 1단계: 투약 기록 추가 (EVID: 1)
+  // 4단계에서 입력한 투약 기록들을 시간순으로 정렬
   const sortedDoses = [...patientDoses].sort(
     (a, b) =>
       toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
   );
+
+  // anchor: 첫 번째 투약 시간을 기준점으로 사용 (상대 시간 계산용)
   const anchorDoseTime =
     sortedDoses.length > 0
       ? toDate(sortedDoses[0].date, sortedDoses[0].time)
-      : undefined;
-  if (sortedDoses.length > 0 && anchorDoseTime) {
+      : new Date();
+
+  // 투약 기록이 있으면 모두 추가
+  if (sortedDoses.length > 0) {
     for (const d of sortedDoses) {
       const ext = d as ExtendedDrugAdministration;
-      const t = Math.max(0, hoursDiff(toDate(d.date, d.time), anchorDoseTime));
+      // 첫 번째 투약 시간으로부터 상대 시간 계산 (시간 단위)
+      const relativeTime = Math.max(
+        0,
+        hoursDiff(toDate(d.date, d.time), anchorDoseTime)
+      );
       const rate = computeInfusionRateFromAdministration(ext);
       const cmt =
         ext.route.includes("po") || ext.route.includes("경구") ? 2 : 1;
+
       dataset.push({
         ID: selectedPatientId,
-        TIME: t,
+        TIME: relativeTime,
         DV: null,
         AMT: d.dose,
         RATE: rate,
@@ -347,17 +429,18 @@ export const buildTdmRequestBody = (args: {
         AGE: age,
         CRCL: crcl,
         TOXI: toxi,
-        EVID: 1,
+        EVID: 1, // 투약 이벤트
       });
     }
-  } else if (amount !== undefined) {
+  } else if (amountBefore !== undefined) {
+    // 투약 기록이 없으면 저장된 처방 정보로 하나의 투약 이벤트 생성
     dataset.push({
       ID: selectedPatientId,
       TIME: 0.0,
       DV: null,
-      AMT: amount,
+      AMT: amountBefore,
       RATE: 0,
-      CMT: cmtMapped,
+      CMT: cmtBefore,
       WT: weight,
       SEX: sex,
       AGE: age,
@@ -367,11 +450,8 @@ export const buildTdmRequestBody = (args: {
     });
   }
 
-  const anchor =
-    anchorDoseTime ||
-    (sortedDoses.length > 0
-      ? toDate(sortedDoses[0].date, sortedDoses[0].time)
-      : new Date());
+  // 2단계: 혈중 약물 농도 추가 (EVID: 0)
+  // 3단계에서 입력한 혈중 농도들을 필터링
   const relatedTests = selectedDrugName
     ? bloodTests.filter(
         (b) =>
@@ -379,41 +459,47 @@ export const buildTdmRequestBody = (args: {
       )
     : bloodTests.filter((b) => b.patientId === selectedPatientId);
 
-  // 관찰 이벤트는 시간순(오름차순)으로 정렬하여 추가해, 마지막 행이 항상 혈중농도(EVID:0) 되도록 보장
+  // 혈중 농도를 시간순으로 정렬 (n개일 수 있음)
   const testsSorted = [...relatedTests].sort(
     (a, b) => a.testDate.getTime() - b.testDate.getTime()
   );
 
   if (testsSorted.length > 0) {
-    for (const b of testsSorted) {
-      const t = hoursDiff(b.testDate, anchor);
+    // 혈중 농도가 있으면 모두 추가 (여러 개 가능)
+    for (const bloodTest of testsSorted) {
+      // 첫 번째 투약 시간으로부터 상대 시간 계산 (시간 단위)
+      const relativeTime = hoursDiff(bloodTest.testDate, anchorDoseTime);
+
+      // 단위 변환: ng/mL -> mg/L (1000으로 나눔)
       const dvMgPerL =
-        b.unit && b.unit.toLowerCase().includes("ng/ml")
-          ? b.concentration / 1000
-          : b.concentration;
+        bloodTest.unit && bloodTest.unit.toLowerCase().includes("ng/ml")
+          ? bloodTest.concentration / 1000
+          : bloodTest.concentration;
+
       dataset.push({
         ID: selectedPatientId,
-        TIME: t,
+        TIME: relativeTime,
         DV: dvMgPerL,
         AMT: 0,
         RATE: 0,
-        CMT: cmtMapped,
+        CMT: 1,
         WT: weight,
         SEX: sex,
         AGE: age,
         CRCL: crcl,
         TOXI: toxi,
-        EVID: 0,
+        EVID: 0, // 관찰 이벤트 (혈중 농도)
       });
     }
   } else {
+    // 혈중 농도가 없으면 미래 시점에 관찰 이벤트 하나 추가 (DV는 null)
     dataset.push({
       ID: selectedPatientId,
-      TIME: tau ?? 2.0,
+      TIME: tauAfter ?? 2.0,
       DV: null,
       AMT: 0,
       RATE: 0,
-      CMT: cmtMapped,
+      CMT: 1,
       WT: weight,
       SEX: sex,
       AGE: age,
@@ -432,28 +518,27 @@ export const buildTdmRequestBody = (args: {
     lastDoseDate: lastDose ? toDate(lastDose.date, lastDose.time) : undefined,
   });
 
-  // New API fields (_before/_after) with legacy fields for compatibility
+  // API request body with before/after fields
   const body = {
-    // legacy
-    input_tau: tau ?? 12,
-    input_amount: amount ?? 100,
+    // Patient covariates
     input_WT: weight,
     input_CRCL: crcl,
     input_AGE: age,
     input_SEX: sex,
     input_TOXI: toxi,
-    input_AUC: aucTarget ?? undefined,
-    input_CTROUGH: cTroughTarget ?? undefined,
 
-    // new before/after
-    input_tau_before: tauBefore ?? tau ?? 12,
-    input_amount_before: amountBefore ?? amount ?? 100,
+    // Before values (from saved prescription)
+    input_tau_before: tauBefore,
+    input_amount_before: amountBefore,
     input_rate_before: rateBefore,
-    input_cmt_before: cmtMapped,
-    input_tau_after: tau ?? tauBefore ?? 12,
-    input_amount_after: amount ?? amountBefore ?? 100,
+    input_cmt_before: cmtBefore,
+
+    // After values (adjusted or same as before)
+    input_tau_after: tauAfter,
+    input_amount_after: amountAfter,
     input_rate_after: rateAfter,
-    input_cmt_after: cmtMapped,
+    input_cmt_after: cmtAfter,
+
     model_name: modelName,
     dataset,
   };
