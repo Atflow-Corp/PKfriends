@@ -170,7 +170,7 @@ const TDMLineChart = ({
             if (typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin) {
               const unit = getConcentrationUnit(selectedDrug);
               result.push(``);
-              result.push(`목표 범위: ${targetMin.toFixed(1)} - ${targetMax.toFixed(1)} ${unit}`);
+              result.push(`TDM 목표치: ${targetMin.toFixed(1)} - ${targetMax.toFixed(1)} ${unit}`);
             }
             
             // 실제 혈중 농도 찾기 (x축 근처 범위 내)
