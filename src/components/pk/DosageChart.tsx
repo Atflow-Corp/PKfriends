@@ -258,18 +258,28 @@ const DosageChart = ({
     chart.update('none');
   };
   const resetZoom = () => {
-    const chartWithPlugin = chartRef.current as unknown as { resetZoom?: () => void } | null;
-    if (!chartWithPlugin) return;
+    const chart = chartRef.current;
+    if (!chart) return;
+    
+    // 플러그인 resetZoom 시도
+    const chartWithPlugin = chart as unknown as { resetZoom?: () => void };
     if (typeof chartWithPlugin.resetZoom === 'function') {
       chartWithPlugin.resetZoom();
-      return;
     }
-    const realChart = chartRef.current;
-    if (!realChart) return;
-    const options = realChart.options as ChartOptions<'line'>;
+    
+    // +/- 버튼으로 줌한 경우를 위해 명시적으로 초기 범위로 리셋
+    const options = chart.options as ChartOptions<'line'>;
     const scales = (options.scales ?? {}) as Record<string, { min?: number; max?: number; type?: string; ticks?: unknown }>;
-    options.scales = { ...scales, x: { ...(scales.x || {}), type: 'linear', min: undefined, max: undefined } };
-    realChart.update('none');
+    options.scales = { 
+      ...scales, 
+      x: { 
+        ...(scales.x || {}), 
+        type: 'linear', 
+        min: dataTimeExtents.min, 
+        max: dataTimeExtents.max 
+      } 
+    };
+    chart.update('none');
   };
 
   // Y축 상한: PKCharts와 동일한 로직
@@ -402,7 +412,7 @@ const DosageChart = ({
              <div className="flex items-center gap-2">
                <div 
                  className="w-2 h-2 rounded-full" 
-                 style={{ backgroundColor: '#dc2626' }}
+                 style={{ backgroundColor: '#ef4444' }}
                ></div>
                <span className="text-sm text-gray-600">실제 혈중 농도</span>
              </div>
@@ -442,11 +452,12 @@ const DosageChart = ({
                 ...(currentMethodSeries && currentMethodSeries.length > 0 ? [{
                   label: '환자 현용법',
                   data: data.map(d => ({ x: d.time, y: (d.currentMethod ?? null) as number | null })),
-                  borderColor: '#3b82f6',
+                  borderColor: '#3b82f6', // blue-500
                   backgroundColor: 'rgba(59,130,246,0.25)',
                   pointRadius: 0,
                   fill: false,
                   tension: 0.25,
+                  borderWidth: 2
                 }] : []),
                 // 용법 조정 결과
                 {
@@ -457,24 +468,26 @@ const DosageChart = ({
                   pointRadius: 0,
                   fill: selectedDrug === 'Vancomycin' && (tdmTarget?.toLowerCase().includes('auc') || false),
                   tension: 0.25,
+                  borderWidth: 2
                 },
                 // 실제 혈중 농도
                 ...(observedSeries && observedSeries.length > 0 ? [{
                   label: '실제 혈중 농도',
                   data: data.map(d => ({ x: d.time, y: d.observed as number | null })),
-                  borderColor: '#dc2626',
-                  backgroundColor: '#dc2626',
+                  borderColor: '#ef4444', // red-500
+                  backgroundColor: '#ef4444',
                   showLine: false,
-                  pointRadius: 3,
+                  pointRadius: 4,
                 }] : []),
                 // 평균 농도 (특정 케이스 제외)
                 ...(!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' ? [{
                   label: '평균 농도',
                   data: data.map(d => ({ x: d.time, y: averageConcentration })),
-                  borderColor: '#808080',
+                  borderColor: '#6b7280', // gray-500
                   pointRadius: 0,
                   fill: false,
                   borderDash: [5, 5] as unknown as number[],
+                  borderWidth: 2
                 }] : [])
               ]
             }}
@@ -484,7 +497,7 @@ const DosageChart = ({
               parsing: false,
               animation: false,
               plugins: {
-                legend: { display: true },
+                legend: { display: false },
                 tooltip: {
                   callbacks: {
                     label: (ctx) => {
@@ -507,13 +520,30 @@ const DosageChart = ({
                   }
                 },
                 zoom: {
-                  limits: { x: { min: dataTimeExtents.min, max: dataTimeExtents.max, minRange: 0.5 } },
-                  zoom: {
-                    mode: 'x',
-                    wheel: { enabled: true, modifierKey: 'ctrl' },
-                    drag: { enabled: true, backgroundColor: 'rgba(59,130,246,0.08)', borderColor: '#3b82f6', borderWidth: 1 }
+                  limits: { 
+                    x: { min: dataTimeExtents.min, max: dataTimeExtents.max, minRange: 0.5 },
                   },
-                  pan: { enabled: true, mode: 'x' }
+                  zoom: { 
+                    wheel: { enabled: true }, 
+                    mode: 'x' 
+                  },
+                  pan: { 
+                    enabled: true, 
+                    mode: 'x',
+                    onPanStart: (context: { chart: { scales?: { x?: { min?: number; max?: number } } } }) => {
+                      // 줌되지 않은 초기 상태에서는 pan 비활성화
+                      const xScale = context.chart.scales?.x;
+                      if (!xScale) return false;
+                      
+                      const currentMin = xScale.min ?? dataTimeExtents.min;
+                      const currentMax = xScale.max ?? dataTimeExtents.max;
+                      const isZoomed = Math.abs(currentMin - dataTimeExtents.min) > 0.01 || 
+                                      Math.abs(currentMax - dataTimeExtents.max) > 0.01;
+                      
+                      // 줌된 상태에서만 pan 허용
+                      return isZoomed;
+                    }
+                  }
                 },
                 decimation: { enabled: true, algorithm: 'min-max' }
               },

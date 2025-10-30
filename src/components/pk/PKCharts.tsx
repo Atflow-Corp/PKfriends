@@ -269,9 +269,25 @@ const PKCharts = ({
   const resetZoom = () => {
     const chart = chartRef.current;
     if (!chart) return;
+    
+    // 플러그인 resetZoom 시도
+    const chartWithPlugin = chart as unknown as { resetZoom?: () => void };
+    if (typeof chartWithPlugin.resetZoom === 'function') {
+      chartWithPlugin.resetZoom();
+    }
+    
+    // +/- 버튼으로 줌한 경우를 위해 명시적으로 초기 범위로 리셋
     const options = chart.options as ChartOptions<'line'>;
     const scales = (options.scales ?? {}) as Record<string, { min?: number; max?: number; type?: string; ticks?: unknown }>;
-    options.scales = { ...scales, x: { ...(scales.x || {}), type: 'linear', min: undefined, max: undefined } };
+    options.scales = { 
+      ...scales, 
+      x: { 
+        ...(scales.x || {}), 
+        type: 'linear', 
+        min: dataTimeExtents.min, 
+        max: dataTimeExtents.max 
+      } 
+    };
     chart.update('none');
   };
 
@@ -351,28 +367,30 @@ const PKCharts = ({
                 {
                   label: '환자 현용법',
                   data: data.map(d => ({ x: d.time, y: d.predicted })),
-                  borderColor: '#3b82f6',
+                  borderColor: '#3b82f6', // blue-500
                   backgroundColor: 'rgba(59,130,246,0.25)',
                   pointRadius: 0,
-                  fill: true,
-                  tension: 0.25
+                  fill: false,
+                  tension: 0.25,
+                  borderWidth: 2
                 },
                 {
                   label: '일반 대조군',
                   data: data.map(d => ({ x: d.time, y: d.controlGroup ?? null })),
-                  borderColor: '#f97316',
+                  borderColor: '#f97316', // orange-500
                   backgroundColor: 'rgba(249,115,22,0.25)',
                   pointRadius: 0,
-                  fill: true,
-                  tension: 0.25
+                  fill: false,
+                  tension: 0.25,
+                  borderWidth: 2
                 },
                 {
                   label: '실제 혈중 농도',
                   data: data.map(d => ({ x: d.time, y: d.observed })),
-                  borderColor: '#dc2626',
-                  backgroundColor: '#dc2626',
+                  borderColor: '#ef4444', // red-500
+                  backgroundColor: '#ef4444',
                   showLine: false,
-                  pointRadius: 3
+                  pointRadius: 4
                 }
               ]
             }}
@@ -382,7 +400,7 @@ const PKCharts = ({
               parsing: false,
               animation: false,
               plugins: {
-                legend: { display: true },
+                legend: { display: false },
                 tooltip: {
                   callbacks: {
                     label: (ctx) => {
@@ -404,8 +422,30 @@ const PKCharts = ({
                   }
                 },
                 zoom: {
-                  zoom: { wheel: { enabled: true }, mode: 'x' },
-                  pan: { enabled: true, mode: 'x' }
+                  limits: { 
+                    x: { min: dataTimeExtents.min, max: dataTimeExtents.max, minRange: 0.5 },
+                  },
+                  zoom: { 
+                    wheel: { enabled: true }, 
+                    mode: 'x' 
+                  },
+                  pan: { 
+                    enabled: true, 
+                    mode: 'x',
+                    onPanStart: (context: { chart: { scales?: { x?: { min?: number; max?: number } } } }) => {
+                      // 줌되지 않은 초기 상태에서는 pan 비활성화
+                      const xScale = context.chart.scales?.x;
+                      if (!xScale) return false;
+                      
+                      const currentMin = xScale.min ?? dataTimeExtents.min;
+                      const currentMax = xScale.max ?? dataTimeExtents.max;
+                      const isZoomed = Math.abs(currentMin - dataTimeExtents.min) > 0.01 || 
+                                      Math.abs(currentMax - dataTimeExtents.max) > 0.01;
+                      
+                      // 줌된 상태에서만 pan 허용
+                      return isZoomed;
+                    }
+                  }
                 }
               },
               scales: {
