@@ -167,6 +167,7 @@ const DrugAdministrationStep = ({
         <CardContent>
           {/* table_maker 테이블/입력 UI */}
           <TablePage
+            selectedPatient={selectedPatient}
             tdmDrug={tdmDrug}
             onComplete={onNext}
             onTableGenerated={() => setTableReady(true)}
