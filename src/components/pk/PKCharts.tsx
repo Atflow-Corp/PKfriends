@@ -1,7 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Legend } from "recharts";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef } from "react";
 import { ChartColumnIncreasing } from "lucide-react";
+import { Chart as ChartJS, LineElement, PointElement, LinearScale, Tooltip as CJTooltip, Legend as CJLegend, Filler, CategoryScale, ChartOptions } from "chart.js";
+import zoomPlugin from "chartjs-plugin-zoom";
+import annotationPlugin from "chartjs-plugin-annotation";
+import { Line } from "react-chartjs-2";
+
+ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, CJTooltip, CJLegend, Filler, zoomPlugin, annotationPlugin);
 
 interface SimulationDataPoint {
   time: number;
@@ -72,60 +77,24 @@ const PKCharts = ({
   // 첫 투약 시간 기준점 설정
   const getFirstDoseDateTime = useCallback(() => {
     if (!drugAdministrations || drugAdministrations.length === 0) return new Date();
-    
     const sortedDoses = drugAdministrations
       .filter(d => d.drugName === selectedDrug)
       .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
-    
     return sortedDoses.length > 0 
       ? new Date(`${sortedDoses[0].date}T${sortedDoses[0].time}`)
       : new Date();
   }, [drugAdministrations, selectedDrug]);
 
-  // 데이터 병합 전 series 기반 최대 시간 계산
-  const dataMaxTime = useMemo(() => {
+  // 데이터 병합 전 series 기반 최소/최대 시간 계산
+  const dataTimeExtents = useMemo(() => {
     const candidates: number[] = [];
     for (const p of ipredSeries || []) candidates.push(p.time);
     for (const p of predSeries || []) candidates.push(p.time);
     for (const p of observedSeries || []) candidates.push(p.time);
     const maxSeriesTime = candidates.length > 0 ? Math.max(...candidates) : 72;
-    return maxSeriesTime;
+    const minSeriesTime = candidates.length > 0 ? Math.min(...candidates) : 0;
+    return { min: Math.max(0, minSeriesTime), max: Math.max(24, maxSeriesTime) };
   }, [ipredSeries, predSeries, observedSeries]);
-
-  // x축 틱 데이터 생성 (실제 투약 일시 + 예측 투약 일시)
-  const xAxisTicks = useMemo(() => {
-    if (!drugAdministrations || drugAdministrations.length === 0) {
-      const maxT = Math.max(24, Math.ceil(dataMaxTime / 8) * 8);
-      const ticks: number[] = [];
-      for (let t = 0; t <= maxT; t += 8) ticks.push(t);
-      return ticks;
-    }
-    const firstDoseDateTime = getFirstDoseDateTime();
-    const selectedDrugDoses = drugAdministrations
-      .filter(d => d.drugName === selectedDrug)
-      .map(d => {
-        const doseDateTime = new Date(`${d.date}T${d.time}`);
-        const hoursFromFirst = (doseDateTime.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
-        return { time: hoursFromFirst, dateTime: doseDateTime };
-      })
-      .sort((a, b) => a.time - b.time);
-    const actualDoseTimes = selectedDrugDoses.map(d => d.time);
-    if (selectedDrugDoses.length > 0) {
-      const lastDoseTime = Math.max(...actualDoseTimes);
-      const intervalHours = selectedDrugDoses.length > 1 
-        ? selectedDrugDoses[1].time - selectedDrugDoses[0].time 
-        : 12;
-      const predictedTimes = [] as number[];
-      let nextPredictedTime = lastDoseTime + intervalHours;
-      const maxT = Math.max(dataMaxTime, lastDoseTime + intervalHours * 6); // extend several cycles
-      while (nextPredictedTime <= maxT) {
-        predictedTimes.push(nextPredictedTime);
-        nextPredictedTime += intervalHours;
-      }
-      return [...actualDoseTimes, ...predictedTimes].sort((a, b) => a - b);
-    }
-    return actualDoseTimes;
-  }, [drugAdministrations, selectedDrug, dataMaxTime, getFirstDoseDateTime]);
 
   // 마지막 실제 투약 시간 계산 (구분선용)
   const lastActualDoseTime = useMemo(() => {
@@ -154,11 +123,10 @@ const PKCharts = ({
       hour: '2-digit',
       hour12: false
     }).replace(/\. /g, '.');
-    // toLocaleString returns e.g. 10. 21. 14 -> ensure mm.dd HH
     return formatted.replace(/\.$/, '');
   };
 
-  // Merge separated series if provided; otherwise fall back to simulationData
+  // Merge separated series
   const data: SimulationDataPoint[] = useMemo(() => {
     if ((ipredSeries && ipredSeries.length) || (predSeries && predSeries.length) || (observedSeries && observedSeries.length)) {
       const map = new Map<number, SimulationDataPoint & { controlGroup?: number; averageLine?: number }>();
@@ -189,7 +157,7 @@ const PKCharts = ({
     return [];
   }, [ipredSeries, predSeries, observedSeries, selectedDrug]);
 
-  // API 응답 혹은 기본값 (기본값을 null로 두고 표시 시 단위 없이 '-')
+  // API 응답 혹은 기본값
   const recentAUC: number | null = typeof propRecentAUC === 'number' ? propRecentAUC : null;
   const recentMax: number | null = typeof propRecentMax === 'number' ? propRecentMax : null;
   const recentTrough: number | null = typeof propRecentTrough === 'number' ? propRecentTrough : null;
@@ -197,7 +165,7 @@ const PKCharts = ({
   const predictedMax: number | null = typeof propPredictedMax === 'number' ? propPredictedMax : null;
   const predictedTrough: number | null = typeof propPredictedTrough === 'number' ? propPredictedTrough : null;
 
-  // 평균 농도(ng/mL): 시간-농도 곡선의 평균값 (구간 평균), 데이터가 충분할 때만 계산
+  // 평균 농도(ng/mL): predicted 라인을 기준
   const averageConcentration: number | null = (() => {
     if (!data || data.length < 2) return null;
     const sorted = [...data].sort((a, b) => a.time - b.time);
@@ -209,22 +177,12 @@ const PKCharts = ({
     for (let i = 1; i < sorted.length; i++) {
       const dt = sorted[i].time - sorted[i - 1].time;
       if (dt <= 0) continue;
-      // predicted 라인을 기준으로 계산 (ng/mL)
       const cPrev = sorted[i - 1].predicted ?? 0;
       const cCurr = sorted[i].predicted ?? 0;
       auc += ((cPrev + cCurr) / 2) * dt;
     }
     return auc / duration;
   })();
-
-  // 평균값을 데이터에 추가
-  const dataWithAverage = useMemo(() => {
-    if (!averageConcentration) return data;
-    return data.map(point => ({
-      ...point,
-      averageLine: averageConcentration
-    }));
-  }, [data, averageConcentration]);
 
   // Y축 상한
   const yMax = useMemo(() => {
@@ -289,7 +247,49 @@ const PKCharts = ({
     return currentValue >= minValue && currentValue <= maxValue;
   };
 
-  const xDomain: [number | 'dataMin', number | 'dataMax'] = ['dataMin', 'dataMax'];
+  // Chart.js 인스턴스 참조 및 줌 버튼 구현
+  const chartRef = useRef<ChartJS<'line'> | null>(null);
+  const zoomByFactor = (factor: number) => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const options = chart.options as ChartOptions<'line'>;
+    const scales = (options.scales ?? {}) as Record<string, { min?: number; max?: number; type?: string; ticks?: unknown }>;
+    const baseMin = dataTimeExtents.min;
+    const baseMax = dataTimeExtents.max;
+    const curMin = (scales.x?.min ?? baseMin);
+    const curMax = (scales.x?.max ?? baseMax);
+    const center = (curMin + curMax) / 2;
+    const half = (curMax - curMin) / 2;
+    const newHalf = Math.max(0.5, half / factor);
+    const nmin = Math.max(baseMin, center - newHalf);
+    const nmax = Math.min(baseMax, center + newHalf);
+    options.scales = { ...scales, x: { ...(scales.x || {}), type: 'linear', min: nmin, max: nmax } };
+    chart.update('none');
+  };
+  const resetZoom = () => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    
+    // 플러그인 resetZoom 시도
+    const chartWithPlugin = chart as unknown as { resetZoom?: () => void };
+    if (typeof chartWithPlugin.resetZoom === 'function') {
+      chartWithPlugin.resetZoom();
+    }
+    
+    // +/- 버튼으로 줌한 경우를 위해 명시적으로 초기 범위로 리셋
+    const options = chart.options as ChartOptions<'line'>;
+    const scales = (options.scales ?? {}) as Record<string, { min?: number; max?: number; type?: string; ticks?: unknown }>;
+    options.scales = { 
+      ...scales, 
+      x: { 
+        ...(scales.x || {}), 
+        type: 'linear', 
+        min: dataTimeExtents.min, 
+        max: dataTimeExtents.max 
+      } 
+    };
+    chart.update('none');
+  };
 
   return (
     <div className="w-full bg-white dark:bg-slate-900 rounded-lg p-6 shadow">
@@ -319,7 +319,7 @@ const PKCharts = ({
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2"></p>
             </>
           )}
-        </div>
+            </div>
       </div>
 
       {/* 범례 */}
@@ -350,117 +350,117 @@ const PKCharts = ({
         )}
       </div>
 
-      {/* 메인 그래프 */}
+      {/* 메인 그래프 (Chart.js) */}
       <div className="mb-2">
-        <div className="h-96 overflow-x-auto overflow-y-hidden">
-          <div className="min-w-[1800px] h-full" style={{ width: '300%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              {selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc') ? (
-                <AreaChart data={dataWithAverage}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fontSize: 12 }}
-                    domain={xDomain}
-                    type="number"
-                    scale="linear"
-                    ticks={xAxisTicks}
-                    tickFormatter={formatDateTimeForTick}
-                  />
-                  <YAxis 
-                    label={{ value: 'Concentration(mg/L)', angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
-                    tick={{ fontSize: 12 }}
-                    domain={[0, yMax]}
-                    tickCount={6}
-                    tickFormatter={(value) => `${value.toFixed(2)}`}
-                    width={80}
-                  />
-                  {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
-                    <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
-                  )}
-                  {lastActualDoseTime !== null && (
-                    <ReferenceLine 
-                      x={lastActualDoseTime} 
-                      stroke="#ff6b6b" 
-                      strokeWidth={2} 
-                      strokeDasharray="5 5"
-                      label={{ value: "실제 투약", position: "top", offset: 10 }}
-                    />
-                  )}
-                  {typeof averageConcentration === 'number' && (
-                    <Line type="monotone" dataKey="averageLine" stroke="#808080" strokeDasharray="5 5" strokeWidth={0.5} name="평균 약물 농도" dot={false} />
-                  )}
-                  <Tooltip 
-                    formatter={(value: unknown, name: string) => {
-                      if (name === '실제 혈중 농도') return [`${(value as number).toFixed(2)} mg/L`, '실제 혈중 농도'];
-                      return [typeof value === 'number' ? `${value.toFixed(2)} mg/L` : 'N/A', name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'];
-                    }}
-                    labelFormatter={(value) => {
-                      if (drugAdministrations && drugAdministrations.length > 0) {
-                        const firstDoseDateTime = getFirstDoseDateTime();
-                        const targetDateTime = new Date(firstDoseDateTime.getTime() + Number(value) * 60 * 60 * 1000);
-                        const dateTimeStr = targetDateTime.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).replace(/\. /g, '.');
-                        return <strong>투약 일시: {dateTimeStr}</strong>;
-                      }
-                      return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
-                    }}
-                  />
-                  <Area type="monotone" dataKey="controlGroup" stroke="#f97316" fill="#f97316" fillOpacity={0.3} name="일반 대조군" />
-                  <Area type="monotone" dataKey="predicted" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="환자 현용법" />
-                  <Line type="monotone" dataKey="observed" stroke="#dc2626" strokeWidth={0} dot={{ fill: "#dc2626", r: 4 }} name="실제 혈중 농도" />
-                </AreaChart>
-              ) : (
-                <LineChart data={dataWithAverage}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fontSize: 12 }}
-                    domain={xDomain}
-                    type="number"
-                    scale="linear"
-                    ticks={xAxisTicks}
-                    tickFormatter={formatDateTimeForTick}
-                  />
-                  <YAxis 
-                    label={{ value: `Concentration(${getConcentrationUnit(selectedDrug)})`, angle: -90, position: 'outside', style: { textAnchor: 'middle' }, offset: 10 }}
-                    tick={{ fontSize: 12 }}
-                    domain={[0, yMax]}
-                    tickCount={6}
-                    tickFormatter={(value) => `${Math.round(value)}`}
-                    width={80}
-                  />
-                  {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
-                    <ReferenceArea y1={targetMin} y2={targetMax} fill="#3b82f6" fillOpacity={0.1} />
-                  )}
-                  {lastActualDoseTime !== null && (
-                    <ReferenceLine x={lastActualDoseTime} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="5 5" label={{ value: "실제 투약", position: "top", offset: 10 }} />
-                  )}
-                  {typeof averageConcentration === 'number' && (
-                    <Line type="monotone" dataKey="averageLine" stroke="#808080" strokeDasharray="5 5" strokeWidth={0.5} name="평균 약물 농도" dot={false} />
-                  )}
-                  <Tooltip 
-                    formatter={(value: unknown, name: string) => {
+        {/* 상단 줌 컨트롤 */}
+        <div className="flex justify-end gap-2 mb-2">
+          <button className="px-2 py-1 border rounded" onClick={() => zoomByFactor(1.25)}>+
+          </button>
+          <button className="px-2 py-1 border rounded" onClick={() => zoomByFactor(0.8)}>-</button>
+          <button className="px-2 py-1 border rounded" onClick={resetZoom}>Reset</button>
+        </div>
+        <div className="relative h-96">
+          <Line
+            ref={chartRef}
+            data={{
+              datasets: [
+                {
+                  label: '환자 현용법',
+                  data: data.map(d => ({ x: d.time, y: d.predicted })),
+                  borderColor: '#3b82f6', // blue-500
+                  backgroundColor: 'rgba(59,130,246,0.25)',
+                  pointRadius: 0,
+                  fill: false,
+                  tension: 0.25,
+                  borderWidth: 2
+                },
+                {
+                  label: '일반 대조군',
+                  data: data.map(d => ({ x: d.time, y: d.controlGroup ?? null })),
+                  borderColor: '#f97316', // orange-500
+                  backgroundColor: 'rgba(249,115,22,0.25)',
+                  pointRadius: 0,
+                  fill: false,
+                  tension: 0.25,
+                  borderWidth: 2
+                },
+                {
+                  label: '실제 혈중 농도',
+                  data: data.map(d => ({ x: d.time, y: d.observed })),
+                  borderColor: '#ef4444', // red-500
+                  backgroundColor: '#ef4444',
+                  showLine: false,
+                  pointRadius: 4
+                }
+              ]
+            }}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              parsing: false,
+              animation: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => {
+                      const label = ctx.dataset.label || '';
+                      const v = ctx.parsed.y as number;
                       const unit = getConcentrationUnit(selectedDrug);
-                      if (name === '실제 혈중 농도') return [`${(value as number).toFixed(2)} ${unit}`, '실제 혈중 농도'];
-                      return [typeof value === 'number' ? `${value.toFixed(2)} ${unit}` : 'N/A', name === '환자 현용법' ? '현용법 농도:' : name === '일반 대조군' ? '대조군 농도:' : name === '평균 약물 농도' ? '평균 농도:' : '실제값'];
-                    }}
-                    labelFormatter={(value) => {
-                      if (drugAdministrations && drugAdministrations.length > 0) {
-                        const firstDoseDateTime = getFirstDoseDateTime();
-                        const targetDateTime = new Date(firstDoseDateTime.getTime() + Number(value) * 60 * 60 * 1000);
-                        const dateTimeStr = targetDateTime.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).replace(/\. /g, '.');
-                        return <strong>투약 일시: {dateTimeStr}</strong>;
-                      }
-                      return <strong>투약 {Math.round(Number(value))}시간 경과</strong>;
-                    }}
-                  />
-                  <Line type="monotone" dataKey="controlGroup" stroke="#f97316" strokeWidth={2} name="일반 대조군" dot={false} />
-                  <Line type="monotone" dataKey="predicted" stroke="#3b82f6" strokeWidth={2} name="환자 현용법" dot={false} />
-                  <Line type="monotone" dataKey="observed" stroke="#dc2626" strokeWidth={2} dot={{ fill: "#dc2626", r: 4, strokeWidth: 0 }} name="실제 혈중 농도" connectNulls={false} />
-                </LineChart>
-              )}
-            </ResponsiveContainer>
-          </div>
+                      return `${label}: ${typeof v === 'number' ? v.toFixed(2) : v} ${unit}`;
+                    }
+                  }
+                },
+                annotation: {
+                  annotations: {
+                    targetBand: (typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin) ? {
+                      type: 'box', yMin: targetMin, yMax: targetMax, backgroundColor: 'rgba(59,130,246,0.08)', borderWidth: 0
+                    } : undefined,
+                    lastDose: (lastActualDoseTime != null) ? {
+                      type: 'line', xMin: lastActualDoseTime, xMax: lastActualDoseTime, borderColor: '#ff6b6b', borderWidth: 2, borderDash: [5,5]
+                    } : undefined
+                  }
+                },
+                zoom: {
+                  limits: { 
+                    x: { min: dataTimeExtents.min, max: dataTimeExtents.max, minRange: 0.5 },
+                  },
+                  zoom: { 
+                    wheel: { enabled: true }, 
+                    mode: 'x' 
+                  },
+                  pan: { 
+                    enabled: true, 
+                    mode: 'x',
+                    onPanStart: (context: { chart: { scales?: { x?: { min?: number; max?: number } } } }) => {
+                      // 줌되지 않은 초기 상태에서는 pan 비활성화
+                      const xScale = context.chart.scales?.x;
+                      if (!xScale) return false;
+                      
+                      const currentMin = xScale.min ?? dataTimeExtents.min;
+                      const currentMax = xScale.max ?? dataTimeExtents.max;
+                      const isZoomed = Math.abs(currentMin - dataTimeExtents.min) > 0.01 || 
+                                      Math.abs(currentMax - dataTimeExtents.max) > 0.01;
+                      
+                      // 줌된 상태에서만 pan 허용
+                      return isZoomed;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  type: 'linear',
+                  ticks: { callback: (v) => formatDateTimeForTick(Number(v)) }
+                },
+                y: {
+                  min: 0,
+                  max: yMax,
+                  ticks: { callback: (v) => `${Number(v).toFixed(2)}` }
+                }
+              }
+            }}
+          />
         </div>
         <div className="flex justify-center mt-2">
           <div className="text-sm text-gray-600 font-medium">투약 일시</div>
@@ -502,7 +502,7 @@ const PKCharts = ({
             <div className="flex items-start gap-2"><div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div><p className="leading-relaxed"><span className="font-semibold">현 용법 {latestAdministration?.intervalHours || '시간'} 간격으로 {latestAdministration?.dose || 0}{latestAdministration?.unit || 'mg'} 투약 시</span> Steady State까지 TDM 목표 <span className="font-semibold text-blue-600 dark:text-blue-400">{tdmTarget || '목표 유형'}</span>는 <span className="font-semibold text-red-600 dark:text-red-400"> {getTdmTargetValue().value}</span>으로 {isWithinTargetRange() ? (<> 적절한 용법입니다.</>) : (<> 치료 범위를 벗어납니다.</>)}</p></div>
           </CardContent>
         </Card>
-      </div>
+          </div>
     </div>
   );
 };
