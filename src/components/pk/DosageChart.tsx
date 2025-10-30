@@ -142,13 +142,11 @@ const DosageChart = ({
     const firstDoseDateTime = getFirstDoseDateTime();
     const targetDateTime = new Date(firstDoseDateTime.getTime() + timeInHours * 60 * 60 * 1000);
     
-    return targetDateTime.toLocaleString('ko-KR', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    }).replace(/\. /g, '.');
+    const month = String(targetDateTime.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDateTime.getDate()).padStart(2, '0');
+    const hour = String(targetDateTime.getHours()).padStart(2, '0');
+    
+    return `${month}.${day} ${hour}시`;
   };
 
   // Merge separated series if provided; otherwise fall back to simulationData
@@ -450,10 +448,10 @@ const DosageChart = ({
               datasets: [
                 // 환자 현용법
                 ...(currentMethodSeries && currentMethodSeries.length > 0 ? [{
-                  label: '환자 현용법',
+                  label: '현용법',
                   data: data.map(d => ({ x: d.time, y: (d.currentMethod ?? null) as number | null })),
                   borderColor: '#3b82f6', // blue-500
-                  backgroundColor: 'rgba(59,130,246,0.25)',
+                  backgroundColor: 'transparent',
                   pointRadius: 0,
                   fill: false,
                   tension: 0.25,
@@ -464,7 +462,7 @@ const DosageChart = ({
                   label: '용법 조정 결과',
                   data: data.map(d => ({ x: d.time, y: d.predicted })),
                   borderColor: chartColor === 'pink' ? '#ec4899' : '#22c55e',
-                  backgroundColor: chartColor === 'pink' ? 'rgba(236,72,153,0.25)' : 'rgba(34,197,94,0.25)',
+                  backgroundColor: 'transparent',
                   pointRadius: 0,
                   fill: selectedDrug === 'Vancomycin' && (tdmTarget?.toLowerCase().includes('auc') || false),
                   tension: 0.25,
@@ -496,16 +494,68 @@ const DosageChart = ({
               maintainAspectRatio: false,
               parsing: false,
               animation: false,
+              interaction: {
+                mode: 'index',
+                intersect: false,
+              },
               plugins: {
                 legend: { display: false },
                 tooltip: {
+                  mode: 'index',
+                  intersect: false,
                   callbacks: {
+                    title: (ctx) => {
+                      // x축 좌표 (시간)을 날짜/시간으로 표시
+                      if (ctx.length > 0) {
+                        const timeValue = ctx[0].parsed.x;
+                        return formatDateTimeForTick(timeValue);
+                      }
+                      return '';
+                    },
                     label: (ctx) => {
                       const label = ctx.dataset.label || '';
                       const v = ctx.parsed.y as number;
+                      
                       const unit = (label === '평균 농도') ? getConcentrationUnit(selectedDrug) : getConcentrationUnit(selectedDrug);
-                      const fmt = typeof v === 'number' ? (label === '실제 혈중 농도' ? v.toFixed(2) : v.toFixed(2)) : v;
+                      const fmt = typeof v === 'number' ? v.toFixed(2) : v;
                       return `${label}: ${fmt} ${unit}`;
+                    },
+                    afterBody: (ctx) => {
+                      const result: string[] = [];
+                      
+                      // 목표치 범위 먼저 표시
+                      if (targetMin !== null && targetMax !== null && targetMax > targetMin) {
+                        const unit = getConcentrationUnit(selectedDrug);
+                        result.push(``);
+                        result.push(`목표 범위: ${targetMin.toFixed(1)} - ${targetMax.toFixed(1)} ${unit}`);
+                      }
+                      
+                      // 실제 혈중 농도 찾기 (x축 근처 범위 내)
+                      if (ctx.length > 0) {
+                        const hoverX = ctx[0].parsed.x;
+                        
+                        // 가장 가까운 측정 데이터 찾기
+                        const observedPoints = data.filter(d => 
+                          d.observed !== null && 
+                          typeof d.observed === 'number' && 
+                          !isNaN(d.observed)
+                        );
+                        
+                        if (observedPoints.length > 0) {
+                          // hover 위치에서 가장 가까운 점 찾기
+                          const closest = observedPoints.reduce((prev, curr) => 
+                            Math.abs(curr.time - hoverX) < Math.abs(prev.time - hoverX) ? curr : prev
+                          );
+                          
+                          // 1시간 범위 내에 있으면 표시
+                          if (Math.abs(closest.time - hoverX) < 1) {
+                            const unit = getConcentrationUnit(selectedDrug);
+                            result.push(`실제 혈중 농도: ${closest.observed!.toFixed(2)} ${unit}`);
+                          }
+                        }
+                      }
+                      
+                      return result;
                     }
                   }
                 },

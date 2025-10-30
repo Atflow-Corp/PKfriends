@@ -117,13 +117,12 @@ const PKCharts = ({
     }
     const firstDoseDateTime = getFirstDoseDateTime();
     const targetDateTime = new Date(firstDoseDateTime.getTime() + timeInHours * 60 * 60 * 1000);
-    const formatted = targetDateTime.toLocaleString('ko-KR', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      hour12: false
-    }).replace(/\. /g, '.');
-    return formatted.replace(/\.$/, '');
+    
+    const month = String(targetDateTime.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDateTime.getDate()).padStart(2, '0');
+    const hour = String(targetDateTime.getHours()).padStart(2, '0');
+    
+    return `${month}.${day} ${hour}시`;
   };
 
   // Merge separated series
@@ -326,7 +325,7 @@ const PKCharts = ({
       <div className="flex justify-center gap-6 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}의 현용법</span>
+          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-orange-500"></div>
@@ -365,20 +364,20 @@ const PKCharts = ({
             data={{
               datasets: [
                 {
-                  label: '환자 현용법',
+                  label: '현용법',
                   data: data.map(d => ({ x: d.time, y: d.predicted })),
                   borderColor: '#3b82f6', // blue-500
-                  backgroundColor: 'rgba(59,130,246,0.25)',
+                  backgroundColor: 'transparent',
                   pointRadius: 0,
                   fill: false,
                   tension: 0.25,
                   borderWidth: 2
                 },
                 {
-                  label: '일반 대조군',
+                  label: '대조군',
                   data: data.map(d => ({ x: d.time, y: d.controlGroup ?? null })),
                   borderColor: '#f97316', // orange-500
-                  backgroundColor: 'rgba(249,115,22,0.25)',
+                  backgroundColor: 'transparent',
                   pointRadius: 0,
                   fill: false,
                   tension: 0.25,
@@ -391,7 +390,17 @@ const PKCharts = ({
                   backgroundColor: '#ef4444',
                   showLine: false,
                   pointRadius: 4
-                }
+                },
+                // 평균 농도 (특정 케이스 제외)
+                ...(!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' ? [{
+                  label: '평균 농도',
+                  data: data.map(d => ({ x: d.time, y: averageConcentration })),
+                  borderColor: '#6b7280', // gray-500
+                  pointRadius: 0,
+                  borderDash: [5, 5],
+                  borderWidth: 2,
+                  fill: false
+                }] : [])
               ]
             }}
             options={{
@@ -399,15 +408,67 @@ const PKCharts = ({
               maintainAspectRatio: false,
               parsing: false,
               animation: false,
+              interaction: {
+                mode: 'index',
+                intersect: false,
+              },
               plugins: {
                 legend: { display: false },
                 tooltip: {
+                  mode: 'index',
+                  intersect: false,
                   callbacks: {
+                    title: (ctx) => {
+                      // x축 좌표 (시간)을 날짜/시간으로 표시
+                      if (ctx.length > 0) {
+                        const timeValue = ctx[0].parsed.x;
+                        return formatDateTimeForTick(timeValue);
+                      }
+                      return '';
+                    },
                     label: (ctx) => {
                       const label = ctx.dataset.label || '';
                       const v = ctx.parsed.y as number;
+                      
                       const unit = getConcentrationUnit(selectedDrug);
                       return `${label}: ${typeof v === 'number' ? v.toFixed(2) : v} ${unit}`;
+                    },
+                    afterBody: (ctx) => {
+                      const result: string[] = [];
+                      
+                      // 목표치 범위 먼저 표시
+                      if (typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin) {
+                        const unit = getConcentrationUnit(selectedDrug);
+                        result.push(``);
+                        result.push(`목표 범위: ${targetMin.toFixed(1)} - ${targetMax.toFixed(1)} ${unit}`);
+                      }
+                      
+                      // 실제 혈중 농도 찾기 (x축 근처 범위 내)
+                      if (ctx.length > 0) {
+                        const hoverX = ctx[0].parsed.x;
+                        
+                        // 가장 가까운 측정 데이터 찾기
+                        const observedPoints = data.filter(d => 
+                          d.observed !== null && 
+                          typeof d.observed === 'number' && 
+                          !isNaN(d.observed)
+                        );
+                        
+                        if (observedPoints.length > 0) {
+                          // hover 위치에서 가장 가까운 점 찾기
+                          const closest = observedPoints.reduce((prev, curr) => 
+                            Math.abs(curr.time - hoverX) < Math.abs(prev.time - hoverX) ? curr : prev
+                          );
+                          
+                          // 1시간 범위 내에 있으면 표시
+                          if (Math.abs(closest.time - hoverX) < 1) {
+                            const unit = getConcentrationUnit(selectedDrug);
+                            result.push(`실제 혈중 농도: ${closest.observed!.toFixed(2)} ${unit}`);
+                          }
+                        }
+                      }
+                      
+                      return result;
                     }
                   }
                 },
