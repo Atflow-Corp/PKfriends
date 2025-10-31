@@ -383,7 +383,12 @@ export const buildTdmRequestBody = (args: {
   const tauAfter = overrides?.tau ?? tauBefore;
   const cmtAfter = cmtBefore; // CMT는 일반적으로 변경하지 않음
 
-  const toxi = 1;
+  // TOXI: 신독성 약물 복용 여부 (0: 없음, 1: 있음)
+  const toxi =
+    !tdmPrescription.additionalInfo ||
+    tdmPrescription.additionalInfo === "복용 중인 약물 없음"
+      ? 0
+      : 1;
 
   // 주입시간 정보 (분)
   const infusionTimeMinutes =
@@ -578,35 +583,24 @@ export const buildTdmRequestBody = (args: {
   return body;
 };
 
+export type TdmApiMinimal = {
+  AUC_tau_before?: number;
+  AUC_24_before?: number;
+  CMAX_before?: number;
+  CTROUGH_before?: number;
+  AUC_tau_after?: number;
+  AUC_24_after?: number;
+  CMAX_after?: number;
+  CTROUGH_after?: number;
+};
+
 type TdmHistoryEntry = {
   id: string;
   timestamp: string;
   model_name?: string;
-  summary: {
-    AUCtau_before?: number;
-    AUC24h_before?: number;
-    CMAX_before?: number;
-    CTROUGH_before?: number;
-    AUCtau_after?: number;
-    AUC24h_after?: number;
-    CMAX_after?: number;
-    CTROUGH_after?: number;
-  };
+  summary: TdmApiMinimal;
   dataset: unknown[];
   data: unknown;
-};
-
-type TdmApiMinimal = {
-  AUCtau_before?: number;
-  AUC_before?: number;
-  AUC24h_before?: number;
-  CMAX_before?: number;
-  CTROUGH_before?: number;
-  AUCtau_after?: number;
-  AUC_after?: number;
-  AUC24h_after?: number;
-  CMAX_after?: number;
-  CTROUGH_after?: number;
 };
 
 type TdmRequestBodyWithOptionalModel = {
@@ -651,16 +645,7 @@ export const runTdmApi = async (args: {
           id: `${Date.now()}`,
           timestamp: new Date().toISOString(),
           model_name: typedBody?.model_name,
-          summary: {
-            AUCtau_before: data?.AUCtau_before ?? data?.AUC_before,
-            AUC24h_before: data?.AUC24h_before,
-            CMAX_before: data?.CMAX_before,
-            CTROUGH_before: data?.CTROUGH_before,
-            AUCtau_after: data?.AUCtau_after ?? data?.AUC_after,
-            AUC24h_after: data?.AUC24h_after,
-            CMAX_after: data?.CMAX_after,
-            CTROUGH_after: data?.CTROUGH_after,
-          },
+          summary: data,
           dataset: (typedBody?.dataset as unknown[]) || [],
           data,
         };
