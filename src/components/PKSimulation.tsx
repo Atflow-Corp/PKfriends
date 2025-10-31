@@ -17,9 +17,9 @@ import {
   buildTdmRequestBody as buildTdmRequestBodyCore,
   isActiveTdmExists,
   setActiveTdm,
-  computeCRCL,
   computeTauFromAdministrations,
   parseTargetValue,
+  TdmApiMinimal,
 } from "@/lib/tdm";
 import {
   AlertDialog,
@@ -123,20 +123,8 @@ type ConcentrationPoint = {
   PRED?: number;
 };
 
-interface TdmApiResponse {
-  AUC_before?: number;
-  CMAX_before?: number;
-  CTROUGH_before?: number;
-  AUC_after?: number;
-  CMAX_after?: number;
-  CTROUGH_after?: number;
-  // New detailed AUC fields
-  AUCtau_before?: number;
-  AUC24h_before?: number;
-  AUCtau_after?: number;
-  AUC24h_after?: number;
+interface TdmApiResponse extends TdmApiMinimal {
   // Optional meta
-  beforeWindowHours?: number;
   IPRED_CONC?: ConcentrationPoint[];
   PRED_CONC?: ConcentrationPoint[];
 }
@@ -1120,10 +1108,7 @@ const PKSimulation = ({
                 ((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0,
               );
               const auc = Number(
-                ((resp?.AUC24h_after ??
-                  resp?.AUC_after ??
-                  resp?.AUC24h_before ??
-                  resp?.AUC_before) as number) || 0,
+                 ((resp?.AUC_24_after ??  resp?.AUC_24_before) as number) || 0,
               );
               // score: distance to target range (prefer within range)
               let value = 0;
@@ -1691,24 +1676,19 @@ const PKSimulation = ({
             )}
           </div>
         )}
-        {tdmResult && (
-          <div className="mb-2 text-[11px] text-muted-foreground">
-            Before window: {Number(tdmResult.beforeWindowHours ?? 72)}h
-          </div>
-        )}
         <PKCharts
           showSimulation={true}
           currentPatientName={currentPatient.name}
           selectedDrug={selectedDrug}
           targetMin={getTargetBand().min}
           targetMax={getTargetBand().max}
-          recentAUC={tdmResult?.AUC24h_before ?? tdmResult?.AUC_before}
+          recentAUC={tdmResult?.AUC_24_before}
           recentMax={tdmResult?.CMAX_before}
           recentTrough={tdmResult?.CTROUGH_before}
           predictedAUC={
             isCompletedView
               ? null
-              : (tdmResult?.AUC24h_after ?? tdmResult?.AUC_after)
+              : tdmResult?.AUC_24_after
           }
           predictedMax={isCompletedView ? null : tdmResult?.CMAX_after}
           predictedTrough={isCompletedView ? null : tdmResult?.CTROUGH_after}
@@ -1878,10 +1858,10 @@ const PKSimulation = ({
                 targetMin={getTargetBand().min}
                 targetMax={getTargetBand().max}
                 drugAdministrations={drugAdministrations}
-                recentAUC={tdmResult?.AUC24h_before ?? tdmResult?.AUC_before}
+                recentAUC={tdmResult?.AUC_24_before}
                 recentMax={tdmResult?.CMAX_before}
                 recentTrough={tdmResult?.CTROUGH_before}
-                predictedAUC={tdmResult?.AUC24h_after ?? tdmResult?.AUC_after}
+                predictedAUC={tdmResult?.AUC_24_after}
                 predictedMax={tdmResult?.CMAX_after}
                 predictedTrough={tdmResult?.CTROUGH_after}
                 ipredSeries={tdmExtraSeries?.ipredSeries}

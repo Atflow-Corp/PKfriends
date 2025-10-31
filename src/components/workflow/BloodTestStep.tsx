@@ -645,8 +645,10 @@ const BloodTestStep = ({
                         {tdmDrug?.drugName === "Vancomycin" ? (
                           <>
                             <SelectItem value="mg/L">mg/L</SelectItem>
-                            <SelectItem value="μg/mL">ng/mL</SelectItem>
-                            <SelectItem value="μg/mL">μg/mL</SelectItem>
+                          </>
+                        ) : tdmDrug?.drugName === "Cyclosporin" ? (
+                          <>
+                            <SelectItem value="ng/mL">ng/mL</SelectItem>
                           </>
                         ) : (
                           <>

@@ -136,39 +136,48 @@ const inferModelName = (args: {
     : undefined;
 };
 
-export const computeCRCL = (
+export const computeRenalFunction = (
   selectedPatientId: string | null | undefined,
   weightKg: number,
   ageYears: number,
   sex01: number,
   heightCm: number,
   drugName?: string
-): number => {
+): { crcl: number | undefined; egfr: number | undefined } => {
+  const result = {
+    crcl: undefined as number | undefined,
+    egfr: undefined as number | undefined,
+  };
+
   const renal = getSelectedRenalInfo(selectedPatientId, drugName);
   if (renal) {
-    // CRCL = 90.5 mL/min 형식에서 숫자만 추출
     const resultStr = (renal.result || "").toString();
-    if (resultStr.includes("CRCL")) {
-      // "CRCL = 90.5 mL/min" -> "90.5" 추출
-      const match = resultStr.match(/CRCL\s*=\s*([\d.]+)/i);
-      if (match && match[1]) {
-        const parsedResult = parseFloat(match[1]);
-        if (!Number.isNaN(parsedResult) && parsedResult > 0) {
-          return parsedResult;
-        }
+
+    // CRCL 또는 eGFR 파싱
+    const match = resultStr.match(/(CRCL|eGFR)\s*=\s*([\d.]+)/i);
+    if (match) {
+      const type = match[1].toLowerCase() as "crcl" | "egfr";
+      const value = parseFloat(match[2]);
+      if (!Number.isNaN(value) && value > 0) {
+        result[type] = value;
+        return result;
       }
     }
-    // 일반적인 숫자 파싱 (fallback)
+
+    // 일반적인 숫자 파싱 (fallback) - CRCL로 간주
     const parsedResult = parseFloat(resultStr.replace(/[^0-9.-]/g, ""));
     if (!Number.isNaN(parsedResult) && parsedResult > 0) {
-      return parsedResult;
+      result.crcl = parsedResult;
+      return result;
     }
+
     const scrMgDl = parseFloat((renal.creatinine || "").toString());
     if (!Number.isNaN(scrMgDl) && scrMgDl > 0) {
       const isFemale = sex01 === 0;
       if (renal.formula === "cockcroft-gault") {
         const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-        return isFemale ? base * 0.85 : base;
+        result.crcl = isFemale ? base * 0.85 : base;
+        return result;
       }
       if (renal.formula === "mdrd") {
         const bsa = mostellerBsa(heightCm, weightKg);
@@ -177,7 +186,8 @@ export const computeCRCL = (
           Math.pow(scrMgDl, -1.154) *
           Math.pow(ageYears, -0.203) *
           (isFemale ? 0.742 : 1);
-        return eGFR * (bsa / 1.73);
+        result.egfr = eGFR * (bsa / 1.73);
+        return result;
       }
       if (renal.formula === "ckd-epi") {
         const bsa = mostellerBsa(heightCm, weightKg);
@@ -191,14 +201,18 @@ export const computeCRCL = (
           Math.pow(maxScrK, -1.209) *
           Math.pow(0.993, ageYears) *
           (isFemale ? 1.018 : 1);
-        return eGFR * (bsa / 1.73);
+        result.egfr = eGFR * (bsa / 1.73);
+        return result;
       }
-      // fallback
+      // fallback - CRCL로 계산
       const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-      return isFemale ? base * 0.85 : base;
+      result.crcl = isFemale ? base * 0.85 : base;
+      return result;
     }
   }
-  return 90;
+  // 기본값
+  result.crcl = 90;
+  return result;
 };
 
 export const computeTauFromAdministrations = (
@@ -242,6 +256,7 @@ type PrescriptionInfo = {
   tau: number;
   cmt: number;
   route: string;
+  infusionTime?: number; // 주입시간 (분)
   timestamp: number;
 };
 
@@ -328,8 +343,8 @@ export const buildTdmRequestBody = (args: {
   const sex = patient.gender === "male" ? 1 : 0;
   const height = patient.height;
 
-  // 3단계(Lab)에서 저장된 CRCL 값 사용
-  const crcl = computeCRCL(
+  // 3단계(Lab)에서 저장된 신기능 값 사용 (CRCL 또는 eGFR)
+  const renalFunction = computeRenalFunction(
     selectedPatientId,
     weight,
     age,
@@ -368,13 +383,29 @@ export const buildTdmRequestBody = (args: {
   const tauAfter = overrides?.tau ?? tauBefore;
   const cmtAfter = cmtBefore; // CMT는 일반적으로 변경하지 않음
 
-  const toxi = 1;
+  // TOXI: 신독성 약물 복용 여부 (0: 없음, 1: 있음)
+  const toxi =
+    !tdmPrescription.additionalInfo ||
+    tdmPrescription.additionalInfo === "복용 중인 약물 없음"
+      ? 0
+      : 1;
+
+  // 주입시간 정보 (분)
+  const infusionTimeMinutes =
+    (lastDose as ExtendedDrugAdministration)?.infusionTime ??
+    savedPrescription?.infusionTime ??
+    0;
 
   // dose rate (mg/h) for IV infusion; 0 for bolus/oral
   const rateBefore = computeInfusionRateFromAdministration(
     lastDose as ExtendedDrugAdministration
   );
-  const rateAfter = rateBefore;
+
+  // rateAfter는 amountAfter를 기준으로 계산 (주입시간이 동일하다고 가정)
+  const rateAfter =
+    infusionTimeMinutes > 0
+      ? amountAfter / (infusionTimeMinutes / 60)
+      : rateBefore;
 
   const dataset: Array<{
     ID: string;
@@ -386,7 +417,8 @@ export const buildTdmRequestBody = (args: {
     WT: number;
     SEX: number;
     AGE: number;
-    CRCL: number;
+    CRCL: number | undefined;
+    EGFR: number | undefined;
     TOXI: number;
     EVID: number;
   }> = [];
@@ -427,7 +459,8 @@ export const buildTdmRequestBody = (args: {
         WT: weight,
         SEX: sex,
         AGE: age,
-        CRCL: crcl,
+        CRCL: renalFunction.crcl,
+        EGFR: renalFunction.egfr,
         TOXI: toxi,
         EVID: 1, // 투약 이벤트
       });
@@ -444,7 +477,8 @@ export const buildTdmRequestBody = (args: {
       WT: weight,
       SEX: sex,
       AGE: age,
-      CRCL: crcl,
+      CRCL: renalFunction.crcl,
+      EGFR: renalFunction.egfr,
       TOXI: toxi,
       EVID: 1,
     });
@@ -486,7 +520,8 @@ export const buildTdmRequestBody = (args: {
         WT: weight,
         SEX: sex,
         AGE: age,
-        CRCL: crcl,
+        CRCL: renalFunction.crcl,
+        EGFR: renalFunction.egfr,
         TOXI: toxi,
         EVID: 0, // 관찰 이벤트 (혈중 농도)
       });
@@ -503,7 +538,8 @@ export const buildTdmRequestBody = (args: {
       WT: weight,
       SEX: sex,
       AGE: age,
-      CRCL: crcl,
+      CRCL: renalFunction.crcl,
+      EGFR: renalFunction.egfr,
       TOXI: toxi,
       EVID: 0,
     });
@@ -522,7 +558,8 @@ export const buildTdmRequestBody = (args: {
   const body = {
     // Patient covariates
     input_WT: weight,
-    input_CRCL: crcl,
+    input_CRCL: renalFunction.crcl,
+    input_eGFR: renalFunction.egfr,
     input_AGE: age,
     input_SEX: sex,
     input_TOXI: toxi,
@@ -546,35 +583,24 @@ export const buildTdmRequestBody = (args: {
   return body;
 };
 
+export type TdmApiMinimal = {
+  AUC_tau_before?: number;
+  AUC_24_before?: number;
+  CMAX_before?: number;
+  CTROUGH_before?: number;
+  AUC_tau_after?: number;
+  AUC_24_after?: number;
+  CMAX_after?: number;
+  CTROUGH_after?: number;
+};
+
 type TdmHistoryEntry = {
   id: string;
   timestamp: string;
   model_name?: string;
-  summary: {
-    AUCtau_before?: number;
-    AUC24h_before?: number;
-    CMAX_before?: number;
-    CTROUGH_before?: number;
-    AUCtau_after?: number;
-    AUC24h_after?: number;
-    CMAX_after?: number;
-    CTROUGH_after?: number;
-  };
+  summary: TdmApiMinimal;
   dataset: unknown[];
   data: unknown;
-};
-
-type TdmApiMinimal = {
-  AUCtau_before?: number;
-  AUC_before?: number;
-  AUC24h_before?: number;
-  CMAX_before?: number;
-  CTROUGH_before?: number;
-  AUCtau_after?: number;
-  AUC_after?: number;
-  AUC24h_after?: number;
-  CMAX_after?: number;
-  CTROUGH_after?: number;
 };
 
 type TdmRequestBodyWithOptionalModel = {
@@ -619,16 +645,7 @@ export const runTdmApi = async (args: {
           id: `${Date.now()}`,
           timestamp: new Date().toISOString(),
           model_name: typedBody?.model_name,
-          summary: {
-            AUCtau_before: data?.AUCtau_before ?? data?.AUC_before,
-            AUC24h_before: data?.AUC24h_before,
-            CMAX_before: data?.CMAX_before,
-            CTROUGH_before: data?.CTROUGH_before,
-            AUCtau_after: data?.AUCtau_after ?? data?.AUC_after,
-            AUC24h_after: data?.AUC24h_after,
-            CMAX_after: data?.CMAX_after,
-            CTROUGH_after: data?.CTROUGH_after,
-          },
+          summary: data,
           dataset: (typedBody?.dataset as unknown[]) || [],
           data,
         };

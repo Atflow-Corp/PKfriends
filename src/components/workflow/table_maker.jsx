@@ -450,7 +450,8 @@ function TablePage(props) {
           amount: parseFloat(currentCondition.dosage) || 0,
           tau: parseFloat(currentCondition.intervalHours) || 12,
           cmt: cmt,
-          route: routeKorean
+          route: routeKorean,
+          infusionTime: parseFloat(currentCondition.injectionTime) || undefined
         }
       );
     }
