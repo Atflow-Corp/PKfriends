@@ -256,6 +256,7 @@ type PrescriptionInfo = {
   tau: number;
   cmt: number;
   route: string;
+  infusionTime?: number; // 주입시간 (분)
   timestamp: number;
 };
 
@@ -384,11 +385,22 @@ export const buildTdmRequestBody = (args: {
 
   const toxi = 1;
 
+  // 주입시간 정보 (분)
+  const infusionTimeMinutes =
+    (lastDose as ExtendedDrugAdministration)?.infusionTime ??
+    savedPrescription?.infusionTime ??
+    0;
+
   // dose rate (mg/h) for IV infusion; 0 for bolus/oral
   const rateBefore = computeInfusionRateFromAdministration(
     lastDose as ExtendedDrugAdministration
   );
-  const rateAfter = rateBefore;
+
+  // rateAfter는 amountAfter를 기준으로 계산 (주입시간이 동일하다고 가정)
+  const rateAfter =
+    infusionTimeMinutes > 0
+      ? amountAfter / (infusionTimeMinutes / 60)
+      : rateBefore;
 
   const dataset: Array<{
     ID: string;
