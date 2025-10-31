@@ -384,11 +384,15 @@ export const buildTdmRequestBody = (args: {
   const cmtAfter = cmtBefore; // CMT는 일반적으로 변경하지 않음
 
   // TOXI: 신독성 약물 복용 여부 (0: 없음, 1: 있음)
+  // Neurosurgical patients/Korean 적응증에서만 특정 신독성 약물 복용 시 1
+  const nonToxicDrugs = ["복용 중인 약물 없음", "기타"];
   const toxi =
-    !tdmPrescription.additionalInfo ||
-    tdmPrescription.additionalInfo === "복용 중인 약물 없음"
-      ? 0
-      : 1;
+    tdmPrescription.drugName === "Vancomycin" &&
+    tdmPrescription.indication === "Neurosurgical patients/Korean" &&
+    tdmPrescription.additionalInfo &&
+    !nonToxicDrugs.includes(tdmPrescription.additionalInfo)
+      ? 1
+      : 0;
 
   // 주입시간 정보 (분)
   const infusionTimeMinutes =
