@@ -136,39 +136,48 @@ const inferModelName = (args: {
     : undefined;
 };
 
-export const computeCRCL = (
+export const computeRenalFunction = (
   selectedPatientId: string | null | undefined,
   weightKg: number,
   ageYears: number,
   sex01: number,
   heightCm: number,
   drugName?: string
-): number => {
+): { crcl: number | undefined; egfr: number | undefined } => {
+  const result = {
+    crcl: undefined as number | undefined,
+    egfr: undefined as number | undefined,
+  };
+
   const renal = getSelectedRenalInfo(selectedPatientId, drugName);
   if (renal) {
-    // CRCL = 90.5 mL/min 형식에서 숫자만 추출
     const resultStr = (renal.result || "").toString();
-    if (resultStr.includes("CRCL")) {
-      // "CRCL = 90.5 mL/min" -> "90.5" 추출
-      const match = resultStr.match(/CRCL\s*=\s*([\d.]+)/i);
-      if (match && match[1]) {
-        const parsedResult = parseFloat(match[1]);
-        if (!Number.isNaN(parsedResult) && parsedResult > 0) {
-          return parsedResult;
-        }
+
+    // CRCL 또는 eGFR 파싱
+    const match = resultStr.match(/(CRCL|eGFR)\s*=\s*([\d.]+)/i);
+    if (match) {
+      const type = match[1].toLowerCase() as "crcl" | "egfr";
+      const value = parseFloat(match[2]);
+      if (!Number.isNaN(value) && value > 0) {
+        result[type] = value;
+        return result;
       }
     }
-    // 일반적인 숫자 파싱 (fallback)
+
+    // 일반적인 숫자 파싱 (fallback) - CRCL로 간주
     const parsedResult = parseFloat(resultStr.replace(/[^0-9.-]/g, ""));
     if (!Number.isNaN(parsedResult) && parsedResult > 0) {
-      return parsedResult;
+      result.crcl = parsedResult;
+      return result;
     }
+
     const scrMgDl = parseFloat((renal.creatinine || "").toString());
     if (!Number.isNaN(scrMgDl) && scrMgDl > 0) {
       const isFemale = sex01 === 0;
       if (renal.formula === "cockcroft-gault") {
         const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-        return isFemale ? base * 0.85 : base;
+        result.crcl = isFemale ? base * 0.85 : base;
+        return result;
       }
       if (renal.formula === "mdrd") {
         const bsa = mostellerBsa(heightCm, weightKg);
@@ -177,7 +186,8 @@ export const computeCRCL = (
           Math.pow(scrMgDl, -1.154) *
           Math.pow(ageYears, -0.203) *
           (isFemale ? 0.742 : 1);
-        return eGFR * (bsa / 1.73);
+        result.egfr = eGFR * (bsa / 1.73);
+        return result;
       }
       if (renal.formula === "ckd-epi") {
         const bsa = mostellerBsa(heightCm, weightKg);
@@ -191,14 +201,18 @@ export const computeCRCL = (
           Math.pow(maxScrK, -1.209) *
           Math.pow(0.993, ageYears) *
           (isFemale ? 1.018 : 1);
-        return eGFR * (bsa / 1.73);
+        result.egfr = eGFR * (bsa / 1.73);
+        return result;
       }
-      // fallback
+      // fallback - CRCL로 계산
       const base = ((140 - ageYears) * weightKg) / (72 * scrMgDl);
-      return isFemale ? base * 0.85 : base;
+      result.crcl = isFemale ? base * 0.85 : base;
+      return result;
     }
   }
-  return 90;
+  // 기본값
+  result.crcl = 90;
+  return result;
 };
 
 export const computeTauFromAdministrations = (
@@ -328,8 +342,8 @@ export const buildTdmRequestBody = (args: {
   const sex = patient.gender === "male" ? 1 : 0;
   const height = patient.height;
 
-  // 3단계(Lab)에서 저장된 CRCL 값 사용
-  const crcl = computeCRCL(
+  // 3단계(Lab)에서 저장된 신기능 값 사용 (CRCL 또는 eGFR)
+  const renalFunction = computeRenalFunction(
     selectedPatientId,
     weight,
     age,
@@ -386,7 +400,8 @@ export const buildTdmRequestBody = (args: {
     WT: number;
     SEX: number;
     AGE: number;
-    CRCL: number;
+    CRCL: number | undefined;
+    EGFR: number | undefined;
     TOXI: number;
     EVID: number;
   }> = [];
@@ -427,7 +442,8 @@ export const buildTdmRequestBody = (args: {
         WT: weight,
         SEX: sex,
         AGE: age,
-        CRCL: crcl,
+        CRCL: renalFunction.crcl,
+        EGFR: renalFunction.egfr,
         TOXI: toxi,
         EVID: 1, // 투약 이벤트
       });
@@ -444,7 +460,8 @@ export const buildTdmRequestBody = (args: {
       WT: weight,
       SEX: sex,
       AGE: age,
-      CRCL: crcl,
+      CRCL: renalFunction.crcl,
+      EGFR: renalFunction.egfr,
       TOXI: toxi,
       EVID: 1,
     });
@@ -486,7 +503,8 @@ export const buildTdmRequestBody = (args: {
         WT: weight,
         SEX: sex,
         AGE: age,
-        CRCL: crcl,
+        CRCL: renalFunction.crcl,
+        EGFR: renalFunction.egfr,
         TOXI: toxi,
         EVID: 0, // 관찰 이벤트 (혈중 농도)
       });
@@ -503,7 +521,8 @@ export const buildTdmRequestBody = (args: {
       WT: weight,
       SEX: sex,
       AGE: age,
-      CRCL: crcl,
+      CRCL: renalFunction.crcl,
+      EGFR: renalFunction.egfr,
       TOXI: toxi,
       EVID: 0,
     });
@@ -522,7 +541,8 @@ export const buildTdmRequestBody = (args: {
   const body = {
     // Patient covariates
     input_WT: weight,
-    input_CRCL: crcl,
+    input_CRCL: renalFunction.crcl,
+    input_eGFR: renalFunction.egfr,
     input_AGE: age,
     input_SEX: sex,
     input_TOXI: toxi,
