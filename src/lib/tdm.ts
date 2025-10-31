@@ -563,7 +563,7 @@ export const buildTdmRequestBody = (args: {
     // Patient covariates
     input_WT: weight,
     input_CRCL: renalFunction.crcl,
-    input_eGFR: renalFunction.egfr,
+    input_EGFR: renalFunction.egfr,
     input_AGE: age,
     input_SEX: sex,
     input_TOXI: toxi,
