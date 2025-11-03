@@ -170,14 +170,42 @@ const PKSimulation = ({
             d.drugName === selectedPrescription.drugName,
         )
       : [];
-  const latestAdministration =
-    patientDrugAdministrations.length > 0
-      ? [...patientDrugAdministrations].sort(
-          (a, b) =>
-            new Date(`${a.date}T${a.time}`).getTime() -
-            new Date(`${b.date}T${b.time}`).getTime(),
-        )[patientDrugAdministrations.length - 1]
-      : null;
+  
+  // 최신 투약 기록 찾기 및 intervalHours 보완
+  const latestAdministration = useMemo(() => {
+    if (patientDrugAdministrations.length === 0) return null;
+    
+    const sorted = [...patientDrugAdministrations].sort(
+      (a, b) =>
+        new Date(`${a.date}T${a.time}`).getTime() -
+        new Date(`${b.date}T${b.time}`).getTime(),
+    );
+    const latest = sorted[sorted.length - 1];
+    
+    // intervalHours 우선순위: 1) 저장된 값, 2) Prescription.frequency에서 숫자 추출, 3) 계산
+    let intervalHours = latest.intervalHours;
+    
+    if (!intervalHours) {
+      // Prescription.frequency에서 숫자 추출 시도 (예: "12시간" -> 12, "q12h" -> 12)
+      if (selectedPrescription?.frequency) {
+        const frequencyMatch = selectedPrescription.frequency.match(/\d+/);
+        if (frequencyMatch) {
+          intervalHours = parseInt(frequencyMatch[0], 10);
+        }
+      }
+      
+      // 그래도 없으면 계산 (최후의 수단)
+      if (!intervalHours && patientDrugAdministrations.length >= 2) {
+        intervalHours = computeTauFromAdministrations(patientDrugAdministrations);
+      }
+    }
+    
+    return {
+      dose: latest.dose,
+      unit: latest.unit,
+      intervalHours: intervalHours
+    };
+  }, [patientDrugAdministrations, selectedPrescription]);
 
   const [simulationParams, setSimulationParams] = useState({
     dose: "",
@@ -1869,8 +1897,41 @@ const PKSimulation = ({
                 observedSeries={tdmExtraSeries?.observedSeries}
                 currentMethodSeries={tdmExtraSeries?.currentMethodSeries}
                 chartColor={card.type === "dosage" ? "pink" : "green"}
+                // TDM 내역 데이터
+                tdmIndication={getTdmData(selectedDrug).indication}
+                tdmTarget={getTdmData(selectedDrug).target}
+                tdmTargetValue={getTdmData(selectedDrug).targetValue}
+                // 투약기록 데이터 - 용법 조정 카드에서 선택된 값 반영
+                originalAdministration={latestAdministration}
+                latestAdministration={(() => {
+                  if (!latestAdministration) return null;
+                  
+                  // 용량 조정 카드: 선택된 dose 반영
+                  if (card.type === "dosage" && selectedDosage[card.id]) {
+                    const selectedDose = parseFloat(selectedDosage[card.id].replace(/[^0-9.]/g, ""));
+                    if (!isNaN(selectedDose)) {
+                      return {
+                        ...latestAdministration,
+                        dose: selectedDose
+                      };
+                    }
+                  }
+                  
+                  // 간격 조정 카드: 선택된 intervalHours 반영
+                  if (card.type === "interval" && selectedIntervalOption[card.id]) {
+                    const selectedInterval = parseInt(selectedIntervalOption[card.id].replace(/[^0-9]/g, ""));
+                    if (!isNaN(selectedInterval)) {
+                      return {
+                        ...latestAdministration,
+                        intervalHours: selectedInterval
+                      };
+                    }
+                  }
+                  
+                  // 선택된 옵션이 없으면 원래 값 반환
+                  return latestAdministration;
+                })()}
                 // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
-
                 isEmptyChart={
                   !cardChartData[card.id] ||
                   (dosageLoading[card.id] &&
@@ -1915,6 +1976,22 @@ const PKSimulation = ({
           </div>
         </div>
       )}
+
+      {/* 카드 삭제 확인 다이얼로그 */}
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>용법 조정 카드 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 용법 조정 카드를 삭제하시겠습니까? 삭제된 카드의 설정은 복구할 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDelete}>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>삭제</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

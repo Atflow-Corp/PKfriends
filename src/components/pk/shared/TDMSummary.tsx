@@ -11,6 +11,11 @@ interface TDMSummaryProps {
     unit: string;
     intervalHours?: number;
   } | null;
+  originalAdministration?: {
+    dose: number;
+    unit: string;
+    intervalHours?: number;
+  } | null; // 원래 값과 비교하기 위한 필드
   recentAUC?: number | null;
   recentMax?: number | null;
   recentTrough?: number | null;
@@ -26,6 +31,7 @@ const TDMSummary = ({
   tdmTarget,
   tdmTargetValue,
   latestAdministration,
+  originalAdministration,
   recentAUC,
   recentMax,
   recentTrough,
@@ -37,6 +43,12 @@ const TDMSummary = ({
   const concentrationUnit = getConcentrationUnit(selectedDrug);
   const targetValue = getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug);
   const withinRange = isWithinTargetRange(tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug);
+  
+  // 변경된 값 확인
+  const isDoseChanged = originalAdministration && latestAdministration && 
+    originalAdministration.dose !== latestAdministration.dose;
+  const isIntervalChanged = originalAdministration && latestAdministration && 
+    originalAdministration.intervalHours !== latestAdministration.intervalHours;
 
   return (
     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6 border border-blue-200 dark:border-blue-800 mt-4">
@@ -109,8 +121,12 @@ const TDMSummary = ({
             <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
             <p className="leading-relaxed">
               <span className="font-semibold">
-                현 용법 {latestAdministration?.intervalHours || '시간'} 간격으로{' '}
-                {latestAdministration?.dose || 0}{latestAdministration?.unit || 'mg'} 투약 시
+                <span className={isIntervalChanged ? "text-red-600 dark:text-red-400" : ""}>
+                  {latestAdministration?.intervalHours || '시간'}
+                </span> 시간 간격으로{' '}
+                <span className={isDoseChanged ? "text-red-600 dark:text-red-400" : ""}>
+                  {latestAdministration?.dose || 0}{latestAdministration?.unit || 'mg'}
+                </span> 투약 시
               </span>{' '}
               Steady State까지 TDM 목표{' '}
               <span className="font-semibold text-blue-600 dark:text-blue-400">
