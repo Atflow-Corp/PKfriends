@@ -36,6 +36,11 @@ interface DosageChartProps {
     unit: string;
     intervalHours?: number;
   } | null;
+  originalAdministration?: {
+    dose: number;
+    unit: string;
+    intervalHours?: number;
+  } | null;
   drugAdministrations?: DrugAdministration[];
   currentMethodSeries?: Array<{
     time: number;
@@ -67,6 +72,7 @@ const DosageChart = ({
   tdmTarget,
   tdmTargetValue,
   latestAdministration,
+  originalAdministration,
   drugAdministrations = [],
   currentMethodSeries = [],
   isEmptyChart = false,
@@ -239,6 +245,7 @@ const DosageChart = ({
           tdmTarget={tdmTarget}
           tdmTargetValue={tdmTargetValue}
           latestAdministration={latestAdministration}
+          originalAdministration={originalAdministration}
           recentAUC={recentAUC}
           recentMax={recentMax}
           recentTrough={recentTrough}

@@ -151,12 +151,46 @@ const DrugAdministrationStep = ({
             2단계에서 입력한 TDM 약물에 대해 7반감기 이내의 투약력을 입력하세요.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="py-2 px-3 rounded bg-muted dark:bg-slate-800 text-base font-semibold mb-4">
-            <div className="text-sm">
-              <span className="text-muted-foreground">TDM 내역:</span> {tdmDrug?.drugName || "-"}, {tdmDrug?.indication || "-"}
+        <CardContent className="space-y-6">
+          {/* TDM 선택 정보 영역 */}
+          {tdmDrug && selectedPatient && (
+            <div className="py-3 px-4 rounded bg-muted dark:bg-slate-800 mb-4">
+              {/* 1행: 환자 기본 정보 */}
+              <div className="grid grid-cols-4 gap-4 mb-3">
+                <div className="text-sm">
+                  <span className="font-medium">나이:</span> {selectedPatient.age}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">성별:</span> {selectedPatient.gender}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">몸무게:</span> {selectedPatient.weight}kg
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">키:</span> {selectedPatient.height}cm
+                </div>
+              </div>
+              
+              {/* 2행: TDM 정보 */}
+              <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                <div className="text-sm">
+                  <span className="font-medium text-gray-600 dark:text-gray-400">약품명:</span> 
+                  <span className="ml-2 font-semibold">{tdmDrug.drugName}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-600 dark:text-gray-400">적응증:</span> 
+                  <span className="ml-2">{tdmDrug.indication}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+          {(!tdmDrug || !selectedPatient) && (
+            <div className="py-2 px-3 rounded bg-muted dark:bg-slate-800 text-base font-semibold mb-4">
+              <div className="text-sm">
+                <span className="text-muted-foreground">TDM 내역:</span> {tdmDrug?.drugName || "-"}, {tdmDrug?.indication || "-"}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

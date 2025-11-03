@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,12 +13,13 @@ import Footer from '@/components/ui/Footer';
 interface UserRegistrationProps {
   onBack: () => void;
   onComplete: () => void;
+  initialPhoneNumber?: string;
 }
 
-const UserRegistration = ({ onBack, onComplete }: UserRegistrationProps) => {
+const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserRegistrationProps) => {
   const [formData, setFormData] = useState({
     name: '',
-    phoneNumber: '',
+    phoneNumber: initialPhoneNumber,
     organization: '',
     medicalRole: ''
   });
@@ -30,6 +31,15 @@ const UserRegistration = ({ onBack, onComplete }: UserRegistrationProps) => {
   // 의료진 구분 목록
   const medicalRoles = ['의사', '간호사', '기타'];
   
+  // initialPhoneNumber가 변경되면 formData 업데이트
+  useEffect(() => {
+    if (initialPhoneNumber) {
+      setFormData(prev => ({
+        ...prev,
+        phoneNumber: initialPhoneNumber
+      }));
+    }
+  }, [initialPhoneNumber]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({

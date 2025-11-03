@@ -22,6 +22,7 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showTermsAgreement, setShowTermsAgreement] = useState(false);
   const [showUserRegistration, setShowUserRegistration] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const navigate = useNavigate();
 
   const handleLogin = () => {
@@ -33,6 +34,7 @@ function AppContent() {
     setIsAuthenticated(false);
     setShowTermsAgreement(false);
     setShowUserRegistration(false);
+    setPhoneNumber('');
     try { window.localStorage.removeItem('tdmfriends:isAuthenticated'); } catch {}
     // 로그아웃 후 로그인 페이지로 리다이렉트
     navigate('/');
@@ -92,11 +94,11 @@ function AppContent() {
           <>
             {/* 인증되지 않은 상태에서의 페이지들 */}
             {showUserRegistration ? (
-              <Route path="*" element={<UserRegistration onBack={handleBackFromRegistration} onComplete={handleRegistrationComplete} />} />
+              <Route path="*" element={<UserRegistration onBack={handleBackFromRegistration} onComplete={handleRegistrationComplete} initialPhoneNumber={phoneNumber} />} />
             ) : showTermsAgreement ? (
               <Route path="*" element={<TermsAgreement onBack={handleBackFromTerms} onAgree={handleTermsAgreed} />} />
             ) : (
-              <Route path="*" element={<LoginPage onLogin={handleLogin} onShowTermsAgreement={handleShowTermsAgreement} />} />
+              <Route path="*" element={<LoginPage onLogin={handleLogin} onShowTermsAgreement={handleShowTermsAgreement} onPhoneNumberSet={setPhoneNumber} />} />
             )}
           </>
         )}
