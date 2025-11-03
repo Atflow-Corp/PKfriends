@@ -508,16 +508,13 @@ export const buildTdmRequestBody = (args: {
       // 첫 번째 투약 시간으로부터 상대 시간 계산 (시간 단위)
       const relativeTime = hoursDiff(bloodTest.testDate, anchorDoseTime);
 
-      // 단위 변환: ng/mL -> mg/L (1000으로 나눔)
-      const dvMgPerL =
-        bloodTest.unit && bloodTest.unit.toLowerCase().includes("ng/ml")
-          ? bloodTest.concentration / 1000
-          : bloodTest.concentration;
+      // 단위 불필요. Vancomycin은 mg/L, Cyclosporin은 ng/mL로 고정되어 있음
+      const dv = bloodTest.concentration;
 
       dataset.push({
         ID: selectedPatientId,
         TIME: relativeTime,
-        DV: dvMgPerL,
+        DV: dv,
         AMT: 0,
         RATE: 0,
         CMT: 1,
