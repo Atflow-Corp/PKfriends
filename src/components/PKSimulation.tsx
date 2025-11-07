@@ -288,6 +288,7 @@ const PKSimulation = ({
   }>({});
 
   const suggestTimersRef = useRef<{ [cardId: number]: number }>({});
+  const handleDosageSelectRef = useRef<((cardId: number, dosage: string) => void) | null>(null);
 
   const [dosageSuggestionResults, setDosageSuggestionResults] = useState<{
     [cardId: number]: {
@@ -642,6 +643,9 @@ const PKSimulation = ({
 
     void applyDoseScenario(amountMg);
   };
+  
+  // handleDosageSelect를 ref에 저장하여 안정적인 참조 유지
+  handleDosageSelectRef.current = handleDosageSelect;
 
   // 간격 선택 핸들러
 
@@ -1588,6 +1592,16 @@ const PKSimulation = ({
             });
 
             setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+            
+            // 차트가 제대로 렌더링되도록 약간의 지연 후 강제 업데이트
+            // 이는 Y축 스케일이 올바르게 계산되도록 보장합니다
+            setTimeout(() => {
+              // handleDosageSelect를 호출하여 차트를 다시 렌더링
+              // 이렇게 하면 클릭 이벤트와 동일한 로직이 실행되어 차트가 올바르게 표시됩니다
+              if (handleDosageSelectRef.current) {
+                handleDosageSelectRef.current(cardId, `${first}mg`);
+              }
+            }, 100);
           }
         }
       } catch (e) {
@@ -2075,9 +2089,9 @@ const PKSimulation = ({
 
             {/* 버튼 섹션 */}
 
-            <div className="flex justify-center gap-4 mb-6">
+            <div className="flex flex-wrap justify-center gap-4 mb-6 px-4">
               {card.type === "dosage" ? (
-                // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (최대 3개)
+                // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (여러 줄로 표시)
 
                 <>
                   {(dosageSuggestions[card.id] || []).map((amt) => {
@@ -2093,7 +2107,7 @@ const PKSimulation = ({
                         }
                         size="default"
                         onClick={() => handleDosageSelect(card.id, label)}
-                        className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3`}
+                        className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
                       >
                         {label}
                       </Button>

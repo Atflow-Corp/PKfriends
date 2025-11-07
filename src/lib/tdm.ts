@@ -609,6 +609,31 @@ type TdmRequestBodyWithOptionalModel = {
   dataset?: unknown[];
 } & Record<string, unknown>;
 
+// CORS 에러 또는 네트워크 에러인지 확인하는 헬퍼 함수
+const isRetryableError = (error: Error): boolean => {
+  const errorMessage = error.message.toLowerCase();
+  const errorName = error.name?.toLowerCase() || "";
+
+  // 503 에러
+  if (errorMessage.includes("503")) {
+    return true;
+  }
+
+  // CORS 에러 또는 네트워크 에러
+  if (
+    errorMessage.includes("cors") ||
+    errorMessage.includes("failed to fetch") ||
+    errorMessage.includes("networkerror") ||
+    errorMessage.includes("network error") ||
+    errorName === "typeerror" ||
+    errorName === "networkerror"
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 // Unified TDM API caller. If persist=true and patientId provided, the result is saved to localStorage.
 export const runTdmApi = async (args: {
   body: unknown;
@@ -681,15 +706,19 @@ export const runTdmApi = async (args: {
       return data;
     } catch (error) {
       lastError = error as Error;
-      // 503이 아닌 다른 에러는 즉시 재시도하지 않음
-      if ((error as Error).message.includes("503")) {
+      // 503 에러 또는 CORS/네트워크 에러인 경우 재시도
+      if (isRetryableError(lastError)) {
         if (attempt < retries - 1) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          console.log(
+            `[TDM API] Retryable error (attempt ${attempt + 1}/${retries}):`,
+            lastError.message
+          );
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
       } else {
-        // 503이 아닌 에러는 즉시 throw
+        // 재시도 불가능한 에러는 즉시 throw
         throw error;
       }
     }

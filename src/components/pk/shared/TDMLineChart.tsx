@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback } from "react";
+import { useRef, useMemo, useCallback, useEffect } from "react";
 import { Line } from "react-chartjs-2";
 import { 
   Chart as ChartJS, 
@@ -63,6 +63,22 @@ const TDMLineChart = ({
 
   // Y축 최대값 계산
   const yMax = useMemo(() => calculateYMax(data, targetMax), [data, targetMax]);
+
+  // 데이터나 Y축 스케일이 변경될 때 차트를 강제로 업데이트
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    
+    // 차트 옵션 업데이트
+    const options = chart.options as ChartOptions<'line'>;
+    if (options.scales && options.scales.y) {
+      (options.scales.y as { min?: number; max?: number }).min = 0;
+      (options.scales.y as { min?: number; max?: number }).max = yMax;
+    }
+    
+    // 차트 업데이트 (애니메이션 없이)
+    chart.update('none');
+  }, [data, yMax]);
 
   // 줌 컨트롤
   const zoomByFactor = useCallback((factor: number) => {
