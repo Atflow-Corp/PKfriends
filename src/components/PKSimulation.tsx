@@ -21,6 +21,7 @@ import {
   parseTargetValue,
   TdmApiMinimal,
 } from "@/lib/tdm";
+import { getTdmTargetValue, isWithinTargetRange } from "./pk/shared/TDMChartUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -287,6 +288,7 @@ const PKSimulation = ({
   }>({});
 
   const suggestTimersRef = useRef<{ [cardId: number]: number }>({});
+  const handleDosageSelectRef = useRef<((cardId: number, dosage: string) => void) | null>(null);
 
   const [dosageSuggestionResults, setDosageSuggestionResults] = useState<{
     [cardId: number]: {
@@ -641,6 +643,9 @@ const PKSimulation = ({
 
     void applyDoseScenario(amountMg);
   };
+  
+  // handleDosageSelect를 ref에 저장하여 안정적인 참조 유지
+  handleDosageSelectRef.current = handleDosageSelect;
 
   // 간격 선택 핸들러
 
@@ -1087,11 +1092,6 @@ const PKSimulation = ({
 
         const baseDose = Number(lastDose?.dose || prescription.dosage || 100);
 
-        // Build 6 candidates: +/- 3 steps
-        const candidates = [-3, -2, -1, 1, 2, 3].map((k) =>
-          Math.max(1, baseDose + k * step),
-        );
-
         // Target range for ranking
         const target = (prescription.tdmTarget || "").toLowerCase();
         const nums =
@@ -1111,78 +1111,388 @@ const PKSimulation = ({
 
         if (!bodyBase) return;
 
-        // For each candidate, call API with override amount
+        // Helper function to calculate score
+        const calculateScore = (
+          resp: TdmApiResponse | null,
+          targetMin?: number,
+          targetMax?: number,
+        ): number => {
+          if (!resp) return Number.POSITIVE_INFINITY;
+          const trough = Number(
+            ((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0,
+          );
+          const auc = Number(
+            ((resp?.AUC_24_after ?? resp?.AUC_24_before) as number) || 0,
+          );
+          let value = 0;
+          if (target.includes("auc") && (targetMin || targetMax)) {
+            const mid = auc || 0;
+            const cmin = targetMin ?? mid;
+            const cmax = targetMax ?? mid;
+            value = mid < cmin ? cmin - mid : mid > cmax ? mid - cmax : 0;
+          } else if (
+            (target.includes("trough") || target.includes("cmax")) &&
+            (targetMin || targetMax)
+          ) {
+            const mid = trough || 0;
+            const cmin = targetMin ?? mid;
+            const cmax = targetMax ?? mid;
+            value = mid < cmin ? cmin - mid : mid > cmax ? mid - cmax : 0;
+          } else {
+            value = Math.abs(
+              (trough || 0) - (tdmResult?.CTROUGH_before || 0),
+            );
+          }
+          return value;
+        };
+
+        // Helper function to get target value using TDMChartUtils
+        const getTargetValue = (resp: TdmApiResponse | null): number | null => {
+          if (!resp) return null;
+          const targetValue = getTdmTargetValue(
+            prescription.tdmTarget,
+            resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+            resp.CMAX_after ?? resp.CMAX_before ?? null,
+            resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+            prescription.drugName
+          );
+          return targetValue.numericValue;
+        };
+
+        // Helper function to check if value is within target range using TDMChartUtils
+        const checkWithinTargetRange = (resp: TdmApiResponse | null): boolean => {
+          if (!resp) return false;
+          return isWithinTargetRange(
+            prescription.tdmTarget,
+            prescription.tdmTargetValue,
+            resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+            resp.CMAX_after ?? resp.CMAX_before ?? null,
+            resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+            prescription.drugName
+          );
+        };
+
+        // Helper function to calculate distance to target range (for direction determination)
+        const getDistanceToTarget = (
+          resp: TdmApiResponse | null,
+        ): number => {
+          if (!resp || !targetMin || !targetMax) return Number.POSITIVE_INFINITY;
+          const value = getTargetValue(resp);
+          if (value === null) return Number.POSITIVE_INFINITY;
+          if (value >= targetMin && value <= targetMax) return 0; // Within range
+          if (value < targetMin) return targetMin - value; // Below range
+          return value - targetMax; // Above range
+        };
+
+        // Helper function to call API for a single amount with retry logic
+        const callApiForAmount = async (
+          amt: number,
+        ): Promise<{
+          amt: number;
+          score: number;
+          resp: TdmApiResponse | null;
+          dataset: TdmDatasetRow[];
+        }> => {
+          const body = buildTdmRequestBodyCore({
+            patients,
+            prescriptions,
+            bloodTests,
+            drugAdministrations,
+            selectedPatientId: patient.id,
+            selectedDrugName: prescription.drugName,
+            overrides: { amount: amt },
+          });
+
+          try {
+            // runTdmApi already has retry logic for 503 errors
+            const resp = (await runTdmApi({ body, retries: 3 })) as TdmApiResponse;
+            const score = calculateScore(resp, targetMin, targetMax);
+            return {
+              amt,
+              score,
+              resp,
+              dataset: (body?.dataset as TdmDatasetRow[]) || [],
+            };
+          } catch (error) {
+            // 503 에러는 runTdmApi에서 재시도하므로, 여기 도달하면 모든 재시도 실패
+            console.warn(`Failed to get result for amount ${amt}mg:`, error);
+            return {
+              amt,
+              score: Number.POSITIVE_INFINITY,
+              resp: null,
+              dataset: (body?.dataset as TdmDatasetRow[]) || [],
+            };
+          }
+        };
+
+        // Step 1: Try +1 step and -1 step in parallel to determine direction and calculate dose-response relationship
+        let [upResult, downResult] = await Promise.all([
+          callApiForAmount(Math.max(1, baseDose + step)),
+          callApiForAmount(Math.max(1, baseDose - step)),
+        ]);
+
+        // Retry failed requests (503 errors) for initial direction check
+        const initialRetryPromises: Promise<void>[] = [];
+        if (upResult.resp === null) {
+          console.log(`[Dosage Search] Retrying failed initial up request for ${upResult.amt}mg`);
+          initialRetryPromises.push(
+            callApiForAmount(upResult.amt).then((retryResult) => {
+              upResult = retryResult;
+            })
+          );
+        }
+        if (downResult.resp === null) {
+          console.log(`[Dosage Search] Retrying failed initial down request for ${downResult.amt}mg`);
+          initialRetryPromises.push(
+            callApiForAmount(downResult.amt).then((retryResult) => {
+              downResult = retryResult;
+            })
+          );
+        }
+        
+        if (initialRetryPromises.length > 0) {
+          await Promise.all(initialRetryPromises);
+          console.log(`[Dosage Search] Completed ${initialRetryPromises.length} initial retry requests`);
+        }
+
+        // Step 2: Calculate dose-response relationship from before/after comparison
+        const upDose = baseDose + step;
+        const downDose = baseDose - step;
+        const upValue = getTargetValue(upResult.resp);
+        const downValue = getTargetValue(downResult.resp);
+        
+        // Calculate how much the target value changes per unit dose change
+        let doseResponseRatio: number | null = null;
+        if (upValue !== null && downValue !== null && step > 0) {
+          const valueDiff = upValue - downValue;
+          const doseDiff = upDose - downDose; // 2 * step
+          if (doseDiff !== 0) {
+            doseResponseRatio = valueDiff / doseDiff; // Change in target value per mg
+          }
+        }
+
+        // Step 3: Predict doses that reach targetMin and targetMax
+        let predictedMinDose: number | null = null;
+        let predictedMaxDose: number | null = null;
+        
+        if (doseResponseRatio !== null && targetMin !== undefined && targetMax !== undefined) {
+          // Use downValue as baseline (smaller dose)
+          if (downValue !== null && Math.abs(doseResponseRatio) > 0.0001) {
+            // Calculate dose needed to reach targetMin
+            const valueDiffMin = targetMin - downValue;
+            const doseChangeMin = valueDiffMin / doseResponseRatio;
+            predictedMinDose = Math.max(1, downDose + doseChangeMin);
+            
+            // Calculate dose needed to reach targetMax
+            const valueDiffMax = targetMax - downValue;
+            const doseChangeMax = valueDiffMax / doseResponseRatio;
+            predictedMaxDose = Math.max(1, downDose + doseChangeMax);
+            
+            // Round to nearest step
+            predictedMinDose = Math.round(predictedMinDose / step) * step;
+            predictedMaxDose = Math.round(predictedMaxDose / step) * step;
+          }
+        }
+
+        // Step 4: Determine starting dose and direction
+        // Start from the smaller predicted dose (min) and go up, or from larger (max) and go down
+        let startDose = baseDose;
+        let direction = 1; // Default: go up
+        
+        if (predictedMinDose !== null && predictedMaxDose !== null) {
+          // Start from smaller dose and go up to find all values in range
+          startDose = Math.min(predictedMinDose, predictedMaxDose);
+          direction = 1; // Always go up from min dose
+        } else {
+          // Fallback: determine direction based on which gets closer to target
+          const upDistance = getDistanceToTarget(upResult.resp);
+          const downDistance = getDistanceToTarget(downResult.resp);
+          direction = upDistance < downDistance ? 1 : -1;
+        }
+
+        // Combine initial results
+        const allResults: Array<{
+          amt: number;
+          score: number;
+          resp: TdmApiResponse | null;
+          dataset: TdmDatasetRow[];
+        }> = [upResult, downResult];
+
+        const withinRangeResults: Array<{
+          amt: number;
+          score: number;
+          resp: TdmApiResponse | null;
+          dataset: TdmDatasetRow[];
+        }> = [];
+
+        // Check initial results
+        for (const result of allResults) {
+          if (checkWithinTargetRange(result.resp)) {
+            withinRangeResults.push(result);
+          }
+        }
+
+        // Step 5: Start from predicted dose and search in batches of 4
+        // Calculate starting step offset from baseDose
+        const startStepOffset = Math.round((startDose - baseDose) / step);
+        const testedOffsets = new Set([1, -1]); // Already tested +step and -step
+        let batchStart = startStepOffset;
+        const batchSize = 4;
+        let hasEnteredRange = withinRangeResults.length > 0; // Check if we're already in range
+        let loopCount = 0; // Track number of loops, not step offset
+        const maxLoops = 20; // Maximum number of batch iterations
+
+        while (true) {
+          loopCount++;
+          if (loopCount > maxLoops) {
+            console.log(`[Dosage Search] Reached max loops (${maxLoops}), stopping`);
+            break;
+          }
+          // Create batch of 4 candidates starting from batchStart in the determined direction
+          const batchSteps: number[] = [];
+          for (let i = 0; i < batchSize; i++) {
+            const stepOffset = batchStart + i * direction;
+            // Skip already tested offsets
+            if (!testedOffsets.has(stepOffset)) {
+              batchSteps.push(stepOffset);
+            }
+          }
+
+          // If no new candidates in this batch, move to next batch
+          if (batchSteps.length === 0) {
+            batchStart += batchSize * direction;
+            // Safety limit to prevent infinite loops
+            if (Math.abs(batchStart) > 50) break;
+            continue;
+          }
+
+          const batchCandidates = batchSteps
+            .map((k) => Math.max(1, baseDose + k * step))
+            .filter((amt) => amt > 0);
+
+          if (batchCandidates.length === 0) break;
+
+          // Test batch in parallel
+          const batchResults = await Promise.all(
+            batchCandidates.map((amt) => callApiForAmount(amt)),
+          );
+
+          // Retry failed requests (503 errors) - resp is null means all retries failed
+          const retryPromises: Promise<void>[] = [];
+          for (let i = 0; i < batchResults.length; i++) {
+            if (batchResults[i].resp === null) {
+              console.log(`[Dosage Search] Retrying failed request for ${batchResults[i].amt}mg`);
+              retryPromises.push(
+                callApiForAmount(batchResults[i].amt).then((retryResult) => {
+                  batchResults[i] = retryResult;
+                })
+              );
+            }
+          }
+          
+          // Wait for all retries to complete
+          if (retryPromises.length > 0) {
+            await Promise.all(retryPromises);
+            console.log(`[Dosage Search] Completed ${retryPromises.length} retry requests`);
+          }
+
+          // Mark offsets as tested
+          for (const offset of batchSteps) {
+            testedOffsets.add(offset);
+          }
+
+          // Add to all results
+          allResults.push(...batchResults);
+
+          // Sort batch results by amount based on direction
+          // Up direction (1): ascending (small to large)
+          // Down direction (-1): descending (large to small)
+          const sortedBatchResults = [...batchResults].sort((a, b) => 
+            direction === 1 ? a.amt - b.amt : b.amt - a.amt
+          );
+          
+          // Debug logging
+          console.log(`[Dosage Search] Loop ${loopCount}/${maxLoops}, Batch start offset: ${batchStart}, direction: ${direction}`);
+          console.log(`[Dosage Search] Batch doses:`, sortedBatchResults.map(r => r.amt));
+          
+          // Check results sequentially to determine range entry/exit
+          let foundInRange = false;
+          let firstInRangeIndex = -1;
+          let lastInRangeIndex = -1;
+          const rangeStatus: Array<{ amt: number; inRange: boolean }> = [];
+          
+          // Check each result in order (based on direction)
+          for (let i = 0; i < sortedBatchResults.length; i++) {
+            const result = sortedBatchResults[i];
+            const isInRange = checkWithinTargetRange(result.resp);
+            rangeStatus.push({ amt: result.amt, inRange: isInRange });
+            
+            if (isInRange) {
+              withinRangeResults.push(result);
+              if (firstInRangeIndex === -1) {
+                firstInRangeIndex = i;
+                hasEnteredRange = true; // We've entered the range
+              }
+              lastInRangeIndex = i;
+              foundInRange = true;
+            }
+          }
+
+          // Debug logging
+          console.log(`[Dosage Search] Range status:`, rangeStatus);
+          console.log(`[Dosage Search] hasEnteredRange: ${hasEnteredRange}, foundInRange: ${foundInRange}, firstInRangeIndex: ${firstInRangeIndex}, lastInRangeIndex: ${lastInRangeIndex}`);
+
+          // Determine next action based on sequential checking
+          if (hasEnteredRange) {
+            // We've entered the range (or were already in it)
+            if (foundInRange) {
+              // Check if the last item in the sorted order is within range
+              // For up direction: last = largest dose
+              // For down direction: last = smallest dose
+              const lastResult = sortedBatchResults[sortedBatchResults.length - 1];
+              const lastIsInRange = checkWithinTargetRange(lastResult.resp);
+              
+              console.log(`[Dosage Search] Last dose: ${lastResult.amt}, lastIsInRange: ${lastIsInRange}`);
+              
+              if (lastIsInRange) {
+                // Last item (in direction order) is in range, continue to next batch
+                console.log(`[Dosage Search] Continuing to next batch...`);
+                batchStart += batchSize * direction;
+              } else {
+                // Last item is out of range, we've exited the range, stop
+                console.log(`[Dosage Search] Last item out of range, stopping`);
+                break;
+              }
+            } else {
+              // No items in range in this batch, we've exited the range, stop
+              console.log(`[Dosage Search] No items in range in this batch, stopping`);
+              break;
+            }
+          } else {
+            // Haven't entered range yet, continue searching
+            console.log(`[Dosage Search] Haven't entered range yet, continuing...`);
+            batchStart += batchSize * direction;
+          }
+        }
+
+        // Step 4: Show all results within target range, or best results if none
+        const finalResults = withinRangeResults.length > 0
+          ? withinRangeResults.sort((a, b) => a.amt - b.amt)
+          : allResults.sort((a, b) => a.score - b.score).slice(0, 6);
 
         const results: Array<{
           amt: number;
           score: number;
           resp: TdmApiResponse | null;
           dataset: TdmDatasetRow[];
-        }> = await Promise.all(
-          candidates.map(async (amt) => {
-            const body = buildTdmRequestBodyCore({
-              patients,
-              prescriptions,
-              bloodTests,
-              drugAdministrations,
-              selectedPatientId: patient.id,
-              selectedDrugName: prescription.drugName,
-              overrides: { amount: amt },
-            });
+        }> = finalResults;
 
-            try {
-              const resp = (await runTdmApi({ body })) as TdmApiResponse;
-              const trough = Number(
-                ((resp?.CTROUGH_after ?? resp?.CTROUGH_before) as number) || 0,
-              );
-              const auc = Number(
-                 ((resp?.AUC_24_after ??  resp?.AUC_24_before) as number) || 0,
-              );
-              // score: distance to target range (prefer within range)
-              let value = 0;
-              if (target.includes("auc") && (targetMin || targetMax)) {
-                const mid = auc || 0;
-                const cmin = targetMin ?? mid;
-                const cmax = targetMax ?? mid;
-                value = mid < cmin ? cmin - mid : mid > cmax ? mid - cmax : 0;
-              } else if (
-                (target.includes("trough") || target.includes("cmax")) &&
-                (targetMin || targetMax)
-              ) {
-                const mid = trough || 0;
-                const cmin = targetMin ?? mid;
-                const cmax = targetMax ?? mid;
-                value = mid < cmin ? cmin - mid : mid > cmax ? mid - cmax : 0;
-              } else {
-                // fallback: smaller trough distance to previous result
-                value = Math.abs(
-                  (trough || 0) - (tdmResult?.CTROUGH_before || 0),
-                );
-              }
-              return {
-                amt,
-                score: value,
-                resp,
-                dataset: (body?.dataset as TdmDatasetRow[]) || [],
-              };
-            } catch {
-              return {
-                amt,
-                score: Number.POSITIVE_INFINITY,
-                resp: null,
-                dataset: (body?.dataset as TdmDatasetRow[]) || [],
-              };
-            }
-          }),
-        );
-
-        const top = results
-          .sort((a, b) => a.score - b.score)
-          .slice(0, 3)
+        // Extract amounts from results (all results, not just top 3)
+        const allAmounts = results
           .map((r) => r.amt)
           .sort((a, b) => a - b); // 오름차순 정렬
 
-        setDosageSuggestions((prev) => ({ ...prev, [cardId]: top }));
+        setDosageSuggestions((prev) => ({ ...prev, [cardId]: allAmounts }));
 
         // 결과 캐싱
         setDosageSuggestionResults((prev) => {
@@ -1204,8 +1514,9 @@ const PKSimulation = ({
 
           next[cardId] = next[cardId] || {};
 
+          // Cache all results
           for (const r of results) {
-            if (r && r.resp && top.includes(r.amt)) {
+            if (r && r.resp) {
               next[cardId][r.amt] = {
                 data: r.resp as TdmApiResponse,
                 dataset: r.dataset as TdmDatasetRow[],
@@ -1218,8 +1529,8 @@ const PKSimulation = ({
 
         // 최초 자동 선택: 첫 번째 추천 용량을 활성화하여 즉시 반영
 
-        if (top.length > 0) {
-          const first = top[0];
+        if (allAmounts.length > 0) {
+          const first = allAmounts[0];
 
           setSelectedDosage((prev) => ({ ...prev, [cardId]: `${first}mg` }));
 
@@ -1281,6 +1592,16 @@ const PKSimulation = ({
             });
 
             setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+            
+            // 차트가 제대로 렌더링되도록 약간의 지연 후 강제 업데이트
+            // 이는 Y축 스케일이 올바르게 계산되도록 보장합니다
+            setTimeout(() => {
+              // handleDosageSelect를 호출하여 차트를 다시 렌더링
+              // 이렇게 하면 클릭 이벤트와 동일한 로직이 실행되어 차트가 올바르게 표시됩니다
+              if (handleDosageSelectRef.current) {
+                handleDosageSelectRef.current(cardId, `${first}mg`);
+              }
+            }, 100);
           }
         }
       } catch (e) {
@@ -1768,9 +2089,9 @@ const PKSimulation = ({
 
             {/* 버튼 섹션 */}
 
-            <div className="flex justify-center gap-4 mb-6">
+            <div className="flex flex-wrap justify-center gap-4 mb-6 px-4">
               {card.type === "dosage" ? (
-                // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (최대 3개)
+                // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (여러 줄로 표시)
 
                 <>
                   {(dosageSuggestions[card.id] || []).map((amt) => {
@@ -1786,7 +2107,7 @@ const PKSimulation = ({
                         }
                         size="default"
                         onClick={() => handleDosageSelect(card.id, label)}
-                        className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3`}
+                        className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
                       >
                         {label}
                       </Button>
