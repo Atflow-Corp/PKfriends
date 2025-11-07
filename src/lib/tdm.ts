@@ -615,54 +615,88 @@ export const runTdmApi = async (args: {
   persist?: boolean;
   patientId?: string;
   drugName?: string;
+  retries?: number;
 }): Promise<unknown> => {
-  const { body, persist, patientId, drugName } = args;
-  const response = await fetch(
-    "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
-  if (!response.ok) throw new Error(`TDM API error: ${response.status}`);
-  const data: TdmApiMinimal = await response.json();
+  const { body, persist, patientId, drugName, retries = 3 } = args;
 
-  if (persist && patientId) {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      window.localStorage.setItem(
-        `tdmfriends:tdmResult:${patientId}`,
-        JSON.stringify(data)
+      const response = await fetch(
+        "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
       );
 
-      if (drugName) {
-        const historyKey = `tdmfriends:tdmResults:${patientId}:${drugName}`;
-        const raw = window.localStorage.getItem(historyKey);
-        const list: TdmHistoryEntry[] = raw
-          ? (JSON.parse(raw) as TdmHistoryEntry[])
-          : [];
-        const typedBody = body as TdmRequestBodyWithOptionalModel;
-        const entry: TdmHistoryEntry = {
-          id: `${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          model_name: typedBody?.model_name,
-          summary: data,
-          dataset: (typedBody?.dataset as unknown[]) || [],
-          data,
-        };
-        list.push(entry);
-        window.localStorage.setItem(historyKey, JSON.stringify(list));
-        // Also persist latest result per patient+drug
-        window.localStorage.setItem(
-          `tdmfriends:tdmResult:${patientId}:${drugName}`,
-          JSON.stringify(data)
-        );
+      if (response.status === 503 && attempt < retries - 1) {
+        // 503 에러인 경우 재시도 (지수 백오프)
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
       }
-    } catch (e) {
-      console.error("Failed to save TDM result/history to localStorage", e);
+
+      if (!response.ok) {
+        throw new Error(`TDM API error: ${response.status}`);
+      }
+
+      const data: TdmApiMinimal = await response.json();
+
+      if (persist && patientId) {
+        try {
+          window.localStorage.setItem(
+            `tdmfriends:tdmResult:${patientId}`,
+            JSON.stringify(data)
+          );
+
+          if (drugName) {
+            const historyKey = `tdmfriends:tdmResults:${patientId}:${drugName}`;
+            const raw = window.localStorage.getItem(historyKey);
+            const list: TdmHistoryEntry[] = raw
+              ? (JSON.parse(raw) as TdmHistoryEntry[])
+              : [];
+            const typedBody = body as TdmRequestBodyWithOptionalModel;
+            const entry: TdmHistoryEntry = {
+              id: `${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              model_name: typedBody?.model_name,
+              summary: data,
+              dataset: (typedBody?.dataset as unknown[]) || [],
+              data,
+            };
+            list.push(entry);
+            window.localStorage.setItem(historyKey, JSON.stringify(list));
+            // Also persist latest result per patient+drug
+            window.localStorage.setItem(
+              `tdmfriends:tdmResult:${patientId}:${drugName}`,
+              JSON.stringify(data)
+            );
+          }
+        } catch (e) {
+          console.error("Failed to save TDM result/history to localStorage", e);
+        }
+      }
+      return data;
+    } catch (error) {
+      lastError = error as Error;
+      // 503이 아닌 다른 에러는 즉시 재시도하지 않음
+      if ((error as Error).message.includes("503")) {
+        if (attempt < retries - 1) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+      } else {
+        // 503이 아닌 에러는 즉시 throw
+        throw error;
+      }
     }
   }
-  return data;
+
+  // 모든 재시도 실패 시 마지막 에러 throw
+  throw lastError || new Error("TDM API failed after retries");
 };
 
 export const setActiveTdm = (
