@@ -287,6 +287,10 @@ const PKSimulation = ({
     [cardId: number]: boolean;
   }>({});
 
+  const [dosageError, setDosageError] = useState<{
+    [cardId: number]: boolean;
+  }>({});
+
   const suggestTimersRef = useRef<{ [cardId: number]: number }>({});
   const handleDosageSelectRef = useRef<((cardId: number, dosage: string) => void) | null>(null);
 
@@ -579,6 +583,13 @@ const PKSimulation = ({
       });
 
       setCardTdmExtraSeries((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      // 에러 상태도 삭제
+      setDosageError((prev) => {
         const newState = { ...prev };
         delete newState[cardToDelete];
         return newState;
@@ -1222,6 +1233,7 @@ const PKSimulation = ({
     async (cardId: number) => {
       try {
         setDosageLoading((prev) => ({ ...prev, [cardId]: true }));
+        setDosageError((prev) => ({ ...prev, [cardId]: false }));
 
         const patient = currentPatient;
 
@@ -1384,6 +1396,7 @@ const PKSimulation = ({
         // Helper function to call API for a single amount with retry logic
         const callApiForAmount = async (
           amt: number,
+          retries: number = 3,
         ): Promise<{
           amt: number;
           score: number;
@@ -1402,7 +1415,7 @@ const PKSimulation = ({
 
           try {
             // runTdmApi already has retry logic for 503 errors
-            const resp = (await runTdmApi({ body, retries: 3 })) as TdmApiResponse;
+            const resp = (await runTdmApi({ body, retries })) as TdmApiResponse;
             const score = calculateScore(resp, targetMin, targetMax);
             return {
               amt,
@@ -1412,7 +1425,7 @@ const PKSimulation = ({
             };
           } catch (error) {
             // 503 에러는 runTdmApi에서 재시도하므로, 여기 도달하면 모든 재시도 실패
-            console.warn(`Failed to get result for amount ${amt}mg:`, error);
+            console.warn(`Failed to get result for amount ${amt}mg after ${retries} retries:`, error);
             return {
               amt,
               score: Number.POSITIVE_INFINITY,
@@ -1423,34 +1436,23 @@ const PKSimulation = ({
         };
 
         // Step 1: Try +1 step and -1 step in parallel to determine direction and calculate dose-response relationship
-        let [upResult, downResult] = await Promise.all([
-          callApiForAmount(Math.max(1, baseDose + step)),
-          callApiForAmount(Math.max(1, baseDose - step)),
+        // 초기 방향 체크는 중요하므로 tryCount 만큼 재시도
+        const tryCount = 5;
+        const [upResult, downResult] = await Promise.all([
+          callApiForAmount(Math.max(1, baseDose + step), tryCount),
+          callApiForAmount(Math.max(1, baseDose - step), tryCount),
         ]);
 
-        // Retry failed requests (503 errors) for initial direction check
-        const initialRetryPromises: Promise<void>[] = [];
-        if (upResult.resp === null) {
-          console.log(`[Dosage Search] Retrying failed initial up request for ${upResult.amt}mg`);
-          initialRetryPromises.push(
-            callApiForAmount(upResult.amt).then((retryResult) => {
-              upResult = retryResult;
-            })
-          );
+        // Check if both results failed after all retries
+        if (upResult.resp === null || downResult.resp === null) {
+          console.warn(`[Dosage Search] Failed to get initial results after 5 retries. upResult: ${upResult.resp === null ? 'failed' : 'success'}, downResult: ${downResult.resp === null ? 'failed' : 'success'}`);
+          setDosageError((prev) => ({ ...prev, [cardId]: true }));
+          setDosageLoading((prev) => ({ ...prev, [cardId]: false }));
+          return;
         }
-        if (downResult.resp === null) {
-          console.log(`[Dosage Search] Retrying failed initial down request for ${downResult.amt}mg`);
-          initialRetryPromises.push(
-            callApiForAmount(downResult.amt).then((retryResult) => {
-              downResult = retryResult;
-            })
-          );
-        }
-        
-        if (initialRetryPromises.length > 0) {
-          await Promise.all(initialRetryPromises);
-          console.log(`[Dosage Search] Completed ${initialRetryPromises.length} initial retry requests`);
-        }
+
+        // Clear error state if successful
+        setDosageError((prev) => ({ ...prev, [cardId]: false }));
 
         // Step 2: Calculate dose-response relationship from before/after comparison
         const upDose = baseDose + step;
@@ -2332,8 +2334,28 @@ const PKSimulation = ({
                     );
                   })}
 
-                  {/* 계산 중 UI: 옵션이 없거나 계산이 진행 중일 때 표시 */}
-                  {((!dosageSuggestions[card.id] ||
+                  {/* 에러 상태: API 호출 실패 시 재시도 버튼 표시 */}
+                  {dosageError[card.id] && !dosageLoading[card.id] && (
+                    <div className="flex flex-col items-center gap-3 w-full">
+                      <div className="text-sm text-red-600 dark:text-red-400">
+                        제안 계산에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="default"
+                        onClick={() => {
+                          setDosageError((prev) => ({ ...prev, [card.id]: false }));
+                          triggerDosageSuggestions(card.id);
+                        }}
+                        className="text-base px-6 py-3"
+                      >
+                        다시 시도
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* 계산 중 UI: 옵션이 없거나 계산이 진행 중일 때 표시 (에러가 아닐 때만) */}
+                  {!dosageError[card.id] && ((!dosageSuggestions[card.id] ||
                     dosageSuggestions[card.id].length === 0) ||
                     dosageLoading[card.id]) && (
                     <span className="text-sm text-muted-foreground flex items-center gap-2">
