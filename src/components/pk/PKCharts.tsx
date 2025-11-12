@@ -210,8 +210,10 @@ const PKCharts = ({
         </div>
 
         <div
-          className={`bg-gray-100 dark:bg-gray-800 rounded-lg p-4 ${
-            withinTargetRange
+          className={`rounded-lg p-4 ${
+            withinTargetRange === undefined
+              ? 'bg-gray-100 dark:bg-gray-800'
+              : withinTargetRange
               ? 'bg-blue-100 dark:bg-blue-900/40'
               : 'bg-red-100 dark:bg-red-900/40'
           }`}
@@ -220,7 +222,7 @@ const PKCharts = ({
             적합 여부
           </span>
           <div className="text-2xl font-extrabold text-gray-900 dark:text-white">
-            {withinTargetRange ? '적합' : '부적합'}
+            {withinTargetRange === undefined ? '-' : withinTargetRange ? '적합' : '부적합'}
           </div>
         </div>
       </div>
