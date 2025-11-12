@@ -296,6 +296,24 @@ const PKSimulation = ({
     };
   }>({});
 
+  // 각 카드별 독립적인 차트 데이터 (PKCharts와 분리)
+  const [cardTdmResults, setCardTdmResults] = useState<{
+    [cardId: number]: TdmApiResponse | null;
+  }>({});
+
+  const [cardTdmChartData, setCardTdmChartData] = useState<{
+    [cardId: number]: ChartPoint[];
+  }>({});
+
+  const [cardTdmExtraSeries, setCardTdmExtraSeries] = useState<{
+    [cardId: number]: {
+      ipredSeries: { time: number; value: number }[];
+      predSeries: { time: number; value: number }[];
+      observedSeries: { time: number; value: number }[];
+      currentMethodSeries: { time: number; value: number }[];
+    } | null;
+  }>({});
+
   const currentPatient = patients.find((p) => p.id === selectedPatientId);
 
   const patientPrescriptions = useMemo(
@@ -547,6 +565,25 @@ const PKSimulation = ({
         return newState;
       });
 
+      // 카드별 차트 데이터도 삭제
+      setCardTdmResults((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      setCardTdmChartData((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      setCardTdmExtraSeries((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
       // if no more cards, unset active
       setTimeout(() => {
         if (adjustmentCards.filter((c) => c.id !== cardToDelete).length === 0) {
@@ -584,9 +621,9 @@ const PKSimulation = ({
     const cached = dosageSuggestionResults?.[cardId]?.[amountMg];
 
     if (cached && cached.data) {
-      setTdmResult(cached.data);
-
-      setTdmChartDataMain(toChartData(cached.data, cached.dataset || []));
+      // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
+      setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.data }));
+      setCardTdmChartData((prev) => ({ ...prev, [cardId]: toChartData(cached.data, cached.dataset || []) }));
 
       const currentMethodData = (
         (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
@@ -602,46 +639,48 @@ const PKSimulation = ({
       );
       console.log("PKSimulation PRED_CONC raw:", cached.data?.PRED_CONC);
 
-      setTdmExtraSeries({
-        ipredSeries: (
-          (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
+      setCardTdmExtraSeries((prev) => ({
+        ...prev,
+        [cardId]: {
+          ipredSeries: (
+            (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+          )
 
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.IPRED ?? 0) || 0,
-          }))
+            .map((p) => ({
+              time: Number(p.time) || 0,
+              value: Number(p.IPRED ?? 0) || 0,
+            }))
 
-          .filter((p) => p.time >= 0),
+            .filter((p) => p.time >= 0),
 
-        predSeries: (
-          (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
+          predSeries: (
+            (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
+          )
 
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
-          }))
+            .map((p) => ({
+              time: Number(p.time) || 0,
+              value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+            }))
 
-          .filter((p) => p.time >= 0),
+            .filter((p) => p.time >= 0),
 
-        observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
+          observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
 
-          .filter((r) => r.EVID === 0 && r.DV != null)
+            .filter((r) => r.EVID === 0 && r.DV != null)
 
-          .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+            .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
-          .filter((p) => p.time >= 0),
+            .filter((p) => p.time >= 0),
 
-        currentMethodSeries: currentMethodData,
-      });
+          currentMethodSeries: currentMethodData,
+        },
+      }));
 
       return;
     }
 
-    // 캐시가 없으면 기존 로직으로 API 호출
-
-    void applyDoseScenario(amountMg);
+    // 캐시가 없으면 기존 로직으로 API 호출 (카드별 데이터만 업데이트)
+    void applyDoseScenarioForCard(cardId, amountMg);
   };
   
   // handleDosageSelect를 ref에 저장하여 안정적인 참조 유지
@@ -663,7 +702,8 @@ const PKSimulation = ({
     try {
       const hours = parseInt(interval.replace(/[^0-9]/g, ""), 10);
       if (Number.isFinite(hours)) {
-        void applyIntervalScenario(hours);
+        // 카드별 데이터만 업데이트 (메인 차트는 변경하지 않음)
+        void applyIntervalScenarioForCard(cardId, hours);
       }
     } catch {
       /* no-op */
@@ -917,6 +957,90 @@ const PKSimulation = ({
     ],
   );
 
+  // 카드별 용량 조정 시나리오 적용 (메인 차트는 변경하지 않음)
+  const applyDoseScenarioForCard = useCallback(
+    async (cardId: number, amountMg: number) => {
+      try {
+        if (!selectedPatientId || !selectedDrug) return;
+
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId,
+          selectedDrugName: selectedDrug,
+          overrides: { amount: amountMg },
+        });
+
+        if (!body) return;
+
+        const data = (await runTdmApi({
+          body,
+          persist: false, // 카드별 데이터는 저장하지 않음
+          patientId: selectedPatientId,
+          drugName: selectedDrug,
+        })) as TdmApiResponse;
+
+        // 카드별 차트 데이터만 업데이트
+        setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        setCardTdmChartData((prev) => ({
+          ...prev,
+          [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
+        }));
+
+        const currentMethodData = (
+          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+        )
+          .map((p) => ({
+            time: Number(p.time) || 0,
+            value: Number(p.IPRED ?? 0) || 0,
+          }))
+          .filter((p) => p.time >= 0 && p.time <= 72);
+
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+
+            predSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+
+            observedSeries: ((body.dataset as TdmDatasetRow[]) || [])
+              .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+              .map((r: TdmDatasetRow) => ({
+                time: Number(r.TIME) || 0,
+                value: Number(r.DV),
+              }))
+              .filter((p) => p.time >= 0),
+
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+      } catch (e) {
+        console.warn("Failed to apply dose scenario for card", e);
+      }
+    },
+    [
+      patients,
+      prescriptions,
+      bloodTests,
+      drugAdministrations,
+      selectedPatientId,
+      selectedDrug,
+      toChartData,
+    ],
+  );
+
   const applyIntervalScenario = useCallback(
     async (tauHours: number) => {
       try {
@@ -1007,6 +1131,84 @@ const PKSimulation = ({
         setShowSimulation(true);
       } catch (e) {
         console.warn("Failed to apply interval scenario", e);
+      }
+    },
+    [
+      patients,
+      prescriptions,
+      bloodTests,
+      drugAdministrations,
+      selectedPatientId,
+      selectedDrug,
+      toChartData,
+    ],
+  );
+
+  // 카드별 간격 조정 시나리오 적용 (메인 차트는 변경하지 않음)
+  const applyIntervalScenarioForCard = useCallback(
+    async (cardId: number, tauHours: number) => {
+      try {
+        if (!selectedPatientId || !selectedDrug) return;
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId,
+          selectedDrugName: selectedDrug,
+          overrides: { tau: tauHours },
+        });
+        if (!body) return;
+        const data = (await runTdmApi({
+          body,
+          persist: false, // 카드별 데이터는 저장하지 않음
+          patientId: selectedPatientId,
+          drugName: selectedDrug,
+        })) as TdmApiResponse;
+        
+        // 카드별 차트 데이터만 업데이트
+        setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        setCardTdmChartData((prev) => ({
+          ...prev,
+          [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
+        }));
+
+        const currentMethodData = (
+          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+        )
+          .map((p) => ({
+            time: Number(p.time) || 0,
+            value: Number(p.IPRED ?? 0) || 0,
+          }))
+          .filter((p) => p.time >= 0 && p.time <= 72);
+
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+            predSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+            observedSeries: ((body.dataset as TdmDatasetRow[]) || [])
+              .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+              .map((r: TdmDatasetRow) => ({
+                time: Number(r.TIME) || 0,
+                value: Number(r.DV),
+              }))
+              .filter((p) => p.time >= 0),
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+      } catch (e) {
+        console.warn("Failed to apply interval scenario for card", e);
       }
     },
     [
@@ -1537,71 +1739,67 @@ const PKSimulation = ({
           const cached = results.find((r) => r.amt === first);
 
           if (cached && cached.resp) {
-            setTdmResult(cached.resp as TdmApiResponse);
-
-            setTdmChartDataMain(
-              toChartData(
+            // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
+            setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.resp as TdmApiResponse }));
+            setCardTdmChartData((prev) => ({
+              ...prev,
+              [cardId]: toChartData(
                 cached.resp as TdmApiResponse,
                 (cached.dataset as TdmDatasetRow[]) || [],
               ),
-            );
+            }));
 
-            setTdmExtraSeries({
-              ipredSeries: (
-                ((cached.resp as TdmApiResponse)?.IPRED_CONC as
-                  | ConcentrationPoint[]
-                  | undefined) || []
-              )
-                .map((p) => ({
-                  time: Number(p.time) || 0,
-                  value: Number(p.IPRED ?? 0) || 0,
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
+            const currentMethodData = (
+              ((cached.resp as TdmApiResponse)?.IPRED_CONC as
+                | ConcentrationPoint[]
+                | undefined) || []
+            )
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0 && p.time <= 72);
 
-              predSeries: (
-                ((cached.resp as TdmApiResponse)?.PRED_CONC as
-                  | ConcentrationPoint[]
-                  | undefined) || []
-              )
-                .map((p) => ({
-                  time: Number(p.time) || 0,
-                  value: Number(p.IPRED ?? 0) || 0,
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
+            setCardTdmExtraSeries((prev) => ({
+              ...prev,
+              [cardId]: {
+                ipredSeries: (
+                  ((cached.resp as TdmApiResponse)?.IPRED_CONC as
+                    | ConcentrationPoint[]
+                    | undefined) || []
+                )
+                  .map((p) => ({
+                    time: Number(p.time) || 0,
+                    value: Number(p.IPRED ?? 0) || 0,
+                  }))
+                  .filter((p) => p.time >= 0 && p.time <= 72),
 
-              observedSeries: (
-                (cached.dataset as TdmDatasetRow[] | undefined) || []
-              )
-                .filter((r) => r.EVID === 0 && r.DV != null)
-                .map((r) => ({
-                  time: Number(r.TIME) || 0,
-                  value: Number(r.DV),
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
+                predSeries: (
+                  ((cached.resp as TdmApiResponse)?.PRED_CONC as
+                    | ConcentrationPoint[]
+                    | undefined) || []
+                )
+                  .map((p) => ({
+                    time: Number(p.time) || 0,
+                    value: Number(p.IPRED ?? 0) || 0,
+                  }))
+                  .filter((p) => p.time >= 0 && p.time <= 72),
 
-              currentMethodSeries: (
-                ((cached.resp as TdmApiResponse)?.PRED_CONC as
-                  | ConcentrationPoint[]
-                  | undefined) || []
-              )
-                .map((p) => ({
-                  time: Number(p.time) || 0,
-                  value: Number(p.IPRED ?? 0) || 0,
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
-            });
+                observedSeries: (
+                  (cached.dataset as TdmDatasetRow[] | undefined) || []
+                )
+                  .filter((r) => r.EVID === 0 && r.DV != null)
+                  .map((r) => ({
+                    time: Number(r.TIME) || 0,
+                    value: Number(r.DV),
+                  }))
+                  .filter((p) => p.time >= 0 && p.time <= 72),
+
+                currentMethodSeries: currentMethodData,
+              },
+            }));
 
             setCardChartData((prev) => ({ ...prev, [cardId]: true }));
-            
-            // 차트가 제대로 렌더링되도록 약간의 지연 후 강제 업데이트
-            // 이는 Y축 스케일이 올바르게 계산되도록 보장합니다
-            setTimeout(() => {
-              // handleDosageSelect를 호출하여 차트를 다시 렌더링
-              // 이렇게 하면 클릭 이벤트와 동일한 로직이 실행되어 차트가 올바르게 표시됩니다
-              if (handleDosageSelectRef.current) {
-                handleDosageSelectRef.current(cardId, `${first}mg`);
-              }
-            }, 100);
           }
         }
       } catch (e) {
@@ -2210,13 +2408,13 @@ const PKSimulation = ({
                 recentAUC={tdmResult?.AUC_24_before}
                 recentMax={tdmResult?.CMAX_before}
                 recentTrough={tdmResult?.CTROUGH_before}
-                predictedAUC={tdmResult?.AUC_24_after}
-                predictedMax={tdmResult?.CMAX_after}
-                predictedTrough={tdmResult?.CTROUGH_after}
-                ipredSeries={tdmExtraSeries?.ipredSeries}
-                predSeries={tdmExtraSeries?.predSeries}
-                observedSeries={tdmExtraSeries?.observedSeries}
-                currentMethodSeries={tdmExtraSeries?.currentMethodSeries}
+                predictedAUC={cardTdmResults[card.id]?.AUC_24_after}
+                predictedMax={cardTdmResults[card.id]?.CMAX_after}
+                predictedTrough={cardTdmResults[card.id]?.CTROUGH_after}
+                ipredSeries={cardTdmExtraSeries[card.id]?.ipredSeries}
+                predSeries={cardTdmExtraSeries[card.id]?.predSeries}
+                observedSeries={cardTdmExtraSeries[card.id]?.observedSeries}
+                currentMethodSeries={cardTdmExtraSeries[card.id]?.currentMethodSeries}
                 chartColor={card.type === "dosage" ? "pink" : "green"}
                 // TDM 내역 데이터
                 tdmIndication={getTdmData(selectedDrug).indication}
