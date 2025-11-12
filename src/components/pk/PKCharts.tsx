@@ -157,7 +157,7 @@ const PKCharts = ({
       </div>
 
       {/* TDM 결과 요약 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-gray-800 dark:text-gray-100">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 text-gray-800 dark:text-gray-100">
         <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
           <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
             투약 간격
@@ -188,16 +188,16 @@ const PKCharts = ({
           </span>
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline gap-2">
-              {targetLabel && (
+              {tdmTarget && (
                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                  {targetLabel}
+                  {tdmTarget.split('(')[0]?.trim() || ''}
                 </span>
               )}
               <span
                 className={`text-xl font-bold ${
                   withinTargetRange
-                    ? "text-blue-700 dark:text-blue-200"
-                    : "text-red-600 dark:text-red-300"
+                    ? 'text-blue-700 dark:text-blue-200'
+                    : 'text-red-600 dark:text-red-300'
                 }`}
               >
                 {targetHighlight.value}
@@ -208,49 +208,21 @@ const PKCharts = ({
             </span>
           </div>
         </div>
-      </div>
 
-      <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-6 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">TDM friends Comments</h3>
-        <p>
-          {tdmIndication || '적응증'}의 {selectedDrug || '약물명'} 처방 시 TDM 목표는{' '}
-          <span className="font-semibold text-gray-900 dark:text-white">
-            {tdmTarget || '목표 유형'} ({tdmTargetValue || '목표값'})
+        <div
+          className={`bg-gray-100 dark:bg-gray-800 rounded-lg p-4 ${
+            withinTargetRange
+              ? 'bg-blue-100 dark:bg-blue-900/40'
+              : 'bg-red-100 dark:bg-red-900/40'
+          }`}
+        >
+          <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
+            적합 여부
           </span>
-          입니다.
-        </p>
-        <p className="mt-1">
-          <span className="font-semibold text-gray-900 dark:text-white">
-            {intervalLabel} 간격으로 {doseLabel}
-          </span>{' '}
-          투약 시 Steady State까지 {' '}
-          <span className="font-semibold text-gray-900 dark:text-white">
-            {tdmTarget || '목표 유형'}
-          </span>
-          {' '}
-          <span
-            className={`font-semibold ${
-              withinTargetRange
-                ? 'text-blue-600 dark:text-blue-200'
-                : 'text-red-600 dark:text-red-300'
-            }`}
-          >
-            {targetHighlight.value}
-          </span>
-          {' '}이며,{' '}
-          <span
-            className={`font-semibold ${
-              withinTargetRange
-                ? 'text-blue-600 dark:text-blue-200'
-                : 'text-red-600 dark:text-red-300'
-            }`}
-          >
-            {withinTargetRange ? '적정 용법입니다.' : '치료 범위를 벗어납니다.'}
-          </span>
-        </p>
-        <p className="mt-1">
-          다양한 용법이 궁금하시다면 화면 하단에서 용법 조정 시뮬레이션을 진행해보세요.
-        </p>
+          <div className="text-2xl font-extrabold text-gray-900 dark:text-white">
+            {withinTargetRange ? '적합' : '부적합'}
+          </div>
+        </div>
       </div>
 
       {/* 범례 */}
