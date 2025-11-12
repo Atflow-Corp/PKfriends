@@ -1619,6 +1619,13 @@ const PKSimulation = ({
           const rangeStatus: Array<{ amt: number; inRange: boolean }> = [];
           
           // Check each result in order (based on direction)
+          const batchInRangeResults: Array<{
+            amt: number;
+            score: number;
+            resp: TdmApiResponse | null;
+            dataset: TdmDatasetRow[];
+          }> = [];
+          
           for (let i = 0; i < sortedBatchResults.length; i++) {
             const result = sortedBatchResults[i];
             const isInRange = checkWithinTargetRange(result.resp);
@@ -1626,6 +1633,7 @@ const PKSimulation = ({
             
             if (isInRange) {
               withinRangeResults.push(result);
+              batchInRangeResults.push(result);
               if (firstInRangeIndex === -1) {
                 firstInRangeIndex = i;
                 hasEnteredRange = true; // We've entered the range
@@ -1635,9 +1643,71 @@ const PKSimulation = ({
             }
           }
 
+          // Progressive UI 업데이트: 이번 batch에서 range에 해당하는 결과가 있으면 즉시 UI에 반영
+          if (batchInRangeResults.length > 0) {
+            // 현재까지의 suggestions 가져오기
+            setDosageSuggestions((prev) => {
+              const currentAmounts = prev[cardId] || [];
+              const newAmounts = batchInRangeResults.map((r) => r.amt);
+              // 중복 제거하고 오름차순 정렬
+              const mergedAmounts = [...new Set([...currentAmounts, ...newAmounts])].sort((a, b) => a - b);
+              return { ...prev, [cardId]: mergedAmounts };
+            });
+
+            // 결과 캐싱도 progressive하게 업데이트
+            setDosageSuggestionResults((prev) => {
+              const next: {
+                [cardId: number]: {
+                  [amount: number]: {
+                    data: TdmApiResponse;
+                    dataset: TdmDatasetRow[];
+                  };
+                };
+              } = { ...(prev || {}) } as {
+                [cardId: number]: {
+                  [amount: number]: {
+                    data: TdmApiResponse;
+                    dataset: TdmDatasetRow[];
+                  };
+                };
+              };
+
+              next[cardId] = next[cardId] || {};
+
+              // 이번 batch의 range 결과만 캐싱
+              for (const r of batchInRangeResults) {
+                if (r && r.resp) {
+                  next[cardId][r.amt] = {
+                    data: r.resp as TdmApiResponse,
+                    dataset: r.dataset as TdmDatasetRow[],
+                  };
+                }
+              }
+
+              return next;
+            });
+
+            // 첫 번째 range 결과가 나왔고 아직 자동 선택이 안 된 경우 자동 선택
+            if (withinRangeResults.length === batchInRangeResults.length) {
+              // 첫 번째 batch에서 range 결과가 나온 경우
+              const firstAmount = batchInRangeResults.sort((a, b) => a.amt - b.amt)[0].amt;
+              
+              // handleDosageSelect를 직접 호출하여 차트가 제대로 렌더링되도록 함
+              // 약간의 지연을 두어 상태 업데이트가 완료된 후 호출
+              setTimeout(() => {
+                if (handleDosageSelectRef.current) {
+                  handleDosageSelectRef.current(cardId, `${firstAmount}mg`);
+                }
+              }, 100);
+            }
+          }
+
           // Debug logging
           console.log(`[Dosage Search] Range status:`, rangeStatus);
           console.log(`[Dosage Search] hasEnteredRange: ${hasEnteredRange}, foundInRange: ${foundInRange}, firstInRangeIndex: ${firstInRangeIndex}, lastInRangeIndex: ${lastInRangeIndex}`);
+          if (batchInRangeResults.length > 0) {
+            console.log(`[Dosage Search] Progressive update: ${batchInRangeResults.length} new options added to UI`);
+          }
 
           // Determine next action based on sequential checking
           if (hasEnteredRange) {
@@ -1725,76 +1795,31 @@ const PKSimulation = ({
         });
 
         // 최초 자동 선택: 첫 번째 추천 용량을 활성화하여 즉시 반영
+        // 단, 이미 progressive 업데이트에서 자동 선택이 된 경우는 스킵
 
         if (allAmounts.length > 0) {
-          const first = allAmounts[0];
+          let shouldAutoSelect = false;
+          setSelectedDosage((prev) => {
+            // 이미 선택된 용량이 있으면 스킵
+            if (prev[cardId]) {
+              return prev;
+            }
+            shouldAutoSelect = true;
+            const first = allAmounts[0];
+            return { ...prev, [cardId]: `${first}mg` };
+          });
 
-          setSelectedDosage((prev) => ({ ...prev, [cardId]: `${first}mg` }));
-
-          const cached = results.find((r) => r.amt === first);
-
-          if (cached && cached.resp) {
-            // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
-            setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.resp as TdmApiResponse }));
-            setCardTdmChartData((prev) => ({
-              ...prev,
-              [cardId]: toChartData(
-                cached.resp as TdmApiResponse,
-                (cached.dataset as TdmDatasetRow[]) || [],
-              ),
-            }));
-
-            const currentMethodData = (
-              ((cached.resp as TdmApiResponse)?.IPRED_CONC as
-                | ConcentrationPoint[]
-                | undefined) || []
-            )
-              .map((p) => ({
-                time: Number(p.time) || 0,
-                value: Number(p.IPRED ?? 0) || 0,
-              }))
-              .filter((p) => p.time >= 0 && p.time <= 72);
-
-            setCardTdmExtraSeries((prev) => ({
-              ...prev,
-              [cardId]: {
-                ipredSeries: (
-                  ((cached.resp as TdmApiResponse)?.IPRED_CONC as
-                    | ConcentrationPoint[]
-                    | undefined) || []
-                )
-                  .map((p) => ({
-                    time: Number(p.time) || 0,
-                    value: Number(p.IPRED ?? 0) || 0,
-                  }))
-                  .filter((p) => p.time >= 0 && p.time <= 72),
-
-                predSeries: (
-                  ((cached.resp as TdmApiResponse)?.PRED_CONC as
-                    | ConcentrationPoint[]
-                    | undefined) || []
-                )
-                  .map((p) => ({
-                    time: Number(p.time) || 0,
-                    value: Number(p.IPRED ?? 0) || 0,
-                  }))
-                  .filter((p) => p.time >= 0 && p.time <= 72),
-
-                observedSeries: (
-                  (cached.dataset as TdmDatasetRow[] | undefined) || []
-                )
-                  .filter((r) => r.EVID === 0 && r.DV != null)
-                  .map((r) => ({
-                    time: Number(r.TIME) || 0,
-                    value: Number(r.DV),
-                  }))
-                  .filter((p) => p.time >= 0 && p.time <= 72),
-
-                currentMethodSeries: currentMethodData,
-              },
-            }));
-
-            setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+          // 자동 선택이 실제로 이루어진 경우에만 차트 업데이트
+          if (shouldAutoSelect) {
+            const first = allAmounts[0];
+            
+            // handleDosageSelect를 직접 호출하여 차트가 제대로 렌더링되도록 함
+            // 약간의 지연을 두어 상태 업데이트가 완료된 후 호출
+            setTimeout(() => {
+              if (handleDosageSelectRef.current) {
+                handleDosageSelectRef.current(cardId, `${first}mg`);
+              }
+            }, 100);
           }
         }
       } catch (e) {
@@ -2307,8 +2332,10 @@ const PKSimulation = ({
                     );
                   })}
 
-                  {(!dosageSuggestions[card.id] ||
-                    dosageSuggestions[card.id].length === 0) && (
+                  {/* 계산 중 UI: 옵션이 없거나 계산이 진행 중일 때 표시 */}
+                  {((!dosageSuggestions[card.id] ||
+                    dosageSuggestions[card.id].length === 0) ||
+                    dosageLoading[card.id]) && (
                     <span className="text-sm text-muted-foreground flex items-center gap-2">
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                         <circle
