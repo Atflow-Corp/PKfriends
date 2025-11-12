@@ -2309,73 +2309,81 @@ const PKSimulation = ({
 
             {/* 버튼 섹션 */}
 
-            <div className="flex flex-wrap justify-center gap-4 mb-6 px-4">
+            <div className="mb-6 px-4">
               {card.type === "dosage" ? (
                 // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (여러 줄로 표시)
 
                 <>
-                  {(dosageSuggestions[card.id] || []).map((amt) => {
-                    const label = `${amt}mg`;
-
-                    return (
-                      <Button
-                        key={`${card.id}-${amt}`}
-                        variant={
-                          selectedDosage[card.id] === label
-                            ? "default"
-                            : "outline"
-                        }
-                        size="default"
-                        onClick={() => handleDosageSelect(card.id, label)}
-                        className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
-                      >
-                        {label}
-                      </Button>
-                    );
-                  })}
-
-                  {/* 에러 상태: API 호출 실패 시 재시도 버튼 표시 */}
-                  {dosageError[card.id] && !dosageLoading[card.id] && (
-                    <div className="flex flex-col items-center gap-3 w-full">
-                      <div className="text-sm text-red-600 dark:text-red-400">
-                        제안 계산에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.
+                  {/* 상태 메시지 영역 (위쪽) */}
+                  <div className="flex justify-center mb-4">
+                    {/* 에러 상태: API 호출 실패 시 재시도 버튼 표시 */}
+                    {dosageError[card.id] && !dosageLoading[card.id] && (
+                      <div className="flex flex-col items-center gap-3 w-full">
+                        <div className="text-sm text-red-600 dark:text-red-400">
+                          제안 계산에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="default"
+                          onClick={() => {
+                            setDosageError((prev) => ({ ...prev, [card.id]: false }));
+                            triggerDosageSuggestions(card.id);
+                          }}
+                          className="text-base px-6 py-3"
+                        >
+                          다시 시도
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="default"
-                        onClick={() => {
-                          setDosageError((prev) => ({ ...prev, [card.id]: false }));
-                          triggerDosageSuggestions(card.id);
-                        }}
-                        className="text-base px-6 py-3"
-                      >
-                        다시 시도
-                      </Button>
-                    </div>
-                  )}
+                    )}
 
-                  {/* 계산 중 UI: 옵션이 없거나 계산이 진행 중일 때 표시 (에러가 아닐 때만) */}
-                  {!dosageError[card.id] && ((!dosageSuggestions[card.id] ||
-                    dosageSuggestions[card.id].length === 0) ||
-                    dosageLoading[card.id]) && (
-                    <span className="text-sm text-muted-foreground flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                        ></path>
-                      </svg>
-                      제안을 계산 중...
-                    </span>
+                    {/* 계산 중 UI: 옵션이 없거나 계산이 진행 중일 때 표시 (에러가 아닐 때만) */}
+                    {!dosageError[card.id] && ((!dosageSuggestions[card.id] ||
+                      dosageSuggestions[card.id].length === 0) ||
+                      dosageLoading[card.id]) && (
+                      <span className="text-sm text-muted-foreground flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                          ></path>
+                        </svg>
+                        제안을 계산 중...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 옵션 버튼 영역 (아래쪽) */}
+                  {(dosageSuggestions[card.id] || []).length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-4">
+                      {(dosageSuggestions[card.id] || []).map((amt) => {
+                        const label = `${amt}mg`;
+
+                        return (
+                          <Button
+                            key={`${card.id}-${amt}`}
+                            variant={
+                              selectedDosage[card.id] === label
+                                ? "default"
+                                : "outline"
+                            }
+                            size="default"
+                            onClick={() => handleDosageSelect(card.id, label)}
+                            className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
+                          >
+                            {label}
+                          </Button>
+                        );
+                      })}
+                    </div>
                   )}
                 </>
               ) : (
