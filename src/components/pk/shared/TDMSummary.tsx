@@ -50,8 +50,23 @@ const TDMSummary = ({
   const isIntervalChanged = originalAdministration && latestAdministration && 
     originalAdministration.intervalHours !== latestAdministration.intervalHours;
 
+  const intervalValueText =
+    latestAdministration?.intervalHours != null
+      ? latestAdministration.intervalHours.toLocaleString()
+      : "-";
+  const doseValueText =
+    latestAdministration?.dose != null
+      ? `${Number(latestAdministration.dose).toLocaleString()}${latestAdministration.unit || "mg"}`
+      : "-";
+  const hasInterval = intervalValueText !== "-";
+  const hasDose = doseValueText !== "-";
+  const intervalDisplay = hasInterval ? `${intervalValueText} 시간` : "-";
+  const doseDisplay = doseValueText;
+  const intervalLabel = hasInterval ? `${intervalValueText} 시간` : "투약 간격 정보 없음";
+  const doseLabel = hasDose ? doseValueText : "투약 용량 정보 없음";
+
   return (
-    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mb-6 border border-blue-200 dark:border-blue-800 mt-4">
+    <div className="bg-gray-100 dark:bg-gray-800/40 rounded-lg p-6 mb-6 mt-4">
       <h2 className="text-xl font-bold text-blue-800 dark:text-blue-200 mb-4 flex items-center gap-2">
         TDM Summary
       </h2>
@@ -65,15 +80,15 @@ const TDMSummary = ({
           <CardContent className="space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{formatInt(recentAUC ?? null, 'mg*h/L')}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatInt(recentAUC ?? null, 'mg*h/L')}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{formatFixed(recentMax ?? null, concentrationUnit)}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(recentMax ?? null, concentrationUnit)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{formatFixed(recentTrough ?? null, concentrationUnit)}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(recentTrough ?? null, concentrationUnit)}</span>
             </div>
           </CardContent>
         </Card>
@@ -86,15 +101,15 @@ const TDMSummary = ({
           <CardContent className="space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-600">AUC:</span>
-              <span className="font-semibold">{formatInt(predictedAUC ?? null, 'mg*h/L')}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatInt(predictedAUC ?? null, 'mg*h/L')}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">max 농도:</span>
-              <span className="font-semibold">{formatFixed(predictedMax ?? null, concentrationUnit)}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(predictedMax ?? null, concentrationUnit)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">trough 농도:</span>
-              <span className="font-semibold">{formatFixed(predictedTrough ?? null, concentrationUnit)}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(predictedTrough ?? null, concentrationUnit)}</span>
             </div>
           </CardContent>
         </Card>
@@ -103,7 +118,7 @@ const TDMSummary = ({
       {/* Comments / 용법 조정 결과 */}
       <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg text-blue-800 dark:text-blue-200 flex items-center gap-2">
+          <CardTitle className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
             {commentTitle}
           </CardTitle>
         </CardHeader>
@@ -112,7 +127,7 @@ const TDMSummary = ({
             <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
             <p className="leading-relaxed">
               {tdmIndication || '적응증'}의 {selectedDrug || '약물명'} 처방 시 TDM 목표는{' '}
-              <span className="font-semibold text-blue-600 dark:text-blue-400">
+              <span className="font-semibold text-gray-900 dark:text-white">
                 {tdmTarget || '목표 유형'} ({tdmTargetValue || '목표값'})
               </span>입니다.
             </p>
@@ -120,19 +135,21 @@ const TDMSummary = ({
           <div className="flex items-start gap-2">
             <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
             <p className="leading-relaxed">
-              <span className="font-semibold">
+              <span className="font-semibold text-gray-900 dark:text-white">
                 <span className={isIntervalChanged ? "text-red-600 dark:text-red-400" : ""}>
-                  {latestAdministration?.intervalHours || '시간'}
-                </span> 시간 간격으로{' '}
+                  {intervalLabel}
+                </span>
+                {' '}간격으로{' '}
                 <span className={isDoseChanged ? "text-red-600 dark:text-red-400" : ""}>
-                  {latestAdministration?.dose || 0}{latestAdministration?.unit || 'mg'}
-                </span> 투약 시
+                  {doseLabel}
+                </span>{' '}
+                투약 시
               </span>{' '}
               Steady State까지 TDM 목표{' '}
-              <span className="font-semibold text-blue-600 dark:text-blue-400">
+              <span className="font-semibold text-gray-900 dark:text-white">
                 {tdmTarget || '목표 유형'}
               </span>는{' '}
-              <span className="font-semibold text-red-600 dark:text-red-400">
+              <span className={withinRange ? "font-semibold text-blue-600 dark:text-blue-200" : "font-semibold text-red-600 dark:text-red-400"}>
                 {targetValue.value}
               </span>으로{' '}
               {withinRange ? (
@@ -144,6 +161,8 @@ const TDMSummary = ({
           </div>
         </CardContent>
       </Card>
+
+    
     </div>
   );
 };
