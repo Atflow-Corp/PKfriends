@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { ChartColumnIncreasing } from "lucide-react";
 import TDMLineChart, { ChartDataset } from "./shared/TDMLineChart";
-import TDMSummary from "./shared/TDMSummary";
 import {
   SimulationDataPoint,
   DrugAdministration,
@@ -45,9 +44,6 @@ const PKCharts = ({
   selectedDrug,
   targetMin,
   targetMax,
-  recentAUC: propRecentAUC,
-  recentMax: propRecentMax,
-  recentTrough: propRecentTrough,
   predictedAUC: propPredictedAUC,
   predictedMax: propPredictedMax,
   predictedTrough: propPredictedTrough,
@@ -84,10 +80,6 @@ const PKCharts = ({
     [data]
   );
 
-  // API 응답 값 정리
-  const recentAUC: number | null = typeof propRecentAUC === 'number' ? propRecentAUC : null;
-  const recentMax: number | null = typeof propRecentMax === 'number' ? propRecentMax : null;
-  const recentTrough: number | null = typeof propRecentTrough === 'number' ? propRecentTrough : null;
   const predictedAUC: number | null = typeof propPredictedAUC === 'number' ? propPredictedAUC : null;
   const predictedMax: number | null = typeof propPredictedMax === 'number' ? propPredictedMax : null;
   const predictedTrough: number | null = typeof propPredictedTrough === 'number' ? propPredictedTrough : null;
@@ -97,6 +89,8 @@ const PKCharts = ({
   const doseValue = latestAdministration?.dose ?? null;
   const emphasizedDose = doseValue != null ? Number(doseValue).toLocaleString() : '-';
   const doseUnit = latestAdministration?.unit || 'mg';
+  const intervalLabel = intervalHours != null ? `${intervalHours.toLocaleString()} 시간` : '투약 간격 정보 없음';
+  const doseLabel = doseValue != null ? `${Number(doseValue).toLocaleString()}${doseUnit}` : '투약 용량 정보 없음';
 
   const targetHighlight = useMemo(
     () => getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug),
@@ -162,40 +156,40 @@ const PKCharts = ({
         </h1>
       </div>
 
-      {/* 범례 */}
+      {/* TDM 결과 요약 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-gray-800 dark:text-gray-100">
-        <div className="bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 rounded-lg p-4">
-          <span className="block text-xs font-semibold text-blue-600 dark:text-blue-300 uppercase tracking-wide mb-2">
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+          <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
             투약 간격
           </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-blue-700 dark:text-blue-200">
+            <span className="text-3xl font-extrabold text-gray-900 dark:text-white">
               {emphasizedInterval}
             </span>
-            <span className="text-base font-semibold text-blue-500 dark:text-blue-300">시간</span>
+            <span className="text-base font-semibold text-gray-700 dark:text-gray-300">시간</span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 rounded-lg p-4">
-          <span className="block text-xs font-semibold text-blue-600 dark:text-blue-300 uppercase tracking-wide mb-2">
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+          <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
             1회 투약 용량
           </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold text-blue-700 dark:text-blue-200">
+            <span className="text-3xl font-extrabold text-gray-900 dark:text-white">
               {emphasizedDose}
             </span>
-            <span className="text-base font-semibold text-blue-500 dark:text-blue-300">{doseUnit}</span>
+            <span className="text-base font-semibold text-gray-700 dark:text-gray-300">{doseUnit}</span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 rounded-lg p-4">
-          <span className="block text-xs font-semibold text-blue-600 dark:text-blue-300 uppercase tracking-wide mb-2">
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+          <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
             예측 결과
           </span>
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline gap-2">
               {targetLabel && (
-                <span className="text-xl font-bold text-blue-600 dark:text-blue-300">
+                <span className="text-xl font-bold text-gray-900 dark:text-white">
                   {targetLabel}
                 </span>
               )}
@@ -216,6 +210,50 @@ const PKCharts = ({
         </div>
       </div>
 
+      <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-6 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">TDM friends Comments</h3>
+        <p>
+          {tdmIndication || '적응증'}의 {selectedDrug || '약물명'} 처방 시 TDM 목표는{' '}
+          <span className="font-semibold text-gray-900 dark:text-white">
+            {tdmTarget || '목표 유형'} ({tdmTargetValue || '목표값'})
+          </span>
+          입니다.
+        </p>
+        <p className="mt-1">
+          <span className="font-semibold text-gray-900 dark:text-white">
+            {intervalLabel} 간격으로 {doseLabel}
+          </span>{' '}
+          투약 시 Steady State까지 {' '}
+          <span className="font-semibold text-gray-900 dark:text-white">
+            {tdmTarget || '목표 유형'}
+          </span>
+          {' '}
+          <span
+            className={`font-semibold ${
+              withinTargetRange
+                ? 'text-blue-600 dark:text-blue-200'
+                : 'text-red-600 dark:text-red-300'
+            }`}
+          >
+            {targetHighlight.value}
+          </span>
+          {' '}이며,{' '}
+          <span
+            className={`font-semibold ${
+              withinTargetRange
+                ? 'text-blue-600 dark:text-blue-200'
+                : 'text-red-600 dark:text-red-300'
+            }`}
+          >
+            {withinTargetRange ? '적정 용법입니다.' : '치료 범위를 벗어납니다.'}
+          </span>
+        </p>
+        <p className="mt-1">
+          다양한 용법이 궁금하시다면 화면 하단에서 용법 조정 시뮬레이션을 진행해보세요.
+        </p>
+      </div>
+
+      {/* 범례 */}
       <div className="flex justify-center gap-6 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-blue-500"></div>
@@ -257,22 +295,6 @@ const PKCharts = ({
       />
 
       <div className="border-t border-gray-200 dark:border-gray-700 my-8"></div>
-
-      {/* TDM Summary */}
-      <TDMSummary
-        selectedDrug={selectedDrug}
-        tdmIndication={tdmIndication}
-        tdmTarget={tdmTarget}
-        tdmTargetValue={tdmTargetValue}
-        latestAdministration={latestAdministration}
-        recentAUC={recentAUC}
-        recentMax={recentMax}
-        recentTrough={recentTrough}
-        predictedAUC={predictedAUC}
-        predictedMax={predictedMax}
-        predictedTrough={predictedTrough}
-        commentTitle="TDM friends Comments"
-      />
 
       {/* 그래프 해석 가이드 */}
       <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mt-6">
