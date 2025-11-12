@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import TDMLineChart, { ChartDataset } from "./shared/TDMLineChart";
-import TDMSummary from "./shared/TDMSummary";
 import {
   SimulationDataPoint,
   DrugAdministration,
   mergeSeries,
   calculateDataTimeExtents,
   calculateLastActualDoseTime,
-  calculateAverageConcentration
+  calculateAverageConcentration,
+  getTdmTargetValue,
+  isWithinTargetRange
 } from "./shared/TDMChartUtils";
 
 interface DosageChartProps {
@@ -58,9 +59,6 @@ const DosageChart = ({
   chartTitle = "용법 조정 시뮬레이션",
   targetMin,
   targetMax,
-  recentAUC: propRecentAUC,
-  recentMax: propRecentMax,
-  recentTrough: propRecentTrough,
   predictedAUC: propPredictedAUC,
   predictedMax: propPredictedMax,
   predictedTrough: propPredictedTrough,
@@ -108,12 +106,24 @@ const DosageChart = ({
   );
 
   // API 응답 값 정리
-  const recentAUC = propRecentAUC ?? 335;
-  const recentMax = propRecentMax ?? 29;
-  const recentTrough = propRecentTrough ?? 5;
   const predictedAUC = propPredictedAUC ?? 490;
   const predictedMax = propPredictedMax ?? 38;
   const predictedTrough = propPredictedTrough ?? 18;
+  const intervalHours = latestAdministration?.intervalHours ?? null;
+  const doseValue = latestAdministration?.dose ?? null;
+  const doseUnit = latestAdministration?.unit || "mg";
+  const intervalLabel = intervalHours != null ? `${intervalHours.toLocaleString()} 시간` : "투약 간격 정보 없음";
+  const doseLabel = doseValue != null ? `${Number(doseValue).toLocaleString()}${doseUnit}` : "투약 용량 정보 없음";
+
+  const targetHighlight = useMemo(
+    () => getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug),
+    [tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug]
+  );
+
+  const withinTargetRange = useMemo(
+    () => isWithinTargetRange(tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug),
+    [tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug]
+  );
 
   // 색상 설정
   const chartColors = {
@@ -173,6 +183,81 @@ const DosageChart = ({
 
   return (
     <div className="w-full">
+      {/* 프렌드 코멘트 */}
+      {!isEmptyChart && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 text-gray-800 dark:text-gray-100">
+            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+              <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
+                투약 간격
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-gray-900 dark:text-white">
+                  {intervalHours != null ? intervalHours.toLocaleString() : '-'}
+                </span>
+                <span className="text-base font-semibold text-gray-700 dark:text-gray-300">시간</span>
+              </div>
+            </div>
+
+            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+              <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
+                1회 투약 용량
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-extrabold text-gray-900 dark:text-white">
+                  {doseValue != null ? Number(doseValue).toLocaleString() : '-'}
+                </span>
+                <span className="text-base font-semibold text-gray-700 dark:text-gray-300">{doseUnit}</span>
+              </div>
+            </div>
+
+            <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+              <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
+                예측 결과
+              </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-baseline gap-2">
+                  {tdmTarget && (
+                    <span className="text-xl font-bold text-gray-900 dark:text-white">
+                      {tdmTarget.split('(')[0]?.trim() || ''}
+                    </span>
+                  )}
+                  <span
+                    className={`text-xl font-bold ${
+                      withinTargetRange
+                        ? 'text-blue-700 dark:text-blue-200'
+                        : 'text-red-600 dark:text-red-300'
+                    }`}
+                  >
+                    {targetHighlight.value}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-500">
+                  목표 범위: {tdmTargetValue || '-'}
+                </span>
+              </div>
+            </div>
+
+            <div
+              className={`rounded-lg p-4 ${
+                withinTargetRange === undefined
+                  ? 'bg-gray-100 dark:bg-gray-800'
+                  : withinTargetRange
+                  ? 'bg-blue-100 dark:bg-blue-900/40'
+                  : 'bg-red-100 dark:bg-red-900/40'
+              }`}
+            >
+              <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
+                적합 여부
+              </span>
+              <div className="text-2xl font-extrabold text-gray-900 dark:text-white">
+                {withinTargetRange === undefined ? '-' : withinTargetRange ? '적합' : '부적합'}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* 범례 */}
       {!isEmptyChart && (
         <div className="flex justify-center gap-6 mb-4">
@@ -234,27 +319,6 @@ const DosageChart = ({
         averageConcentration={averageConcentration}
       />
 
-      {/* 구분선 */}
-      {!isEmptyChart && <div className="border-t border-gray-200 dark:border-gray-700 my-8"></div>}
-
-      {/* TDM Summary */}
-      {!isEmptyChart && (
-        <TDMSummary
-          selectedDrug={selectedDrug}
-          tdmIndication={tdmIndication}
-          tdmTarget={tdmTarget}
-          tdmTargetValue={tdmTargetValue}
-          latestAdministration={latestAdministration}
-          originalAdministration={originalAdministration}
-          recentAUC={recentAUC}
-          recentMax={recentMax}
-          recentTrough={recentTrough}
-          predictedAUC={predictedAUC}
-          predictedMax={predictedMax}
-          predictedTrough={predictedTrough}
-          commentTitle="용법 조정 결과"
-        />
-      )}
     </div>
   );
 };
