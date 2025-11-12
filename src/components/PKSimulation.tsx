@@ -2365,7 +2365,7 @@ const PKSimulation = ({
                   {(dosageSuggestions[card.id] || []).length > 0 && (
                     <div className="flex flex-wrap justify-center gap-4">
                       {(dosageSuggestions[card.id] || []).map((amt) => {
-                        const label = `${amt}mg`;
+                        const label = `${Number(amt).toLocaleString()}mg`;
 
                         return (
                           <Button
