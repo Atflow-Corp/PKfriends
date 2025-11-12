@@ -110,10 +110,7 @@ const DrugAdministrationStep = ({
       const savedConditions = localStorage.getItem(storageKey);
       if (savedConditions) {
         const parsed = JSON.parse(savedConditions);
-        console.log('Restoring conditions:', parsed);
         setConditions(parsed);
-      } else {
-        console.log('No saved conditions found');
       }
     } catch (error) {
       console.error('Failed to restore conditions:', error);

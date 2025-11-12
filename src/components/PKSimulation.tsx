@@ -633,11 +633,6 @@ const PKSimulation = ({
           value: Number(p.IPRED ?? 0) || 0,
         }))
         .filter((p) => p.time >= 0 && p.time <= 72);
-      console.log(
-        "PKSimulation currentMethodSeries (cached):",
-        currentMethodData,
-      );
-      console.log("PKSimulation PRED_CONC raw:", cached.data?.PRED_CONC);
 
       setCardTdmExtraSeries((prev) => ({
         ...prev,
@@ -1539,7 +1534,7 @@ const PKSimulation = ({
         const startStepOffset = Math.round((startDose - baseDose) / step);
         const testedOffsets = new Set([1, -1]); // Already tested +step and -step
         let batchStart = startStepOffset;
-        const batchSize = 4;
+        const batchSize = 3;
         let hasEnteredRange = withinRangeResults.length > 0; // Check if we're already in range
         let loopCount = 0; // Track number of loops, not step offset
         const maxLoops = 20; // Maximum number of batch iterations
