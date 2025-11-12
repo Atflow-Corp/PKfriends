@@ -271,7 +271,6 @@ function TablePage(props) {
   // Propagate conditions changes to parent
   useEffect(() => {
     if (!onConditionsChangeRef.current) return;
-    console.log('Conditions changed:', conditions);
     onConditionsChangeRef.current(conditions);
   }, [conditions]);
 

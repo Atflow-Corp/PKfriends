@@ -287,6 +287,10 @@ const PKSimulation = ({
     [cardId: number]: boolean;
   }>({});
 
+  const [dosageError, setDosageError] = useState<{
+    [cardId: number]: boolean;
+  }>({});
+
   const suggestTimersRef = useRef<{ [cardId: number]: number }>({});
   const handleDosageSelectRef = useRef<((cardId: number, dosage: string) => void) | null>(null);
 
@@ -294,6 +298,24 @@ const PKSimulation = ({
     [cardId: number]: {
       [amount: number]: { data: TdmApiResponse; dataset: TdmDatasetRow[] };
     };
+  }>({});
+
+  // 각 카드별 독립적인 차트 데이터 (PKCharts와 분리)
+  const [cardTdmResults, setCardTdmResults] = useState<{
+    [cardId: number]: TdmApiResponse | null;
+  }>({});
+
+  const [cardTdmChartData, setCardTdmChartData] = useState<{
+    [cardId: number]: ChartPoint[];
+  }>({});
+
+  const [cardTdmExtraSeries, setCardTdmExtraSeries] = useState<{
+    [cardId: number]: {
+      ipredSeries: { time: number; value: number }[];
+      predSeries: { time: number; value: number }[];
+      observedSeries: { time: number; value: number }[];
+      currentMethodSeries: { time: number; value: number }[];
+    } | null;
   }>({});
 
   const currentPatient = patients.find((p) => p.id === selectedPatientId);
@@ -547,6 +569,32 @@ const PKSimulation = ({
         return newState;
       });
 
+      // 카드별 차트 데이터도 삭제
+      setCardTdmResults((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      setCardTdmChartData((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      setCardTdmExtraSeries((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      // 에러 상태도 삭제
+      setDosageError((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
       // if no more cards, unset active
       setTimeout(() => {
         if (adjustmentCards.filter((c) => c.id !== cardToDelete).length === 0) {
@@ -584,9 +632,9 @@ const PKSimulation = ({
     const cached = dosageSuggestionResults?.[cardId]?.[amountMg];
 
     if (cached && cached.data) {
-      setTdmResult(cached.data);
-
-      setTdmChartDataMain(toChartData(cached.data, cached.dataset || []));
+      // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
+      setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.data }));
+      setCardTdmChartData((prev) => ({ ...prev, [cardId]: toChartData(cached.data, cached.dataset || []) }));
 
       const currentMethodData = (
         (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
@@ -596,52 +644,49 @@ const PKSimulation = ({
           value: Number(p.IPRED ?? 0) || 0,
         }))
         .filter((p) => p.time >= 0 && p.time <= 72);
-      console.log(
-        "PKSimulation currentMethodSeries (cached):",
-        currentMethodData,
-      );
-      console.log("PKSimulation PRED_CONC raw:", cached.data?.PRED_CONC);
 
-      setTdmExtraSeries({
-        ipredSeries: (
-          (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
+      setCardTdmExtraSeries((prev) => ({
+        ...prev,
+        [cardId]: {
+          ipredSeries: (
+            (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+          )
 
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.IPRED ?? 0) || 0,
-          }))
+            .map((p) => ({
+              time: Number(p.time) || 0,
+              value: Number(p.IPRED ?? 0) || 0,
+            }))
 
-          .filter((p) => p.time >= 0),
+            .filter((p) => p.time >= 0),
 
-        predSeries: (
-          (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
+          predSeries: (
+            (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
+          )
 
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
-          }))
+            .map((p) => ({
+              time: Number(p.time) || 0,
+              value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+            }))
 
-          .filter((p) => p.time >= 0),
+            .filter((p) => p.time >= 0),
 
-        observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
+          observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
 
-          .filter((r) => r.EVID === 0 && r.DV != null)
+            .filter((r) => r.EVID === 0 && r.DV != null)
 
-          .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
+            .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
 
-          .filter((p) => p.time >= 0),
+            .filter((p) => p.time >= 0),
 
-        currentMethodSeries: currentMethodData,
-      });
+          currentMethodSeries: currentMethodData,
+        },
+      }));
 
       return;
     }
 
-    // 캐시가 없으면 기존 로직으로 API 호출
-
-    void applyDoseScenario(amountMg);
+    // 캐시가 없으면 기존 로직으로 API 호출 (카드별 데이터만 업데이트)
+    void applyDoseScenarioForCard(cardId, amountMg);
   };
   
   // handleDosageSelect를 ref에 저장하여 안정적인 참조 유지
@@ -663,7 +708,8 @@ const PKSimulation = ({
     try {
       const hours = parseInt(interval.replace(/[^0-9]/g, ""), 10);
       if (Number.isFinite(hours)) {
-        void applyIntervalScenario(hours);
+        // 카드별 데이터만 업데이트 (메인 차트는 변경하지 않음)
+        void applyIntervalScenarioForCard(cardId, hours);
       }
     } catch {
       /* no-op */
@@ -917,6 +963,90 @@ const PKSimulation = ({
     ],
   );
 
+  // 카드별 용량 조정 시나리오 적용 (메인 차트는 변경하지 않음)
+  const applyDoseScenarioForCard = useCallback(
+    async (cardId: number, amountMg: number) => {
+      try {
+        if (!selectedPatientId || !selectedDrug) return;
+
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId,
+          selectedDrugName: selectedDrug,
+          overrides: { amount: amountMg },
+        });
+
+        if (!body) return;
+
+        const data = (await runTdmApi({
+          body,
+          persist: false, // 카드별 데이터는 저장하지 않음
+          patientId: selectedPatientId,
+          drugName: selectedDrug,
+        })) as TdmApiResponse;
+
+        // 카드별 차트 데이터만 업데이트
+        setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        setCardTdmChartData((prev) => ({
+          ...prev,
+          [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
+        }));
+
+        const currentMethodData = (
+          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+        )
+          .map((p) => ({
+            time: Number(p.time) || 0,
+            value: Number(p.IPRED ?? 0) || 0,
+          }))
+          .filter((p) => p.time >= 0 && p.time <= 72);
+
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+
+            predSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+
+            observedSeries: ((body.dataset as TdmDatasetRow[]) || [])
+              .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+              .map((r: TdmDatasetRow) => ({
+                time: Number(r.TIME) || 0,
+                value: Number(r.DV),
+              }))
+              .filter((p) => p.time >= 0),
+
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+      } catch (e) {
+        console.warn("Failed to apply dose scenario for card", e);
+      }
+    },
+    [
+      patients,
+      prescriptions,
+      bloodTests,
+      drugAdministrations,
+      selectedPatientId,
+      selectedDrug,
+      toChartData,
+    ],
+  );
+
   const applyIntervalScenario = useCallback(
     async (tauHours: number) => {
       try {
@@ -1020,11 +1150,90 @@ const PKSimulation = ({
     ],
   );
 
+  // 카드별 간격 조정 시나리오 적용 (메인 차트는 변경하지 않음)
+  const applyIntervalScenarioForCard = useCallback(
+    async (cardId: number, tauHours: number) => {
+      try {
+        if (!selectedPatientId || !selectedDrug) return;
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId,
+          selectedDrugName: selectedDrug,
+          overrides: { tau: tauHours },
+        });
+        if (!body) return;
+        const data = (await runTdmApi({
+          body,
+          persist: false, // 카드별 데이터는 저장하지 않음
+          patientId: selectedPatientId,
+          drugName: selectedDrug,
+        })) as TdmApiResponse;
+        
+        // 카드별 차트 데이터만 업데이트
+        setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        setCardTdmChartData((prev) => ({
+          ...prev,
+          [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
+        }));
+
+        const currentMethodData = (
+          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+        )
+          .map((p) => ({
+            time: Number(p.time) || 0,
+            value: Number(p.IPRED ?? 0) || 0,
+          }))
+          .filter((p) => p.time >= 0 && p.time <= 72);
+
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+            predSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+            observedSeries: ((body.dataset as TdmDatasetRow[]) || [])
+              .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+              .map((r: TdmDatasetRow) => ({
+                time: Number(r.TIME) || 0,
+                value: Number(r.DV),
+              }))
+              .filter((p) => p.time >= 0),
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+      } catch (e) {
+        console.warn("Failed to apply interval scenario for card", e);
+      }
+    },
+    [
+      patients,
+      prescriptions,
+      bloodTests,
+      drugAdministrations,
+      selectedPatientId,
+      selectedDrug,
+      toChartData,
+    ],
+  );
+
   // Helper: compute 6 dosage suggestions by sampling around current/last dose and scoring via API
   const computeDosageSuggestions = useCallback(
     async (cardId: number) => {
       try {
         setDosageLoading((prev) => ({ ...prev, [cardId]: true }));
+        setDosageError((prev) => ({ ...prev, [cardId]: false }));
 
         const patient = currentPatient;
 
@@ -1187,6 +1396,7 @@ const PKSimulation = ({
         // Helper function to call API for a single amount with retry logic
         const callApiForAmount = async (
           amt: number,
+          retries: number = 3,
         ): Promise<{
           amt: number;
           score: number;
@@ -1205,7 +1415,7 @@ const PKSimulation = ({
 
           try {
             // runTdmApi already has retry logic for 503 errors
-            const resp = (await runTdmApi({ body, retries: 3 })) as TdmApiResponse;
+            const resp = (await runTdmApi({ body, retries })) as TdmApiResponse;
             const score = calculateScore(resp, targetMin, targetMax);
             return {
               amt,
@@ -1215,7 +1425,7 @@ const PKSimulation = ({
             };
           } catch (error) {
             // 503 에러는 runTdmApi에서 재시도하므로, 여기 도달하면 모든 재시도 실패
-            console.warn(`Failed to get result for amount ${amt}mg:`, error);
+            console.warn(`Failed to get result for amount ${amt}mg after ${retries} retries:`, error);
             return {
               amt,
               score: Number.POSITIVE_INFINITY,
@@ -1226,34 +1436,23 @@ const PKSimulation = ({
         };
 
         // Step 1: Try +1 step and -1 step in parallel to determine direction and calculate dose-response relationship
-        let [upResult, downResult] = await Promise.all([
-          callApiForAmount(Math.max(1, baseDose + step)),
-          callApiForAmount(Math.max(1, baseDose - step)),
+        // 초기 방향 체크는 중요하므로 tryCount 만큼 재시도
+        const tryCount = 5;
+        const [upResult, downResult] = await Promise.all([
+          callApiForAmount(Math.max(1, baseDose + step), tryCount),
+          callApiForAmount(Math.max(1, baseDose - step), tryCount),
         ]);
 
-        // Retry failed requests (503 errors) for initial direction check
-        const initialRetryPromises: Promise<void>[] = [];
-        if (upResult.resp === null) {
-          console.log(`[Dosage Search] Retrying failed initial up request for ${upResult.amt}mg`);
-          initialRetryPromises.push(
-            callApiForAmount(upResult.amt).then((retryResult) => {
-              upResult = retryResult;
-            })
-          );
+        // Check if both results failed after all retries
+        if (upResult.resp === null || downResult.resp === null) {
+          console.warn(`[Dosage Search] Failed to get initial results after 5 retries. upResult: ${upResult.resp === null ? 'failed' : 'success'}, downResult: ${downResult.resp === null ? 'failed' : 'success'}`);
+          setDosageError((prev) => ({ ...prev, [cardId]: true }));
+          setDosageLoading((prev) => ({ ...prev, [cardId]: false }));
+          return;
         }
-        if (downResult.resp === null) {
-          console.log(`[Dosage Search] Retrying failed initial down request for ${downResult.amt}mg`);
-          initialRetryPromises.push(
-            callApiForAmount(downResult.amt).then((retryResult) => {
-              downResult = retryResult;
-            })
-          );
-        }
-        
-        if (initialRetryPromises.length > 0) {
-          await Promise.all(initialRetryPromises);
-          console.log(`[Dosage Search] Completed ${initialRetryPromises.length} initial retry requests`);
-        }
+
+        // Clear error state if successful
+        setDosageError((prev) => ({ ...prev, [cardId]: false }));
 
         // Step 2: Calculate dose-response relationship from before/after comparison
         const upDose = baseDose + step;
@@ -1337,7 +1536,7 @@ const PKSimulation = ({
         const startStepOffset = Math.round((startDose - baseDose) / step);
         const testedOffsets = new Set([1, -1]); // Already tested +step and -step
         let batchStart = startStepOffset;
-        const batchSize = 4;
+        const batchSize = 3;
         let hasEnteredRange = withinRangeResults.length > 0; // Check if we're already in range
         let loopCount = 0; // Track number of loops, not step offset
         const maxLoops = 20; // Maximum number of batch iterations
@@ -1422,6 +1621,13 @@ const PKSimulation = ({
           const rangeStatus: Array<{ amt: number; inRange: boolean }> = [];
           
           // Check each result in order (based on direction)
+          const batchInRangeResults: Array<{
+            amt: number;
+            score: number;
+            resp: TdmApiResponse | null;
+            dataset: TdmDatasetRow[];
+          }> = [];
+          
           for (let i = 0; i < sortedBatchResults.length; i++) {
             const result = sortedBatchResults[i];
             const isInRange = checkWithinTargetRange(result.resp);
@@ -1429,6 +1635,7 @@ const PKSimulation = ({
             
             if (isInRange) {
               withinRangeResults.push(result);
+              batchInRangeResults.push(result);
               if (firstInRangeIndex === -1) {
                 firstInRangeIndex = i;
                 hasEnteredRange = true; // We've entered the range
@@ -1438,9 +1645,71 @@ const PKSimulation = ({
             }
           }
 
+          // Progressive UI 업데이트: 이번 batch에서 range에 해당하는 결과가 있으면 즉시 UI에 반영
+          if (batchInRangeResults.length > 0) {
+            // 현재까지의 suggestions 가져오기
+            setDosageSuggestions((prev) => {
+              const currentAmounts = prev[cardId] || [];
+              const newAmounts = batchInRangeResults.map((r) => r.amt);
+              // 중복 제거하고 오름차순 정렬
+              const mergedAmounts = [...new Set([...currentAmounts, ...newAmounts])].sort((a, b) => a - b);
+              return { ...prev, [cardId]: mergedAmounts };
+            });
+
+            // 결과 캐싱도 progressive하게 업데이트
+            setDosageSuggestionResults((prev) => {
+              const next: {
+                [cardId: number]: {
+                  [amount: number]: {
+                    data: TdmApiResponse;
+                    dataset: TdmDatasetRow[];
+                  };
+                };
+              } = { ...(prev || {}) } as {
+                [cardId: number]: {
+                  [amount: number]: {
+                    data: TdmApiResponse;
+                    dataset: TdmDatasetRow[];
+                  };
+                };
+              };
+
+              next[cardId] = next[cardId] || {};
+
+              // 이번 batch의 range 결과만 캐싱
+              for (const r of batchInRangeResults) {
+                if (r && r.resp) {
+                  next[cardId][r.amt] = {
+                    data: r.resp as TdmApiResponse,
+                    dataset: r.dataset as TdmDatasetRow[],
+                  };
+                }
+              }
+
+              return next;
+            });
+
+            // 첫 번째 range 결과가 나왔고 아직 자동 선택이 안 된 경우 자동 선택
+            if (withinRangeResults.length === batchInRangeResults.length) {
+              // 첫 번째 batch에서 range 결과가 나온 경우
+              const firstAmount = batchInRangeResults.sort((a, b) => a.amt - b.amt)[0].amt;
+              
+              // handleDosageSelect를 직접 호출하여 차트가 제대로 렌더링되도록 함
+              // 약간의 지연을 두어 상태 업데이트가 완료된 후 호출
+              setTimeout(() => {
+                if (handleDosageSelectRef.current) {
+                  handleDosageSelectRef.current(cardId, `${firstAmount}mg`);
+                }
+              }, 100);
+            }
+          }
+
           // Debug logging
           console.log(`[Dosage Search] Range status:`, rangeStatus);
           console.log(`[Dosage Search] hasEnteredRange: ${hasEnteredRange}, foundInRange: ${foundInRange}, firstInRangeIndex: ${firstInRangeIndex}, lastInRangeIndex: ${lastInRangeIndex}`);
+          if (batchInRangeResults.length > 0) {
+            console.log(`[Dosage Search] Progressive update: ${batchInRangeResults.length} new options added to UI`);
+          }
 
           // Determine next action based on sequential checking
           if (hasEnteredRange) {
@@ -1528,76 +1797,27 @@ const PKSimulation = ({
         });
 
         // 최초 자동 선택: 첫 번째 추천 용량을 활성화하여 즉시 반영
+        // 단, 이미 progressive 업데이트에서 자동 선택이 된 경우는 스킵
 
         if (allAmounts.length > 0) {
-          const first = allAmounts[0];
+          let shouldAutoSelect = false;
+          setSelectedDosage((prev) => {
+            // 이미 선택된 용량이 있으면 스킵
+            if (prev[cardId]) {
+              return prev;
+            }
+            shouldAutoSelect = true;
+            const first = allAmounts[0];
+            return { ...prev, [cardId]: `${first}mg` };
+          });
 
-          setSelectedDosage((prev) => ({ ...prev, [cardId]: `${first}mg` }));
-
-          const cached = results.find((r) => r.amt === first);
-
-          if (cached && cached.resp) {
-            setTdmResult(cached.resp as TdmApiResponse);
-
-            setTdmChartDataMain(
-              toChartData(
-                cached.resp as TdmApiResponse,
-                (cached.dataset as TdmDatasetRow[]) || [],
-              ),
-            );
-
-            setTdmExtraSeries({
-              ipredSeries: (
-                ((cached.resp as TdmApiResponse)?.IPRED_CONC as
-                  | ConcentrationPoint[]
-                  | undefined) || []
-              )
-                .map((p) => ({
-                  time: Number(p.time) || 0,
-                  value: Number(p.IPRED ?? 0) || 0,
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
-
-              predSeries: (
-                ((cached.resp as TdmApiResponse)?.PRED_CONC as
-                  | ConcentrationPoint[]
-                  | undefined) || []
-              )
-                .map((p) => ({
-                  time: Number(p.time) || 0,
-                  value: Number(p.IPRED ?? 0) || 0,
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
-
-              observedSeries: (
-                (cached.dataset as TdmDatasetRow[] | undefined) || []
-              )
-                .filter((r) => r.EVID === 0 && r.DV != null)
-                .map((r) => ({
-                  time: Number(r.TIME) || 0,
-                  value: Number(r.DV),
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
-
-              currentMethodSeries: (
-                ((cached.resp as TdmApiResponse)?.PRED_CONC as
-                  | ConcentrationPoint[]
-                  | undefined) || []
-              )
-                .map((p) => ({
-                  time: Number(p.time) || 0,
-                  value: Number(p.IPRED ?? 0) || 0,
-                }))
-                .filter((p) => p.time >= 0 && p.time <= 72),
-            });
-
-            setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+          // 자동 선택이 실제로 이루어진 경우에만 차트 업데이트
+          if (shouldAutoSelect) {
+            const first = allAmounts[0];
             
-            // 차트가 제대로 렌더링되도록 약간의 지연 후 강제 업데이트
-            // 이는 Y축 스케일이 올바르게 계산되도록 보장합니다
+            // handleDosageSelect를 직접 호출하여 차트가 제대로 렌더링되도록 함
+            // 약간의 지연을 두어 상태 업데이트가 완료된 후 호출
             setTimeout(() => {
-              // handleDosageSelect를 호출하여 차트를 다시 렌더링
-              // 이렇게 하면 클릭 이벤트와 동일한 로직이 실행되어 차트가 올바르게 표시됩니다
               if (handleDosageSelectRef.current) {
                 handleDosageSelectRef.current(cardId, `${first}mg`);
               }
@@ -2089,51 +2309,81 @@ const PKSimulation = ({
 
             {/* 버튼 섹션 */}
 
-            <div className="flex flex-wrap justify-center gap-4 mb-6 px-4">
+            <div className="mb-6 px-4">
               {card.type === "dosage" ? (
                 // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (여러 줄로 표시)
 
                 <>
-                  {(dosageSuggestions[card.id] || []).map((amt) => {
-                    const label = `${amt}mg`;
+                  {/* 상태 메시지 영역 (위쪽) */}
+                  <div className="flex justify-center mb-4">
+                    {/* 에러 상태: API 호출 실패 시 재시도 버튼 표시 */}
+                    {dosageError[card.id] && !dosageLoading[card.id] && (
+                      <div className="flex flex-col items-center gap-3 w-full">
+                        <div className="text-sm text-red-600 dark:text-red-400">
+                          제안 계산에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="default"
+                          onClick={() => {
+                            setDosageError((prev) => ({ ...prev, [card.id]: false }));
+                            triggerDosageSuggestions(card.id);
+                          }}
+                          className="text-base px-6 py-3"
+                        >
+                          다시 시도
+                        </Button>
+                      </div>
+                    )}
 
-                    return (
-                      <Button
-                        key={`${card.id}-${amt}`}
-                        variant={
-                          selectedDosage[card.id] === label
-                            ? "default"
-                            : "outline"
-                        }
-                        size="default"
-                        onClick={() => handleDosageSelect(card.id, label)}
-                        className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
-                      >
-                        {label}
-                      </Button>
-                    );
-                  })}
+                    {/* 계산 중 UI: 옵션이 없거나 계산이 진행 중일 때 표시 (에러가 아닐 때만) */}
+                    {!dosageError[card.id] && ((!dosageSuggestions[card.id] ||
+                      dosageSuggestions[card.id].length === 0) ||
+                      dosageLoading[card.id]) && (
+                      <span className="text-sm text-muted-foreground flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                          ></path>
+                        </svg>
+                        제안을 계산 중...
+                      </span>
+                    )}
+                  </div>
 
-                  {(!dosageSuggestions[card.id] ||
-                    dosageSuggestions[card.id].length === 0) && (
-                    <span className="text-sm text-muted-foreground flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                        ></path>
-                      </svg>
-                      제안을 계산 중...
-                    </span>
+                  {/* 옵션 버튼 영역 (아래쪽) */}
+                  {(dosageSuggestions[card.id] || []).length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-4">
+                      {(dosageSuggestions[card.id] || []).map((amt) => {
+                        const label = `${Number(amt).toLocaleString()}mg`;
+
+                        return (
+                          <Button
+                            key={`${card.id}-${amt}`}
+                            variant={
+                              selectedDosage[card.id] === label
+                                ? "default"
+                                : "outline"
+                            }
+                            size="default"
+                            onClick={() => handleDosageSelect(card.id, label)}
+                            className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
+                          >
+                            {label}
+                          </Button>
+                        );
+                      })}
+                    </div>
                   )}
                 </>
               ) : (
@@ -2210,13 +2460,13 @@ const PKSimulation = ({
                 recentAUC={tdmResult?.AUC_24_before}
                 recentMax={tdmResult?.CMAX_before}
                 recentTrough={tdmResult?.CTROUGH_before}
-                predictedAUC={tdmResult?.AUC_24_after}
-                predictedMax={tdmResult?.CMAX_after}
-                predictedTrough={tdmResult?.CTROUGH_after}
-                ipredSeries={tdmExtraSeries?.ipredSeries}
-                predSeries={tdmExtraSeries?.predSeries}
-                observedSeries={tdmExtraSeries?.observedSeries}
-                currentMethodSeries={tdmExtraSeries?.currentMethodSeries}
+                predictedAUC={cardTdmResults[card.id]?.AUC_24_after}
+                predictedMax={cardTdmResults[card.id]?.CMAX_after}
+                predictedTrough={cardTdmResults[card.id]?.CTROUGH_after}
+                ipredSeries={cardTdmExtraSeries[card.id]?.ipredSeries}
+                predSeries={cardTdmExtraSeries[card.id]?.predSeries}
+                observedSeries={cardTdmExtraSeries[card.id]?.observedSeries}
+                currentMethodSeries={cardTdmExtraSeries[card.id]?.currentMethodSeries}
                 chartColor={card.type === "dosage" ? "pink" : "green"}
                 // TDM 내역 데이터
                 tdmIndication={getTdmData(selectedDrug).indication}

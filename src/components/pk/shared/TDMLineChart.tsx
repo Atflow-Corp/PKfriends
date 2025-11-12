@@ -71,14 +71,31 @@ const TDMLineChart = ({
     
     // 차트 옵션 업데이트
     const options = chart.options as ChartOptions<'line'>;
+    
+    // Y축 범위 업데이트
     if (options.scales && options.scales.y) {
       (options.scales.y as { min?: number; max?: number }).min = 0;
       (options.scales.y as { min?: number; max?: number }).max = yMax;
     }
     
+    // X축 범위는 초기 렌더링 시에만 설정 (사용자가 줌 조정한 경우 유지)
+    if (options.scales && options.scales.x) {
+      const xScale = options.scales.x as { min?: number; max?: number };
+      const currentMin = xScale.min ?? dataTimeExtents.min;
+      const currentMax = xScale.max ?? dataTimeExtents.max;
+      const isInitialState = Math.abs(currentMin - dataTimeExtents.min) < 0.01 && 
+                            Math.abs(currentMax - dataTimeExtents.max) < 0.01;
+      
+      // 초기 상태이거나 범위가 dataTimeExtents를 벗어난 경우에만 업데이트
+      if (isInitialState || currentMin < dataTimeExtents.min || currentMax > dataTimeExtents.max) {
+        xScale.min = dataTimeExtents.min;
+        xScale.max = dataTimeExtents.max;
+      }
+    }
+    
     // 차트 업데이트 (애니메이션 없이)
     chart.update('none');
-  }, [data, yMax]);
+  }, [data, yMax, dataTimeExtents]);
 
   // 줌 컨트롤
   const zoomByFactor = useCallback((factor: number) => {
@@ -263,6 +280,8 @@ const TDMLineChart = ({
     scales: {
       x: {
         type: 'linear',
+        min: dataTimeExtents.min,
+        max: dataTimeExtents.max,
         ticks: { 
           callback: (v) => formatDateTimeForTick(Number(v), drugAdministrations, selectedDrug) 
         }
