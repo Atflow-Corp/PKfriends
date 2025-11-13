@@ -12,6 +12,7 @@ import DosageChart from "./pk/DosageChart";
 import PKDataSummary from "./pk/PKDataSummary";
 import TDMPatientDetails from "./TDMPatientDetails";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   runTdmApi,
   buildTdmRequestBody as buildTdmRequestBodyCore,
@@ -260,7 +261,7 @@ const PKSimulation = ({
     useState<TdmApiResponse | null>(null);
 
   const [adjustmentCards, setAdjustmentCards] = useState<
-    Array<{ id: number; type: "dosage" | "interval" }>
+    Array<{ id: number; type: "dosage" | "interval" | "dosageV2" }>
   >([]);
 
   const [selectedDosage, setSelectedDosage] = useState<{
@@ -268,6 +269,14 @@ const PKSimulation = ({
   }>({});
 
   const [selectedIntervalOption, setSelectedIntervalOption] = useState<{
+    [cardId: number]: string;
+  }>({});
+
+  const [customDosageInputs, setCustomDosageInputs] = useState<{
+    [cardId: number]: string;
+  }>({});
+
+  const [customIntervalInputs, setCustomIntervalInputs] = useState<{
     [cardId: number]: string;
   }>({});
 
@@ -525,6 +534,17 @@ const PKSimulation = ({
     triggerDosageSuggestions(newCardNumber);
   };
 
+  const handleDosageAdjustmentV2 = () => {
+    if (concurrencyNotice) setConcurrencyNotice("");
+    const newCardNumber = adjustmentCards.length + 1;
+    setAdjustmentCards((prev) => [
+      ...prev,
+      { id: newCardNumber, type: "dosageV2" },
+    ]);
+    setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
+    setCustomDosageInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
+  };
+
   const handleIntervalAdjustment = () => {
     // 용법 조정은 동시 진행 제한을 적용하지 않음
     if (concurrencyNotice) setConcurrencyNotice("");
@@ -552,6 +572,12 @@ const PKSimulation = ({
       // 카드 삭제 시 해당 카드의 선택 상태도 제거
 
       setSelectedDosage((prev) => {
+        const newState = { ...prev };
+        delete newState[cardToDelete];
+        return newState;
+      });
+
+      setCustomDosageInputs((prev) => {
         const newState = { ...prev };
         delete newState[cardToDelete];
         return newState;
@@ -694,6 +720,20 @@ const PKSimulation = ({
 
   // 간격 선택 핸들러
 
+  const getIntervalHours = (label: string): number | null => {
+    const numericMatch = label.match(/([0-9]+(?:\.[0-9]+)?)/);
+    if (numericMatch) {
+      const value = Number(numericMatch[1]);
+      if (!Number.isNaN(value)) {
+        if (label.includes("주")) {
+          return value * 24 * 7;
+        }
+        return value;
+      }
+    }
+    return null;
+  };
+
   const handleIntervalSelect = (cardId: number, interval: string) => {
     setSelectedIntervalOption((prev) => ({
       ...prev,
@@ -706,8 +746,12 @@ const PKSimulation = ({
     setCardChartData((prev) => ({ ...prev, [cardId]: true }));
 
     try {
-      const hours = parseInt(interval.replace(/[^0-9]/g, ""), 10);
-      if (Number.isFinite(hours)) {
+      const hours = getIntervalHours(interval);
+      if (typeof hours === "number" && Number.isFinite(hours)) {
+        setCustomIntervalInputs((prev) => ({
+          ...prev,
+          [cardId]: String(hours),
+        }));
         // 카드별 데이터만 업데이트 (메인 차트는 변경하지 않음)
         void applyIntervalScenarioForCard(cardId, hours);
       }
@@ -715,6 +759,107 @@ const PKSimulation = ({
       /* no-op */
     }
   };
+
+  const handleCustomIntervalChange = (cardId: number, value: string) => {
+    setCustomIntervalInputs((prev) => ({
+      ...prev,
+      [cardId]: value,
+    }));
+  };
+
+  const handleCustomIntervalApply = (cardId: number) => {
+    const rawValue = (customIntervalInputs[cardId] ?? "").trim();
+    if (rawValue === "") {
+      window.alert("투약 간격을 입력해주세요.");
+      return;
+    }
+
+    const hours = Number(rawValue);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      window.alert("유효한 숫자를 입력해주세요.");
+      return;
+    }
+
+    const normalizedValue =
+      Number.isInteger(hours) && hours >= 1 ? String(hours) : hours.toString();
+
+    const label = `직접 입력 (${normalizedValue}시간)`;
+    handleIntervalSelect(cardId, label);
+    setCustomIntervalInputs((prev) => ({
+      ...prev,
+      [cardId]: normalizedValue,
+    }));
+  };
+
+  const handleDosagePresetSelectV2 = (cardId: number, amountMg: number) => {
+    const label = `${Number(amountMg).toLocaleString()}mg`;
+    setCustomDosageInputs((prev) => ({
+      ...prev,
+      [cardId]: String(amountMg),
+    }));
+    handleDosageSelect(cardId, label);
+  };
+
+  const handleCustomDosageChange = (cardId: number, value: string) => {
+    setCustomDosageInputs((prev) => ({
+      ...prev,
+      [cardId]: value,
+    }));
+  };
+
+  const handleCustomDosageApply = (cardId: number) => {
+    const rawValue = (customDosageInputs[cardId] ?? "").trim();
+    if (rawValue === "") {
+      window.alert("투약 용량을 입력해주세요.");
+      return;
+    }
+
+    const amount = Number(rawValue);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert("유효한 숫자를 입력해주세요.");
+      return;
+    }
+
+    const label = `${Number(amount).toLocaleString()}mg`;
+    handleDosageSelect(cardId, label);
+    setCustomDosageInputs((prev) => ({
+      ...prev,
+      [cardId]: String(amount),
+    }));
+  };
+
+  const intervalOptions = useMemo(
+    () => [
+      { label: "2시간", helper: "q2h" },
+      { label: "3시간", helper: "q3h" },
+      { label: "4시간", helper: "q4h" },
+      { label: "6시간", helper: "q6h" },
+      { label: "8시간", helper: "q8h" },
+      { label: "12시간", helper: "q12h" },
+      { label: "24시간", helper: "매일" },
+      { label: "48시간", helper: "이틀 간격" },
+      { label: "1주", helper: "주 1회" },
+      { label: "2주", helper: "격주" },
+      { label: "4주", helper: "매 4주" },
+      { label: "6주", helper: "6주마다" },
+      { label: "8주", helper: "8주마다" },
+    ],
+    [],
+  );
+
+  const dosagePresetOptions = useMemo(() => {
+    if (selectedDrug === "Vancomycin") {
+      return [
+        125, 250, 375, 500, 625, 750, 875, 1000, 1125,
+      ];
+    }
+    if (selectedDrug === "Cyclosporin") {
+      return [
+        25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300,
+      ];
+    }
+    return [];
+  }, [selectedDrug]);
 
   // Helpers
 
@@ -2277,15 +2422,18 @@ const PKSimulation = ({
       {/* 용법 조정 카드들 */}
 
       {!isCompletedView &&
-        adjustmentCards.map((card) => (
-          <div
-            key={`adjustment-${card.id}`}
-            className={`bg-white dark:bg-slate-900 rounded-lg p-6 mt-6 shadow-lg border-2 ${
-              card.type === "dosage"
-                ? "border-pink-200 dark:border-pink-800"
-                : "border-green-200 dark:border-green-800"
-            }`}
-          >
+        adjustmentCards.map((card) => {
+          const isDosageCard =
+            card.type === "dosage" || card.type === "dosageV2";
+          return (
+            <div
+              key={`adjustment-${card.id}`}
+              className={`bg-white dark:bg-slate-900 rounded-lg p-6 mt-6 shadow-lg border-2 ${
+                isDosageCard
+                  ? "border-pink-200 dark:border-pink-800"
+                  : "border-green-200 dark:border-green-800"
+              }`}
+            >
             <div className="flex justify-between items-start mb-6">
               <div className="flex items-center gap-4">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -2295,7 +2443,9 @@ const PKSimulation = ({
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {card.type === "dosage"
                     ? "투약 용량을 조정하고 즉시 예측 결과를 확인해보세요"
-                    : "투약 시간의 간격을 조정하고 즉시 예측 결과를 확인해보세요"}
+                    : card.type === "dosageV2"
+                      ? "사전 정의된 용량 버튼 또는 직접 입력으로 투약 용량을 조정해보세요"
+                      : "투약 시간의 간격을 조정하고 즉시 예측 결과를 확인해보세요"}
                 </p>
               </div>
 
@@ -2386,61 +2536,149 @@ const PKSimulation = ({
                     </div>
                   )}
                 </>
-              ) : (
+              ) : card.type === "interval" ? (
                 // 투약 시간 조정 카드 버튼
 
                 <>
-                  <Button
-                    variant={
-                      selectedIntervalOption[card.id] === "4시간"
-                        ? "default"
-                        : "outline"
-                    }
-                    size="default"
-                    onClick={() => handleIntervalSelect(card.id, "4시간")}
-                    className={`${selectedIntervalOption[card.id] === "4시간" ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3`}
-                  >
-                    4시간
-                  </Button>
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between" role="group" aria-label="투약 간격 옵션">
+                    <div className="flex-1 md:pr-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          투약 시간 선택
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                        {intervalOptions.map((option) => {
+                          const isSelected =
+                            selectedIntervalOption[card.id] === option.label;
+                          return (
+                            <Button
+                              key={`${card.id}-${option.label}`}
+                              variant={isSelected ? "default" : "outline"}
+                              size="default"
+                              onClick={() =>
+                                handleIntervalSelect(card.id, option.label)
+                              }
+                              className={`${
+                                isSelected
+                                  ? "bg-black text-white hover:bg-gray-800"
+                                  : ""
+                              } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                              title={option.helper}
+                              aria-pressed={isSelected}
+                            >
+                              <span>{option.label}</span>
+                              <span className="text-xs font-normal text-muted-foreground">
+                                {option.helper}
+                              </span>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                  <Button
-                    variant={
-                      selectedIntervalOption[card.id] === "6시간"
-                        ? "default"
-                        : "outline"
-                    }
-                    size="default"
-                    onClick={() => handleIntervalSelect(card.id, "6시간")}
-                    className={`${selectedIntervalOption[card.id] === "6시간" ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3`}
+                    <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                        직접 입력 (시간)
+                      </span>
+                      <div className="flex flex-col items-stretch gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
+                          placeholder="시간 (h)"
+                          value={customIntervalInputs[card.id] ?? ""}
+                          onChange={(e) =>
+                            handleCustomIntervalChange(card.id, e.target.value)
+                          }
+                        />
+                        <div className="flex">
+                          <Button
+                            className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
+                            onClick={() => handleCustomIntervalApply(card.id)}
+                          >
+                            확인
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
+                    role="group"
+                    aria-label="투약 용량 옵션"
                   >
-                    6시간
-                  </Button>
+                    <div className="flex-1 md:pr-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          투약 용량 선택
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        {dosagePresetOptions.length > 0 ? (
+                          dosagePresetOptions.map((amount) => {
+                            const label = `${Number(amount).toLocaleString()}mg`;
+                            const isSelected = selectedDosage[card.id] === label;
+                            return (
+                              <Button
+                                key={`${card.id}-${amount}`}
+                                variant={isSelected ? "default" : "outline"}
+                                size="default"
+                                onClick={() => handleDosagePresetSelectV2(card.id, amount)}
+                                className={`${
+                                  isSelected
+                                    ? "bg-black text-white hover:bg-gray-800"
+                                    : ""
+                                } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                title={`${amount}mg`}
+                                aria-pressed={isSelected}
+                              >
+                                <span>{label}</span>
+                                <span className="text-xs font-normal text-muted-foreground">
+                                  mg
+                                </span>
+                              </Button>
+                            );
+                          })
+                        ) : (
+                          <div className="col-span-2 sm:col-span-3 lg:col-span-6 text-sm text-muted-foreground text-center py-6">
+                            현재 선택한 약물에 대해 제공되는 기본 용량 프리셋이 없습니다.
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-                  <Button
-                    variant={
-                      selectedIntervalOption[card.id] === "8시간"
-                        ? "default"
-                        : "outline"
-                    }
-                    size="default"
-                    onClick={() => handleIntervalSelect(card.id, "8시간")}
-                    className={`${selectedIntervalOption[card.id] === "8시간" ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3`}
-                  >
-                    8시간
-                  </Button>
-
-                  <Button
-                    variant={
-                      selectedIntervalOption[card.id] === "12시간"
-                        ? "default"
-                        : "outline"
-                    }
-                    size="default"
-                    onClick={() => handleIntervalSelect(card.id, "12시간")}
-                    className={`${selectedIntervalOption[card.id] === "12시간" ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3`}
-                  >
-                    12시간
-                  </Button>
+                    <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                        직접 입력 (mg)
+                      </span>
+                      <div className="flex flex-col items-stretch gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
+                          placeholder="용량 (mg)"
+                          value={customDosageInputs[card.id] ?? ""}
+                          onChange={(e) =>
+                            handleCustomDosageChange(card.id, e.target.value)
+                          }
+                        />
+                        <div className="flex">
+                          <Button
+                            className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
+                            onClick={() => handleCustomDosageApply(card.id)}
+                          >
+                            확인
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -2467,7 +2705,7 @@ const PKSimulation = ({
                 predSeries={cardTdmExtraSeries[card.id]?.predSeries}
                 observedSeries={cardTdmExtraSeries[card.id]?.observedSeries}
                 currentMethodSeries={cardTdmExtraSeries[card.id]?.currentMethodSeries}
-                chartColor={card.type === "dosage" ? "pink" : "green"}
+                chartColor={isDosageCard ? "pink" : "green"}
                 // TDM 내역 데이터
                 tdmIndication={getTdmData(selectedDrug).indication}
                 tdmTarget={getTdmData(selectedDrug).target}
@@ -2478,7 +2716,7 @@ const PKSimulation = ({
                   if (!latestAdministration) return null;
                   
                   // 용량 조정 카드: 선택된 dose 반영
-                  if (card.type === "dosage" && selectedDosage[card.id]) {
+                  if (isDosageCard && selectedDosage[card.id]) {
                     const selectedDose = parseFloat(selectedDosage[card.id].replace(/[^0-9.]/g, ""));
                     if (!isNaN(selectedDose)) {
                       return {
@@ -2490,8 +2728,8 @@ const PKSimulation = ({
                   
                   // 간격 조정 카드: 선택된 intervalHours 반영
                   if (card.type === "interval" && selectedIntervalOption[card.id]) {
-                    const selectedInterval = parseInt(selectedIntervalOption[card.id].replace(/[^0-9]/g, ""));
-                    if (!isNaN(selectedInterval)) {
+                    const selectedInterval = getIntervalHours(selectedIntervalOption[card.id]);
+                    if (typeof selectedInterval === "number" && !Number.isNaN(selectedInterval)) {
                       return {
                         ...latestAdministration,
                         intervalHours: selectedInterval
@@ -2510,14 +2748,15 @@ const PKSimulation = ({
                       dosageSuggestions[card.id].length === 0))
                 }
                 selectedButton={
-                  card.type === "dosage"
-                    ? selectedDosage[card.id]
-                    : selectedIntervalOption[card.id]
+                  card.type === "interval"
+                    ? selectedIntervalOption[card.id]
+                    : selectedDosage[card.id]
                 }
               />
             </div>
           </div>
-        ))}
+        );
+      })}
 
       {!isCompletedView && (
         <div className="bg-white dark:bg-slate-900 rounded-lg p-6 mt-6">
@@ -2537,6 +2776,12 @@ const PKSimulation = ({
               >
                 투약 용량 조정
               </Button>
+            <Button
+              onClick={handleDosageAdjustmentV2}
+              className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+            >
+              투약 용량 조정 (ver2)
+            </Button>
               <Button
                 onClick={handleIntervalAdjustment}
                 className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
