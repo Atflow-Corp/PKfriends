@@ -194,7 +194,7 @@ const PKCharts = ({
             <div className="flex items-baseline gap-2">
               {tdmTarget && (
                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                  {tdmTarget.split('(')[0]?.trim() || ''}
+                  {tdmTarget.split('(')[0]?.trim().replace(/Concentration/gi, '').trim() || ''}
                 </span>
               )}
               <span
