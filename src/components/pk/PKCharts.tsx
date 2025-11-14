@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ChartColumnIncreasing } from "lucide-react";
 import TDMLineChart, { ChartDataset } from "./shared/TDMLineChart";
+import TDMSummary from "./shared/TDMSummary";
 import {
   SimulationDataPoint,
   DrugAdministration,
@@ -44,6 +45,9 @@ const PKCharts = ({
   selectedDrug,
   targetMin,
   targetMax,
+  recentAUC,
+  recentMax,
+  recentTrough,
   predictedAUC: propPredictedAUC,
   predictedMax: propPredictedMax,
   predictedTrough: propPredictedTrough,
@@ -152,7 +156,7 @@ const PKCharts = ({
       <div className="text-left mb-6">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
           <ChartColumnIncreasing className="w-8 h-8 text-blue-600" />
-          {currentPatientName ? `${currentPatientName} 환자의 현용법 TDM 결과` : 'TDM 분석 결과'}
+          {currentPatientName && selectedDrug ? `${currentPatientName} 환자의 ${selectedDrug} TDM 결과` : currentPatientName ? `${currentPatientName} 환자의 TDM 결과` : 'TDM 분석 결과'}
         </h1>
       </div>
 
@@ -190,7 +194,7 @@ const PKCharts = ({
             <div className="flex items-baseline gap-2">
               {tdmTarget && (
                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                  {tdmTarget.split('(')[0]?.trim() || ''}
+                  {tdmTarget.split('(')[0]?.trim().replace(/Concentration/gi, '').trim() || ''}
                 </span>
               )}
               <span
@@ -290,6 +294,22 @@ const PKCharts = ({
           )}
         </div>
       </div>
+
+      {/* TDM Summary */}
+      <TDMSummary
+        selectedDrug={selectedDrug}
+        tdmIndication={tdmIndication}
+        tdmTarget={tdmTarget}
+        tdmTargetValue={tdmTargetValue}
+        latestAdministration={latestAdministration}
+        recentAUC={recentAUC}
+        recentMax={recentMax}
+        recentTrough={recentTrough}
+        predictedAUC={predictedAUC}
+        predictedMax={predictedMax}
+        predictedTrough={predictedTrough}
+        commentTitle="TDM friends Comments"
+      />
     </div>
   );
 };
