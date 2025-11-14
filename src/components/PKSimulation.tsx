@@ -3016,24 +3016,26 @@ const PKSimulation = ({
                       </div>
 
                       <div className="flex w-full flex-col gap-2 border-t pt-4">
-                        <Button
-                          variant="outline"
-                          className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight"
-                          onClick={() => {
-                            // 모달 열 때 default 값 설정
-                            if (latestAdministration) {
-                              if (!customDosageInputs[card.id] && latestAdministration.dose) {
-                                setCustomDosageInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.dose) }));
+                        <div className="flex justify-end">
+                          <Button
+                            variant="outline"
+                            className="w-[150px] h-[40px] px-4 py-2 text-sm leading-tight"
+                            onClick={() => {
+                              // 모달 열 때 default 값 설정
+                              if (latestAdministration) {
+                                if (!customDosageInputs[card.id] && latestAdministration.dose) {
+                                  setCustomDosageInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.dose) }));
+                                }
+                                if (!customIntervalInputs[card.id] && latestAdministration.intervalHours) {
+                                  setCustomIntervalInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.intervalHours) }));
+                                }
                               }
-                              if (!customIntervalInputs[card.id] && latestAdministration.intervalHours) {
-                                setCustomIntervalInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.intervalHours) }));
-                              }
-                            }
-                            setShowCustomInputDialog(prev => ({ ...prev, [card.id]: true }));
-                          }}
-                        >
-                          직접 입력
-                        </Button>
+                              setShowCustomInputDialog(prev => ({ ...prev, [card.id]: true }));
+                            }}
+                          >
+                            + 직접 입력
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
