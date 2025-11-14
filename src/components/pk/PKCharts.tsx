@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ChartColumnIncreasing } from "lucide-react";
 import TDMLineChart, { ChartDataset } from "./shared/TDMLineChart";
+import TDMSummary from "./shared/TDMSummary";
 import {
   SimulationDataPoint,
   DrugAdministration,
@@ -44,6 +45,9 @@ const PKCharts = ({
   selectedDrug,
   targetMin,
   targetMax,
+  recentAUC,
+  recentMax,
+  recentTrough,
   predictedAUC: propPredictedAUC,
   predictedMax: propPredictedMax,
   predictedTrough: propPredictedTrough,
@@ -290,6 +294,22 @@ const PKCharts = ({
           )}
         </div>
       </div>
+
+      {/* TDM Summary */}
+      <TDMSummary
+        selectedDrug={selectedDrug}
+        tdmIndication={tdmIndication}
+        tdmTarget={tdmTarget}
+        tdmTargetValue={tdmTargetValue}
+        latestAdministration={latestAdministration}
+        recentAUC={recentAUC}
+        recentMax={recentMax}
+        recentTrough={recentTrough}
+        predictedAUC={predictedAUC}
+        predictedMax={predictedMax}
+        predictedTrough={predictedTrough}
+        commentTitle="TDM friends Comments"
+      />
     </div>
   );
 };

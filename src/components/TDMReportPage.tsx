@@ -7,6 +7,7 @@ import Header from "./ui/Header";
 import Footer from "./ui/Footer";
 import TDMPatientDetails from "./TDMPatientDetails";
 import PKCharts from "./pk/PKCharts";
+import TDMSummary from "./pk/shared/TDMSummary";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
@@ -314,6 +315,39 @@ const TDMReportPage = () => {
               isExpanded={true}
               onToggleExpanded={() => {}} // 빈 함수로 클릭 이벤트 무시
               disableHover={true} // 마우스 오버 이벤트 비활성화
+            />
+          </CardContent>
+          {/* TDM Summary */}
+          <CardContent>
+            <TDMSummary
+              selectedDrug={selectedDrug}
+              tdmIndication={selectedPrescription?.indication}
+              tdmTarget={selectedPrescription?.tdmTarget}
+              tdmTargetValue={selectedPrescription?.tdmTargetValue}
+              latestAdministration={drugAdministrations
+                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
+                .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
+                .slice(-1)[0] ? {
+                  dose: drugAdministrations
+                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
+                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
+                    .slice(-1)[0].dose,
+                  unit: drugAdministrations
+                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
+                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
+                    .slice(-1)[0].unit,
+                  intervalHours: drugAdministrations
+                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
+                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
+                    .slice(-1)[0].intervalHours
+                } : null}
+              recentAUC={tdmResults?.recentAUC}
+              recentMax={tdmResults?.recentMax}
+              recentTrough={tdmResults?.recentTrough}
+              predictedAUC={tdmResults?.predictedAUC}
+              predictedMax={tdmResults?.predictedMax}
+              predictedTrough={tdmResults?.predictedTrough}
+              commentTitle="TDM friends Comments"
             />
           </CardContent>
           {/* 두 번째 카드: 현용법 결과과 */}

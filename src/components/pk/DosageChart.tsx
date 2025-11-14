@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import TDMLineChart, { ChartDataset } from "./shared/TDMLineChart";
+import TDMSummary from "./shared/TDMSummary";
 import {
   SimulationDataPoint,
   DrugAdministration,
@@ -59,6 +60,9 @@ const DosageChart = ({
   chartTitle = "용법 조정 시뮬레이션",
   targetMin,
   targetMax,
+  recentAUC,
+  recentMax,
+  recentTrough,
   predictedAUC: propPredictedAUC,
   predictedMax: propPredictedMax,
   predictedTrough: propPredictedTrough,
@@ -318,6 +322,25 @@ const DosageChart = ({
         drugAdministrations={drugAdministrations}
         averageConcentration={averageConcentration}
       />
+
+      {/* TDM Summary */}
+      {!isEmptyChart && (
+        <TDMSummary
+          selectedDrug={selectedDrug}
+          tdmIndication={tdmIndication}
+          tdmTarget={tdmTarget}
+          tdmTargetValue={tdmTargetValue}
+          latestAdministration={latestAdministration}
+          originalAdministration={originalAdministration}
+          recentAUC={recentAUC}
+          recentMax={recentMax}
+          recentTrough={recentTrough}
+          predictedAUC={predictedAUC}
+          predictedMax={predictedMax}
+          predictedTrough={predictedTrough}
+          commentTitle="용법 조정 결과"
+        />
+      )}
 
     </div>
   );
