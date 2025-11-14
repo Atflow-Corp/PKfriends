@@ -156,7 +156,7 @@ const PKCharts = ({
       <div className="text-left mb-6">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
           <ChartColumnIncreasing className="w-8 h-8 text-blue-600" />
-          {currentPatientName ? `${currentPatientName} 환자의 현용법 TDM 결과` : 'TDM 분석 결과'}
+          {currentPatientName && selectedDrug ? `${currentPatientName} 환자의 ${selectedDrug} TDM 결과` : currentPatientName ? `${currentPatientName} 환자의 TDM 결과` : 'TDM 분석 결과'}
         </h1>
       </div>
 

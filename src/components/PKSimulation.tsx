@@ -33,6 +33,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 // TDM 히스토리 타입 (간단 요약 정보만 사용)
 type TdmHistorySummary = {
@@ -282,10 +289,20 @@ const PKSimulation = ({
 
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showChartDataTooLargeAlert, setShowChartDataTooLargeAlert] = useState(false);
+  
+  // 용량&시간 조정 카드의 직접입력 모달 상태 (통합)
+  const [showCustomInputDialog, setShowCustomInputDialog] = useState<{
+    [cardId: number]: boolean;
+  }>({});
 
   const [cardToDelete, setCardToDelete] = useState<number | null>(null);
 
   const [cardChartData, setCardChartData] = useState<{
+    [cardId: number]: boolean;
+  }>({});
+
+  // 카드별 차트 로딩 상태
+  const [cardChartLoading, setCardChartLoading] = useState<{
     [cardId: number]: boolean;
   }>({});
 
@@ -705,12 +722,12 @@ const PKSimulation = ({
         }))
         .filter((p) => p.time >= 0 && p.time <= 72);
 
-      setCardTdmExtraSeries((prev) => ({
-        ...prev,
-        [cardId]: {
-          ipredSeries: (
-            (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-          )
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: (
+              (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+            )
 
             .map((p) => ({
               time: Number(p.time) || 0,
@@ -719,9 +736,9 @@ const PKSimulation = ({
 
             .filter((p) => p.time >= 0),
 
-          predSeries: (
-            (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
-          )
+            predSeries: (
+              (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
+            )
 
             .map((p) => ({
               time: Number(p.time) || 0,
@@ -730,7 +747,7 @@ const PKSimulation = ({
 
             .filter((p) => p.time >= 0),
 
-          observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
+            observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
 
             .filter((r) => r.EVID === 0 && r.DV != null)
 
@@ -738,9 +755,12 @@ const PKSimulation = ({
 
             .filter((p) => p.time >= 0),
 
-          currentMethodSeries: currentMethodData,
-        },
-      }));
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+
+        // 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
 
       return;
     }
@@ -1283,6 +1303,9 @@ const PKSimulation = ({
       try {
         if (!selectedPatientId || !selectedDrug) return;
 
+        // 로딩 시작
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
+
         const body = buildTdmRequestBodyCore({
           patients,
           prescriptions,
@@ -1353,8 +1376,13 @@ const PKSimulation = ({
             currentMethodSeries: currentMethodData,
           },
         }));
+        
+        // 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       } catch (e) {
         console.warn("Failed to apply dose scenario for card", e);
+        // 에러 발생 시에도 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       }
     },
     [
@@ -1484,6 +1512,10 @@ const PKSimulation = ({
     async (cardId: number, amountMg: number, tauHours: number) => {
       try {
         if (!selectedPatientId || !selectedDrug) return;
+        
+        // 로딩 시작
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
+        
         const body = buildTdmRequestBodyCore({
           patients,
           prescriptions,
@@ -1507,6 +1539,7 @@ const PKSimulation = ({
         // 데이터 크기 체크
         if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
           setShowChartDataTooLargeAlert(true);
+          setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
           return;
         }
         
@@ -1549,8 +1582,13 @@ const PKSimulation = ({
             currentMethodSeries: currentMethodData,
           },
         }));
+        
+        // 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       } catch (e) {
         console.warn("Failed to apply dosage and interval scenario for card", e);
+        // 에러 발생 시에도 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       }
     },
     [
@@ -1570,6 +1608,10 @@ const PKSimulation = ({
     async (cardId: number, tauHours: number) => {
       try {
         if (!selectedPatientId || !selectedDrug) return;
+        
+        // 로딩 시작
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
+        
         const body = buildTdmRequestBodyCore({
           patients,
           prescriptions,
@@ -1593,6 +1635,7 @@ const PKSimulation = ({
         // 데이터 크기 체크
         if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
           setShowChartDataTooLargeAlert(true);
+          setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
           return;
         }
         
@@ -1635,8 +1678,13 @@ const PKSimulation = ({
             currentMethodSeries: currentMethodData,
           },
         }));
+        
+        // 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       } catch (e) {
         console.warn("Failed to apply interval scenario for card", e);
+        // 에러 발생 시에도 로딩 종료
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       }
     },
     [
@@ -2893,7 +2941,7 @@ const PKSimulation = ({
                             투약 용량 선택
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <div className="flex flex-wrap gap-2">
                           {dosagePresetOptions.length > 0 ? (
                             dosagePresetOptions.map((amount) => {
                               const label = `${Number(amount).toLocaleString()}mg`;
@@ -2907,63 +2955,37 @@ const PKSimulation = ({
                                   className={`${
                                     isSelected
                                       ? "bg-black text-white hover:bg-gray-800"
-                                      : ""
-                                  } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                      : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
+                                  } rounded-full px-4 py-2 text-sm font-semibold transition h-auto flex flex-col items-center justify-center gap-0.5`}
                                   title={`${amount}mg`}
                                   aria-pressed={isSelected}
                                 >
-                                  <span>{label}</span>
-                                  <span className="text-xs font-normal text-muted-foreground">
+                                  <span>{Number(amount).toLocaleString()}</span>
+                                  <span className={`text-xs font-normal ${isSelected ? "text-gray-200" : "text-muted-foreground"}`}>
                                     mg
                                   </span>
                                 </Button>
                               );
                             })
                           ) : (
-                            <div className="col-span-2 sm:col-span-3 lg:col-span-6 text-sm text-muted-foreground text-center py-6">
+                            <div className="text-sm text-muted-foreground text-center py-6">
                               현재 선택한 약물에 대해 제공되는 기본 용량 프리셋이 없습니다.
                             </div>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          직접 입력 (mg)
-                        </span>
-                        <div className="flex flex-col items-stretch gap-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
-                            placeholder="용량 (mg)"
-                            value={customDosageInputs[card.id] ?? ""}
-                            onChange={(e) =>
-                              handleCustomDosageChange(card.id, e.target.value)
-                            }
-                          />
-                          <div className="flex">
-                            <Button
-                              className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
-                              onClick={() => handleCustomDosageApply(card.id)}
-                            >
-                              확인
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
                     </div>
 
                     {/* 시간 선택 섹션 */}
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between" role="group" aria-label="투약 간격 옵션">
-                      <div className="flex-1 md:pr-6">
+                    <div className="flex flex-col gap-4" role="group" aria-label="투약 간격 옵션">
+                      <div className="flex-1">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
                             투약 시간 선택
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                        <div className="flex flex-wrap gap-2">
                           {intervalOptions.map((option) => {
                             const isSelected =
                               selectedIntervalOption[card.id] === option.label;
@@ -2978,13 +3000,13 @@ const PKSimulation = ({
                                 className={`${
                                   isSelected
                                     ? "bg-black text-white hover:bg-gray-800"
-                                    : ""
-                                } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                    : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
+                                } rounded-full px-4 py-2 text-sm font-semibold transition h-auto flex flex-col items-center justify-center gap-0.5`}
                                 title={option.helper}
                                 aria-pressed={isSelected}
                               >
                                 <span>{option.label}</span>
-                                <span className="text-xs font-normal text-muted-foreground">
+                                <span className={`text-xs font-normal ${isSelected ? "text-gray-200" : "text-muted-foreground"}`}>
                                   {option.helper}
                                 </span>
                               </Button>
@@ -2993,34 +3015,104 @@ const PKSimulation = ({
                         </div>
                       </div>
 
-                      <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          직접 입력 (시간)
-                        </span>
-                        <div className="flex flex-col items-stretch gap-2">
+                      <div className="flex w-full flex-col gap-2 border-t pt-4">
+                        <Button
+                          variant="outline"
+                          className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight"
+                          onClick={() => {
+                            // 모달 열 때 default 값 설정
+                            if (latestAdministration) {
+                              if (!customDosageInputs[card.id] && latestAdministration.dose) {
+                                setCustomDosageInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.dose) }));
+                              }
+                              if (!customIntervalInputs[card.id] && latestAdministration.intervalHours) {
+                                setCustomIntervalInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.intervalHours) }));
+                              }
+                            }
+                            setShowCustomInputDialog(prev => ({ ...prev, [card.id]: true }));
+                          }}
+                        >
+                          직접 입력
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 용량&시간 직접입력 통합 모달 */}
+                  <Dialog open={showCustomInputDialog[card.id] || false} onOpenChange={(open) => {
+                    setShowCustomInputDialog(prev => ({ ...prev, [card.id]: open }));
+                    // 모달이 열릴 때 default 값 설정
+                    if (open && latestAdministration) {
+                      if (!customDosageInputs[card.id] && latestAdministration.dose) {
+                        setCustomDosageInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.dose) }));
+                      }
+                      if (!customIntervalInputs[card.id] && latestAdministration.intervalHours) {
+                        setCustomIntervalInputs(prev => ({ ...prev, [card.id]: String(latestAdministration.intervalHours) }));
+                      }
+                    }
+                  }}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>직접 입력</DialogTitle>
+                      </DialogHeader>
+                      <div className="py-4 space-y-4">
+                        <div>
+                          <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 block">
+                            투약 용량 (mg)
+                          </label>
                           <Input
                             type="number"
                             min="0"
                             step="0.1"
-                            className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
+                            className="w-full h-[80px] px-4 py-3 text-4xl font-semibold leading-tight text-center placeholder:text-2xl [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            placeholder="용량 (mg)"
+                            value={customDosageInputs[card.id] ?? (latestAdministration?.dose ? String(latestAdministration.dose) : "")}
+                            onChange={(e) =>
+                              handleCustomDosageChange(card.id, e.target.value)
+                            }
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2 block">
+                            투약 시간 (시간)
+                          </label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            className="w-full h-[80px] px-4 py-3 text-4xl font-semibold leading-tight text-center placeholder:text-2xl [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="시간 (h)"
-                            value={customIntervalInputs[card.id] ?? ""}
+                            value={customIntervalInputs[card.id] ?? (latestAdministration?.intervalHours ? String(latestAdministration.intervalHours) : "")}
                             onChange={(e) =>
                               handleCustomIntervalChange(card.id, e.target.value)
                             }
                           />
-                          <div className="flex">
-                            <Button
-                              className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
-                              onClick={() => handleCustomIntervalApply(card.id)}
-                            >
-                              확인
-                            </Button>
-                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowCustomInputDialog(prev => ({ ...prev, [card.id]: false }))}
+                        >
+                          취소
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            // 용량과 시간 모두 적용
+                            if (customDosageInputs[card.id]) {
+                              handleCustomDosageApply(card.id);
+                            }
+                            if (customIntervalInputs[card.id]) {
+                              handleCustomIntervalApply(card.id);
+                            }
+                            setShowCustomInputDialog(prev => ({ ...prev, [card.id]: false }));
+                          }}
+                        >
+                          확인
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </>
               ) : card.type === "dosage" ? (
                 // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (여러 줄로 표시)
@@ -3268,6 +3360,7 @@ const PKSimulation = ({
                 observedSeries={cardTdmExtraSeries[card.id]?.observedSeries}
                 currentMethodSeries={cardTdmExtraSeries[card.id]?.currentMethodSeries}
                 chartColor={isDosageCard ? "pink" : "green"}
+                isLoading={cardChartLoading[card.id] || false}
                 // TDM 내역 데이터
                 tdmIndication={getTdmData(selectedDrug).indication}
                 tdmTarget={getTdmData(selectedDrug).target}
@@ -3331,22 +3424,16 @@ const PKSimulation = ({
             )}
             <div className="flex justify-center gap-4 flex-wrap">
               <Button
-                onClick={handleDosageAdjustment}
+                onClick={handleDosageAdjustmentV2}
                 className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
               >
-                투약 용량 조정
+                투약용량조정(ver2)
               </Button>
-            <Button
-              onClick={handleDosageAdjustmentV2}
-              className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
-            >
-              투약 용량 조정 (ver2)
-            </Button>
               <Button
                 onClick={handleIntervalAdjustment}
                 className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
               >
-                투약 시간 조정
+                투약시간조정
               </Button>
               <Button
                 onClick={handleDosageAndIntervalAdjustment}

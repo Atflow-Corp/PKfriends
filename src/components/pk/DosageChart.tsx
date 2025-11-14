@@ -50,6 +50,7 @@ interface DosageChartProps {
   }>;
   isEmptyChart?: boolean;
   selectedButton?: string;
+  isLoading?: boolean;
 }
 
 const DosageChart = ({
@@ -78,7 +79,8 @@ const DosageChart = ({
   drugAdministrations = [],
   currentMethodSeries = [],
   isEmptyChart = false,
-  selectedButton
+  selectedButton,
+  isLoading = false
 }: DosageChartProps) => {
   // 데이터 병합
   const data = useMemo(() => {
@@ -311,17 +313,29 @@ const DosageChart = ({
       )}
 
       {/* 메인 그래프 */}
-      <TDMLineChart
-        data={data}
-        datasets={datasets}
-        selectedDrug={selectedDrug}
-        targetMin={targetMin}
-        targetMax={targetMax}
-        dataTimeExtents={dataTimeExtents}
-        lastActualDoseTime={lastActualDoseTime}
-        drugAdministrations={drugAdministrations}
-        averageConcentration={averageConcentration}
-      />
+      <div className="relative">
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-slate-900/80 z-10 rounded-lg">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                차트를 다시 그리는 중입니다.
+              </div>
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            </div>
+          </div>
+        )}
+        <TDMLineChart
+          data={data}
+          datasets={datasets}
+          selectedDrug={selectedDrug}
+          targetMin={targetMin}
+          targetMax={targetMax}
+          dataTimeExtents={dataTimeExtents}
+          lastActualDoseTime={lastActualDoseTime}
+          drugAdministrations={drugAdministrations}
+          averageConcentration={averageConcentration}
+        />
+      </div>
 
       {/* TDM Summary */}
       {!isEmptyChart && (
@@ -338,7 +352,7 @@ const DosageChart = ({
           predictedAUC={predictedAUC}
           predictedMax={predictedMax}
           predictedTrough={predictedTrough}
-          commentTitle="용법 조정 결과"
+          commentTitle="TDM friends Comments"
         />
       )}
 
