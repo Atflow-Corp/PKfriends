@@ -261,7 +261,7 @@ const PKSimulation = ({
     useState<TdmApiResponse | null>(null);
 
   const [adjustmentCards, setAdjustmentCards] = useState<
-    Array<{ id: number; type: "dosage" | "interval" | "dosageV2" }>
+    Array<{ id: number; type: "dosage" | "interval" | "dosageV2" | "dosageAndInterval" }>
   >([]);
 
   const [selectedDosage, setSelectedDosage] = useState<{
@@ -281,6 +281,7 @@ const PKSimulation = ({
   }>({});
 
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [showChartDataTooLargeAlert, setShowChartDataTooLargeAlert] = useState(false);
 
   const [cardToDelete, setCardToDelete] = useState<number | null>(null);
 
@@ -531,6 +532,8 @@ const PKSimulation = ({
       { id: newCardNumber, type: "dosage" },
     ]);
     setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
+    // 현용법 데이터 로드
+    void loadCurrentMethodForCard(newCardNumber);
     triggerDosageSuggestions(newCardNumber);
   };
 
@@ -543,6 +546,8 @@ const PKSimulation = ({
     ]);
     setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
     setCustomDosageInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
+    // 현용법 데이터 로드
+    void loadCurrentMethodForCard(newCardNumber);
   };
 
   const handleIntervalAdjustment = () => {
@@ -554,6 +559,23 @@ const PKSimulation = ({
       { id: newCardNumber, type: "interval" },
     ]);
     setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
+    // 현용법 데이터 로드
+    void loadCurrentMethodForCard(newCardNumber);
+  };
+
+  const handleDosageAndIntervalAdjustment = () => {
+    // 용법 조정은 동시 진행 제한을 적용하지 않음
+    if (concurrencyNotice) setConcurrencyNotice("");
+    const newCardNumber = adjustmentCards.length + 1;
+    setAdjustmentCards((prev) => [
+      ...prev,
+      { id: newCardNumber, type: "dosageAndInterval" },
+    ]);
+    setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
+    setCustomDosageInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
+    setCustomIntervalInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
+    // 현용법 데이터 로드
+    void loadCurrentMethodForCard(newCardNumber);
   };
 
   const handleRemoveCardClick = (cardId: number) => {
@@ -653,6 +675,11 @@ const PKSimulation = ({
     // 버튼 선택 시 차트 그리기 활성화
     setCardChartData((prev) => ({ ...prev, [cardId]: true }));
 
+    // 현용법 데이터가 없으면 로드
+    if (!cardTdmExtraSeries[cardId]?.currentMethodSeries || cardTdmExtraSeries[cardId]?.currentMethodSeries.length === 0) {
+      void loadCurrentMethodForCard(cardId);
+    }
+
     // 캐시가 있다면 재호출 없이 반영
     const amountMg = parseFloat(dosage.replace(/[^0-9.]/g, ""));
     const cached = dosageSuggestionResults?.[cardId]?.[amountMg];
@@ -660,6 +687,13 @@ const PKSimulation = ({
     if (cached && cached.data) {
       // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
       setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.data }));
+      
+      // 데이터 크기 체크
+      if (checkChartDataSize(cached.data, cached.dataset || [])) {
+        setShowChartDataTooLargeAlert(true);
+        return;
+      }
+      
       setCardTdmChartData((prev) => ({ ...prev, [cardId]: toChartData(cached.data, cached.dataset || []) }));
 
       const currentMethodData = (
@@ -745,6 +779,11 @@ const PKSimulation = ({
 
     setCardChartData((prev) => ({ ...prev, [cardId]: true }));
 
+    // 현용법 데이터가 없으면 로드
+    if (!cardTdmExtraSeries[cardId]?.currentMethodSeries || cardTdmExtraSeries[cardId]?.currentMethodSeries.length === 0) {
+      void loadCurrentMethodForCard(cardId);
+    }
+
     try {
       const hours = getIntervalHours(interval);
       if (typeof hours === "number" && Number.isFinite(hours)) {
@@ -752,8 +791,22 @@ const PKSimulation = ({
           ...prev,
           [cardId]: String(hours),
         }));
-        // 카드별 데이터만 업데이트 (메인 차트는 변경하지 않음)
-        void applyIntervalScenarioForCard(cardId, hours);
+        
+        // 용량&시간 조정 카드인 경우
+        const card = adjustmentCards.find(c => c.id === cardId);
+        if (card?.type === "dosageAndInterval") {
+          // 용량과 시간이 모두 선택되었을 때만 API 호출
+          const selectedDose = selectedDosage[cardId];
+          if (selectedDose) {
+            const amountMg = parseFloat(selectedDose.replace(/[^0-9.]/g, ""));
+            if (!isNaN(amountMg)) {
+              void applyDosageAndIntervalScenarioForCard(cardId, amountMg, hours);
+            }
+          }
+        } else {
+          // 카드별 데이터만 업데이트 (메인 차트는 변경하지 않음)
+          void applyIntervalScenarioForCard(cardId, hours);
+        }
       }
     } catch {
       /* no-op */
@@ -784,11 +837,36 @@ const PKSimulation = ({
       Number.isInteger(hours) && hours >= 1 ? String(hours) : hours.toString();
 
     const label = `직접 입력 (${normalizedValue}시간)`;
-    handleIntervalSelect(cardId, label);
-    setCustomIntervalInputs((prev) => ({
-      ...prev,
-      [cardId]: normalizedValue,
-    }));
+    
+    // 현용법 데이터가 없으면 로드
+    if (!cardTdmExtraSeries[cardId]?.currentMethodSeries || cardTdmExtraSeries[cardId]?.currentMethodSeries.length === 0) {
+      void loadCurrentMethodForCard(cardId);
+    }
+    
+    // 용량&시간 조정 카드인 경우
+    const card = adjustmentCards.find(c => c.id === cardId);
+    if (card?.type === "dosageAndInterval") {
+      setSelectedIntervalOption((prev) => ({ ...prev, [cardId]: label }));
+      setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+      setCustomIntervalInputs((prev) => ({
+        ...prev,
+        [cardId]: normalizedValue,
+      }));
+      // 용량과 시간이 모두 선택되었을 때만 API 호출
+      const selectedDose = selectedDosage[cardId];
+      if (selectedDose) {
+        const amountMg = parseFloat(selectedDose.replace(/[^0-9.]/g, ""));
+        if (!isNaN(amountMg)) {
+          void applyDosageAndIntervalScenarioForCard(cardId, amountMg, hours);
+        }
+      }
+    } else {
+      handleIntervalSelect(cardId, label);
+      setCustomIntervalInputs((prev) => ({
+        ...prev,
+        [cardId]: normalizedValue,
+      }));
+    }
   };
 
   const handleDosagePresetSelectV2 = (cardId: number, amountMg: number) => {
@@ -797,7 +875,28 @@ const PKSimulation = ({
       ...prev,
       [cardId]: String(amountMg),
     }));
-    handleDosageSelect(cardId, label);
+    
+    // 현용법 데이터가 없으면 로드
+    if (!cardTdmExtraSeries[cardId]?.currentMethodSeries || cardTdmExtraSeries[cardId]?.currentMethodSeries.length === 0) {
+      void loadCurrentMethodForCard(cardId);
+    }
+    
+    // 용량&시간 조정 카드인 경우
+    const card = adjustmentCards.find(c => c.id === cardId);
+    if (card?.type === "dosageAndInterval") {
+      setSelectedDosage((prev) => ({ ...prev, [cardId]: label }));
+      setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+      // 용량과 시간이 모두 선택되었을 때만 API 호출
+      const selectedInterval = selectedIntervalOption[cardId];
+      if (selectedInterval) {
+        const hours = getIntervalHours(selectedInterval);
+        if (typeof hours === "number" && Number.isFinite(hours)) {
+          void applyDosageAndIntervalScenarioForCard(cardId, amountMg, hours);
+        }
+      }
+    } else {
+      handleDosageSelect(cardId, label);
+    }
   };
 
   const handleCustomDosageChange = (cardId: number, value: string) => {
@@ -821,11 +920,36 @@ const PKSimulation = ({
     }
 
     const label = `${Number(amount).toLocaleString()}mg`;
-    handleDosageSelect(cardId, label);
-    setCustomDosageInputs((prev) => ({
-      ...prev,
-      [cardId]: String(amount),
-    }));
+    
+    // 현용법 데이터가 없으면 로드
+    if (!cardTdmExtraSeries[cardId]?.currentMethodSeries || cardTdmExtraSeries[cardId]?.currentMethodSeries.length === 0) {
+      void loadCurrentMethodForCard(cardId);
+    }
+    
+    // 용량&시간 조정 카드인 경우
+    const card = adjustmentCards.find(c => c.id === cardId);
+    if (card?.type === "dosageAndInterval") {
+      setSelectedDosage((prev) => ({ ...prev, [cardId]: label }));
+      setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+      setCustomDosageInputs((prev) => ({
+        ...prev,
+        [cardId]: String(amount),
+      }));
+      // 용량과 시간이 모두 선택되었을 때만 API 호출
+      const selectedInterval = selectedIntervalOption[cardId];
+      if (selectedInterval) {
+        const hours = getIntervalHours(selectedInterval);
+        if (typeof hours === "number" && Number.isFinite(hours)) {
+          void applyDosageAndIntervalScenarioForCard(cardId, amount, hours);
+        }
+      }
+    } else {
+      handleDosageSelect(cardId, label);
+      setCustomDosageInputs((prev) => ({
+        ...prev,
+        [cardId]: String(amount),
+      }));
+    }
   };
 
   const intervalOptions = useMemo(
@@ -899,6 +1023,45 @@ const PKSimulation = ({
     (later.getTime() - earlier.getTime()) / 36e5;
 
   // 차트 데이터로 변환 (API 응답 -> 시계열)
+
+  // 데이터 크기 체크 함수
+  // 실제 차트에 그려질 데이터 포인트 수를 근사치로 계산
+  // toChartData 함수는 같은 시간 포인트를 하나로 합치므로, 
+  // IPRED_CONC와 PRED_CONC는 같은 시간 범위를 가질 가능성이 높음
+  const checkChartDataSize = useCallback(
+    (
+      apiData: TdmApiResponse | null | undefined,
+      obsDataset?: TdmDatasetRow[] | null,
+    ): boolean => {
+      try {
+        const ipred = apiData?.IPRED_CONC || [];
+        const pred = apiData?.PRED_CONC || [];
+        const ipredLength = Array.isArray(ipred) ? ipred.length : 0;
+        const predLength = Array.isArray(pred) ? pred.length : 0;
+        
+        // dataset에서 실제 차트에 그려질 행만 카운트 (EVID=0인 행)
+        const observedCount = Array.isArray(obsDataset) 
+          ? obsDataset.filter(row => row.EVID === 0 && row.DV != null).length 
+          : 0;
+        
+        // IPRED_CONC와 PRED_CONC는 같은 시간 포인트를 가질 수 있으므로 최대값 사용
+        // 실제 차트 포인트는 시간 포인트의 고유 개수이므로, 
+        // IPRED/PRED 중 큰 값 + observed 포인트 수로 근사치 계산
+        const maxSeriesLength = Math.max(ipredLength, predLength);
+        
+        // 실제 차트에 그려질 포인트 수의 근사치
+        // 시간 포인트가 겹칠 수 있으므로 약간의 여유를 두고 계산
+        const estimatedChartPoints = maxSeriesLength + observedCount;
+        
+        // 차트 포인트가 50000개 이상이면 너무 방대하다고 판단
+        // (실제로는 브라우저에서 렌더링이 어려울 수 있는 수준)
+        return estimatedChartPoints >= 50000;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
 
   const toChartData = useCallback(
     (
@@ -1023,6 +1186,12 @@ const PKSimulation = ({
 
         setTdmResult(data);
 
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+
         setTdmChartDataMain(
           toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
         );
@@ -1135,6 +1304,13 @@ const PKSimulation = ({
 
         // 카드별 차트 데이터만 업데이트
         setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+        
         setCardTdmChartData((prev) => ({
           ...prev,
           [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
@@ -1189,6 +1365,7 @@ const PKSimulation = ({
       selectedPatientId,
       selectedDrug,
       toChartData,
+      checkChartDataSize,
     ],
   );
 
@@ -1214,6 +1391,13 @@ const PKSimulation = ({
           drugName: selectedDrug,
         })) as TdmApiResponse;
         setTdmResult(data);
+        
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+        
         setTdmChartDataMain(
           toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
         );
@@ -1295,6 +1479,92 @@ const PKSimulation = ({
     ],
   );
 
+  // 카드별 용량&시간 조정 시나리오 적용 (메인 차트는 변경하지 않음)
+  const applyDosageAndIntervalScenarioForCard = useCallback(
+    async (cardId: number, amountMg: number, tauHours: number) => {
+      try {
+        if (!selectedPatientId || !selectedDrug) return;
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId,
+          selectedDrugName: selectedDrug,
+          overrides: { amount: amountMg, tau: tauHours },
+        });
+        if (!body) return;
+        const data = (await runTdmApi({
+          body,
+          persist: false, // 카드별 데이터는 저장하지 않음
+          patientId: selectedPatientId,
+          drugName: selectedDrug,
+        })) as TdmApiResponse;
+        
+        // 카드별 차트 데이터만 업데이트
+        setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+        
+        setCardTdmChartData((prev) => ({
+          ...prev,
+          [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
+        }));
+
+        const currentMethodData = (
+          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+        )
+          .map((p) => ({
+            time: Number(p.time) || 0,
+            value: Number(p.IPRED ?? 0) || 0,
+          }))
+          .filter((p) => p.time >= 0 && p.time <= 72);
+
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: ((data?.IPRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+            predSeries: ((data?.PRED_CONC as ConcentrationPoint[]) || [])
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0),
+            observedSeries: ((body.dataset as TdmDatasetRow[]) || [])
+              .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+              .map((r: TdmDatasetRow) => ({
+                time: Number(r.TIME) || 0,
+                value: Number(r.DV),
+              }))
+              .filter((p) => p.time >= 0),
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+      } catch (e) {
+        console.warn("Failed to apply dosage and interval scenario for card", e);
+      }
+    },
+    [
+      patients,
+      prescriptions,
+      bloodTests,
+      drugAdministrations,
+      selectedPatientId,
+      selectedDrug,
+      toChartData,
+      checkChartDataSize,
+    ],
+  );
+
   // 카드별 간격 조정 시나리오 적용 (메인 차트는 변경하지 않음)
   const applyIntervalScenarioForCard = useCallback(
     async (cardId: number, tauHours: number) => {
@@ -1319,6 +1589,13 @@ const PKSimulation = ({
         
         // 카드별 차트 데이터만 업데이트
         setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+        
         setCardTdmChartData((prev) => ({
           ...prev,
           [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
@@ -1370,6 +1647,130 @@ const PKSimulation = ({
       selectedPatientId,
       selectedDrug,
       toChartData,
+      checkChartDataSize,
+    ],
+  );
+
+  // 카드 추가 시 현용법 데이터 로드
+  const loadCurrentMethodForCard = useCallback(
+    async (cardId: number) => {
+      try {
+        if (!selectedPatientId || !selectedDrug) return;
+
+        // 현용법 데이터 로드 (overrides 없이)
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId,
+          selectedDrugName: selectedDrug,
+          overrides: undefined, // 현용법이므로 overrides 없음
+        });
+
+        if (!body) return;
+
+        const data = (await runTdmApi({
+          body,
+          persist: false, // 카드별 데이터는 저장하지 않음
+          patientId: selectedPatientId,
+          drugName: selectedDrug,
+        })) as TdmApiResponse;
+
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+
+        // 현용법 차트 데이터 저장
+        setCardTdmChartData((prev) => ({
+          ...prev,
+          [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
+        }));
+
+        // 현용법 데이터를 currentMethodSeries로 저장
+        const currentMethodData = (
+          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+        )
+          .map((p) => ({
+            time: Number(p.time) || 0,
+            value: Number(p.IPRED ?? 0) || 0,
+          }))
+          .filter((p) => p.time >= 0 && p.time <= 72);
+
+        // 현용법 시리즈 데이터 저장
+        const observedSeries = ((body.dataset as TdmDatasetRow[]) || [])
+          .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+          .map((r: TdmDatasetRow) => ({
+            time: Number(r.TIME) || 0,
+            value: Number(r.DV),
+          }))
+          .filter((p) => p.time >= 0);
+
+        // 기존 cardTdmExtraSeries가 있으면 유지하고 currentMethodSeries만 업데이트
+        // 없으면 빈 배열로 초기화
+        setCardTdmExtraSeries((prev) => ({
+          ...prev,
+          [cardId]: {
+            ipredSeries: prev[cardId]?.ipredSeries || [],
+            predSeries: prev[cardId]?.predSeries || [],
+            observedSeries: observedSeries,
+            currentMethodSeries: currentMethodData,
+          },
+        }));
+
+        // 현용법 결과도 저장 (나중에 비교용)
+        setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
+        
+        // 현용법에 해당하는 용량/시간 버튼 자동 선택
+        if (latestAdministration) {
+          // 용량 버튼 자동 선택
+          const currentDose = latestAdministration.dose;
+          const currentUnit = latestAdministration.unit || 'mg';
+          const doseLabel = `${Number(currentDose).toLocaleString()}${currentUnit}`;
+          setSelectedDosage((prev) => ({ ...prev, [cardId]: doseLabel }));
+          
+          // 시간 버튼 자동 선택
+          if (latestAdministration.intervalHours) {
+            const intervalHours = latestAdministration.intervalHours;
+            // intervalOptions에서 일치하는 시간 찾기
+            const matchedOption = intervalOptions.find(opt => {
+              const optHours = getIntervalHours(opt.label);
+              return optHours === intervalHours;
+            });
+            
+            if (matchedOption) {
+              setSelectedIntervalOption((prev) => ({ ...prev, [cardId]: matchedOption.label }));
+            } else {
+              // 일치하는 옵션이 없으면 직접 입력 형식으로 설정
+              const normalizedValue = Number.isInteger(intervalHours) && intervalHours >= 1 
+                ? String(intervalHours) 
+                : intervalHours.toString();
+              const customLabel = `직접 입력 (${normalizedValue}시간)`;
+              setSelectedIntervalOption((prev) => ({ ...prev, [cardId]: customLabel }));
+              setCustomIntervalInputs((prev) => ({ ...prev, [cardId]: normalizedValue }));
+            }
+          }
+        }
+        
+        // 현용법 차트 표시
+        setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+      } catch (e) {
+        console.warn("Failed to load current method for card", e);
+      }
+    },
+    [
+      patients,
+      prescriptions,
+      bloodTests,
+      drugAdministrations,
+      selectedPatientId,
+      selectedDrug,
+      toChartData,
+      checkChartDataSize,
+      latestAdministration,
+      intervalOptions,
     ],
   );
 
@@ -2113,6 +2514,13 @@ const PKSimulation = ({
         const data = JSON.parse(raw);
         setTdmResult(data);
         const bodyForObs = buildTdmRequestBody();
+        
+        // 데이터 크기 체크
+        if (checkChartDataSize(data, (bodyForObs?.dataset as TdmDatasetRow[]) || [])) {
+          setShowChartDataTooLargeAlert(true);
+          return;
+        }
+        
         setTdmChartDataMain(
           toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []),
         );
@@ -2160,7 +2568,7 @@ const PKSimulation = ({
     setTdmResultInterval(null);
     setTdmChartDataDose([]);
     setTdmChartDataInterval([]);
-  }, [selectedPatientId, selectedDrug, toChartData, buildTdmRequestBody]);
+  }, [selectedPatientId, selectedDrug, toChartData, buildTdmRequestBody, checkChartDataSize]);
 
   // 최근 선택한 약물 복원
   useEffect(() => {
@@ -2202,6 +2610,13 @@ const PKSimulation = ({
       const obsDataset = ((item?.dataset as TdmDatasetRow[] | undefined) ||
         (buildTdmRequestBody()?.dataset as TdmDatasetRow[] | undefined) ||
         []) as TdmDatasetRow[];
+      
+      // 데이터 크기 체크
+      if (checkChartDataSize(data, obsDataset)) {
+        setShowChartDataTooLargeAlert(true);
+        return;
+      }
+      
       setTdmChartDataMain(toChartData(data, obsDataset));
       setTdmExtraSeries({
         ipredSeries: (
@@ -2234,7 +2649,7 @@ const PKSimulation = ({
           .filter((p) => p.time >= 0),
       });
     },
-    [buildTdmRequestBody, toChartData],
+    [buildTdmRequestBody, toChartData, checkChartDataSize],
   );
   const exitCompletedView = useCallback(() => setIsCompletedView(false), []);
   useEffect(() => {
@@ -2424,7 +2839,7 @@ const PKSimulation = ({
       {!isCompletedView &&
         adjustmentCards.map((card) => {
           const isDosageCard =
-            card.type === "dosage" || card.type === "dosageV2";
+            card.type === "dosage" || card.type === "dosageV2" || card.type === "dosageAndInterval";
           return (
             <div
               key={`adjustment-${card.id}`}
@@ -2445,7 +2860,9 @@ const PKSimulation = ({
                     ? "투약 용량을 조정하고 즉시 예측 결과를 확인해보세요"
                     : card.type === "dosageV2"
                       ? "사전 정의된 용량 버튼 또는 직접 입력으로 투약 용량을 조정해보세요"
-                      : "투약 시간의 간격을 조정하고 즉시 예측 결과를 확인해보세요"}
+                      : card.type === "dosageAndInterval"
+                        ? "투약 용량과 시간을 동시에 조정하고 즉시 예측 결과를 확인해보세요"
+                        : "투약 시간의 간격을 조정하고 즉시 예측 결과를 확인해보세요"}
                 </p>
               </div>
 
@@ -2460,7 +2877,152 @@ const PKSimulation = ({
             {/* 버튼 섹션 */}
 
             <div className="mb-6 px-4">
-              {card.type === "dosage" ? (
+              {card.type === "dosageAndInterval" ? (
+                // 용량&시간 조정 카드 버튼
+                <>
+                  <div className="space-y-6">
+                    {/* 용량 선택 섹션 */}
+                    <div
+                      className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
+                      role="group"
+                      aria-label="투약 용량 옵션"
+                    >
+                      <div className="flex-1 md:pr-6">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            투약 용량 선택
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                          {dosagePresetOptions.length > 0 ? (
+                            dosagePresetOptions.map((amount) => {
+                              const label = `${Number(amount).toLocaleString()}mg`;
+                              const isSelected = selectedDosage[card.id] === label;
+                              return (
+                                <Button
+                                  key={`${card.id}-${amount}`}
+                                  variant={isSelected ? "default" : "outline"}
+                                  size="default"
+                                  onClick={() => handleDosagePresetSelectV2(card.id, amount)}
+                                  className={`${
+                                    isSelected
+                                      ? "bg-black text-white hover:bg-gray-800"
+                                      : ""
+                                  } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                  title={`${amount}mg`}
+                                  aria-pressed={isSelected}
+                                >
+                                  <span>{label}</span>
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    mg
+                                  </span>
+                                </Button>
+                              );
+                            })
+                          ) : (
+                            <div className="col-span-2 sm:col-span-3 lg:col-span-6 text-sm text-muted-foreground text-center py-6">
+                              현재 선택한 약물에 대해 제공되는 기본 용량 프리셋이 없습니다.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          직접 입력 (mg)
+                        </span>
+                        <div className="flex flex-col items-stretch gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
+                            placeholder="용량 (mg)"
+                            value={customDosageInputs[card.id] ?? ""}
+                            onChange={(e) =>
+                              handleCustomDosageChange(card.id, e.target.value)
+                            }
+                          />
+                          <div className="flex">
+                            <Button
+                              className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
+                              onClick={() => handleCustomDosageApply(card.id)}
+                            >
+                              확인
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 시간 선택 섹션 */}
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between" role="group" aria-label="투약 간격 옵션">
+                      <div className="flex-1 md:pr-6">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            투약 시간 선택
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                          {intervalOptions.map((option) => {
+                            const isSelected =
+                              selectedIntervalOption[card.id] === option.label;
+                            return (
+                              <Button
+                                key={`${card.id}-${option.label}`}
+                                variant={isSelected ? "default" : "outline"}
+                                size="default"
+                                onClick={() =>
+                                  handleIntervalSelect(card.id, option.label)
+                                }
+                                className={`${
+                                  isSelected
+                                    ? "bg-black text-white hover:bg-gray-800"
+                                    : ""
+                                } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                title={option.helper}
+                                aria-pressed={isSelected}
+                              >
+                                <span>{option.label}</span>
+                                <span className="text-xs font-normal text-muted-foreground">
+                                  {option.helper}
+                                </span>
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          직접 입력 (시간)
+                        </span>
+                        <div className="flex flex-col items-stretch gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
+                            placeholder="시간 (h)"
+                            value={customIntervalInputs[card.id] ?? ""}
+                            onChange={(e) =>
+                              handleCustomIntervalChange(card.id, e.target.value)
+                            }
+                          />
+                          <div className="flex">
+                            <Button
+                              className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
+                              onClick={() => handleCustomIntervalApply(card.id)}
+                            >
+                              확인
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : card.type === "dosage" ? (
                 // 투약 용량 조정 카드 버튼 - API 기반 제안값 사용 (여러 줄로 표시)
 
                 <>
@@ -2715,30 +3277,26 @@ const PKSimulation = ({
                 latestAdministration={(() => {
                   if (!latestAdministration) return null;
                   
+                  let updated = { ...latestAdministration };
+                  
                   // 용량 조정 카드: 선택된 dose 반영
                   if (isDosageCard && selectedDosage[card.id]) {
                     const selectedDose = parseFloat(selectedDosage[card.id].replace(/[^0-9.]/g, ""));
                     if (!isNaN(selectedDose)) {
-                      return {
-                        ...latestAdministration,
-                        dose: selectedDose
-                      };
+                      updated.dose = selectedDose;
                     }
                   }
                   
-                  // 간격 조정 카드: 선택된 intervalHours 반영
-                  if (card.type === "interval" && selectedIntervalOption[card.id]) {
+                  // 간격 조정 카드 또는 용량&시간 조정 카드: 선택된 intervalHours 반영
+                  if ((card.type === "interval" || card.type === "dosageAndInterval") && selectedIntervalOption[card.id]) {
                     const selectedInterval = getIntervalHours(selectedIntervalOption[card.id]);
                     if (typeof selectedInterval === "number" && !Number.isNaN(selectedInterval)) {
-                      return {
-                        ...latestAdministration,
-                        intervalHours: selectedInterval
-                      };
+                      updated.intervalHours = selectedInterval;
                     }
                   }
                   
                   // 선택된 옵션이 없으면 원래 값 반환
-                  return latestAdministration;
+                  return updated;
                 })()}
                 // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
                 isEmptyChart={
@@ -2750,7 +3308,9 @@ const PKSimulation = ({
                 selectedButton={
                   card.type === "interval"
                     ? selectedIntervalOption[card.id]
-                    : selectedDosage[card.id]
+                    : card.type === "dosageAndInterval"
+                      ? `${selectedDosage[card.id] || ""} / ${selectedIntervalOption[card.id] || ""}`
+                      : selectedDosage[card.id]
                 }
               />
             </div>
@@ -2769,7 +3329,7 @@ const PKSimulation = ({
                 {concurrencyNotice}
               </div>
             )}
-            <div className="flex justify-center gap-4">
+            <div className="flex justify-center gap-4 flex-wrap">
               <Button
                 onClick={handleDosageAdjustment}
                 className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
@@ -2788,6 +3348,12 @@ const PKSimulation = ({
               >
                 투약 시간 조정
               </Button>
+              <Button
+                onClick={handleDosageAndIntervalAdjustment}
+                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+              >
+                용량&시간 조정
+              </Button>
             </div>
           </div>
         </div>
@@ -2805,6 +3371,23 @@ const PKSimulation = ({
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancelDelete}>취소</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete}>삭제</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 차트 데이터가 너무 방대할 때 안내 모달 */}
+      <AlertDialog open={showChartDataTooLargeAlert} onOpenChange={setShowChartDataTooLargeAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>차트 그리기 불가</AlertDialogTitle>
+            <AlertDialogDescription>
+              데이터가 방대하여 차트를 그릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowChartDataTooLargeAlert(false)}>
+              확인
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
