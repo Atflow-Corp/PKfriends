@@ -348,6 +348,7 @@ const TDMReportPage = () => {
               predictedMax={tdmResults?.predictedMax}
               predictedTrough={tdmResults?.predictedTrough}
               commentTitle="TDM friends Comments"
+              showSteadyStateComment={true}
             />
           </CardContent>
           {/* 두 번째 카드: 현용법 결과과 */}

@@ -219,7 +219,7 @@ const DosageChart = ({
 
             <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
               <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
-                예측 결과
+                용법 변경 시
               </span>
               <div className="flex flex-col gap-1">
                 <div className="flex items-baseline gap-2">
@@ -353,6 +353,9 @@ const DosageChart = ({
           predictedMax={predictedMax}
           predictedTrough={predictedTrough}
           commentTitle="TDM friends Comments"
+          currentResultTitle="현 용법 유지 시"
+          predictedResultTitle="용법 변경 시"
+          showSteadyStateComment={false}
         />
       )}
 

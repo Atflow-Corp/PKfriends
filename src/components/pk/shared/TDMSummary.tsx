@@ -23,6 +23,9 @@ interface TDMSummaryProps {
   predictedMax?: number | null;
   predictedTrough?: number | null;
   commentTitle?: string; // "TDM friends Comments" 또는 "용법 조정 결과"
+  currentResultTitle?: string; // 좌측 카드 제목 (기본: 현 시점 약동학 분석 결과)
+  predictedResultTitle?: string; // 우측 카드 제목 (기본: 현 용법의 항정상태 예측 결과)
+  showSteadyStateComment?: boolean; // 항정상태 조건부 문장 표시 여부 (기본: true)
 }
 
 const TDMSummary = ({
@@ -38,7 +41,10 @@ const TDMSummary = ({
   predictedAUC,
   predictedMax,
   predictedTrough,
-  commentTitle = "TDM friends Comments"
+  commentTitle = "TDM friends Comments",
+  currentResultTitle = "현 시점 약동학 분석 결과",
+  predictedResultTitle = "현 용법의 항정상태 예측 결과",
+  showSteadyStateComment = true
 }: TDMSummaryProps) => {
   const concentrationUnit = getConcentrationUnit(selectedDrug);
   const targetValue = getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug);
@@ -75,7 +81,7 @@ const TDMSummary = ({
         {/* 최신 혈중 약물 농도 */}
         <Card className="bg-white border-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">투약 결과</CardTitle>
+            <CardTitle className="text-lg text-gray-800">{currentResultTitle}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
             <div className="flex justify-between">
@@ -96,7 +102,7 @@ const TDMSummary = ({
         {/* 예측 약물 농도 */}
         <Card className="bg-white border-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">예측 결과</CardTitle>
+            <CardTitle className="text-lg text-gray-800">{predictedResultTitle}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
             <div className="flex justify-between">
@@ -123,17 +129,19 @@ const TDMSummary = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
-          {/* 항정상태 조건부 문장 */}
-          <div className="leading-relaxed">
-            {withinRange ? (
-              <p className="text-base font-bold text-black dark:text-white">현재 항정상태에 도달하였습니다.</p>
-            ) : (
-              <>
-                <p className="text-base font-bold text-black dark:text-white">항정 상태에 아직 도달하지 않은 상태입니다.</p>
-                <p className="text-base font-bold text-black dark:text-white">항정상태에 도달한 후 약동학 파라미터를 산출할 때 정확도가 올라갑니다.</p>
-              </>
-            )}
-          </div>
+          {/* 항정상태 조건부 문장 (옵션) */}
+          {showSteadyStateComment && (
+            <div className="leading-relaxed">
+              {withinRange ? (
+                <p className="text-base font-bold text-black dark:text-white">현재 항정상태에 도달하였습니다.</p>
+              ) : (
+                <>
+                  <p className="text-base font-bold text-black dark:text-white">항정 상태에 아직 도달하지 않은 상태입니다.</p>
+                  <p className="text-base font-bold text-black dark:text-white">항정상태에 도달한 후 약동학 파라미터를 산출할 때 정확도가 올라갑니다.</p>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex items-start gap-2">
             <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
             <p className="leading-relaxed">
