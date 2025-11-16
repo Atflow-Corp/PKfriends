@@ -2,10 +2,25 @@
 
 export interface SimulationDataPoint {
   time: number;
-  predicted: number;
+  /**
+   * 예측 농도
+   * - 값이 없을 때는 null로 두어 Chart.js가 선을 끊도록 처리한다.
+   */
+  predicted: number | null;
+  /**
+   * 실제 관측 농도 (채혈 값)
+   */
   observed: number | null;
-  controlGroup?: number;
-  currentMethod?: number;
+  /**
+   * 인구집단 평균(대조군)
+   * - 값이 없을 때는 null
+   */
+  controlGroup?: number | null;
+  /**
+   * 환자 현용법 시뮬레이션 결과
+   * - 값이 없을 때는 null
+   */
+  currentMethod?: number | null;
 }
 
 export interface DrugAdministration {
@@ -92,6 +107,27 @@ export const calculateLastActualDoseTime = (
 };
 
 /**
+ * 현재 시각 기준 시간(offset, hours) 계산
+ * - X축이 첫 투약 시각을 0h로 잡고 있기 때문에,
+ *   첫 투약 시각 기준으로 현재 시각까지의 경과 시간(시간)을 반환
+ */
+export const calculateCurrentTimeOffset = (
+  drugAdministrations: DrugAdministration[],
+  selectedDrug?: string
+): number | null => {
+  if (!drugAdministrations || drugAdministrations.length === 0) return null;
+
+  const firstDoseDateTime = getFirstDoseDateTime(drugAdministrations, selectedDrug);
+  const now = new Date();
+  const diffHours = (now.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
+
+  // 아직 첫 투약 전인 경우에는 기준선을 0h에 맞추기 위해 0으로 클램프
+  if (diffHours < 0) return 0;
+
+  return diffHours;
+};
+
+/**
  * Series 데이터를 SimulationDataPoint 배열로 병합
  */
 export const mergeSeries = (
@@ -112,10 +148,12 @@ export const mergeSeries = (
     if (existing) return existing;
     const created: SimulationDataPoint = { 
       time: key, 
-      predicted: 0, 
+      // 기본값을 0이 아닌 null로 두어,
+      // 해당 시점에 값이 없는 경우 차트 선이 0으로 떨어지지 않고 끊어지도록 한다.
+      predicted: null, 
       observed: null, 
-      controlGroup: 0, 
-      currentMethod: 0 
+      controlGroup: null, 
+      currentMethod: null 
     };
     map.set(key, created);
     return created;
@@ -124,11 +162,11 @@ export const mergeSeries = (
   // API returns values in correct units already (Vancomycin: mg/L, Cyclosporin: ng/mL)
   for (const p of ipredSeries || []) {
     const pt = getPoint(p.time);
-    pt.predicted = p.value ?? 0;
+    pt.predicted = p.value ?? null;
   }
   for (const p of predSeries || []) {
     const pt = getPoint(p.time);
-    pt.controlGroup = p.value ?? 0;
+    pt.controlGroup = p.value ?? null;
   }
   for (const p of observedSeries || []) {
     const pt = getPoint(p.time);
@@ -136,7 +174,7 @@ export const mergeSeries = (
   }
   for (const p of currentMethodSeries || []) {
     const pt = getPoint(p.time);
-    pt.currentMethod = p.value ?? 0;
+    pt.currentMethod = p.value ?? null;
   }
 
   return Array.from(map.values()).sort((a, b) => a.time - b.time);

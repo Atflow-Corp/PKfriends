@@ -7,6 +7,7 @@ import {
   mergeSeries,
   calculateDataTimeExtents,
   calculateLastActualDoseTime,
+  calculateCurrentTimeOffset,
   calculateAverageConcentration,
   getTdmTargetValue,
   isWithinTargetRange
@@ -99,9 +100,9 @@ const DosageChart = ({
     [ipredSeries, predSeries, observedSeries, currentMethodSeries]
   );
 
-  // 마지막 투약 시간 계산
-  const lastActualDoseTime = useMemo(() => 
-    calculateLastActualDoseTime(drugAdministrations, selectedDrug),
+  // 현재 시점 기준 시간(offset, hours) 계산
+  const lastActualDoseTime = useMemo(
+    () => calculateCurrentTimeOffset(drugAdministrations, selectedDrug),
     [drugAdministrations, selectedDrug]
   );
 
@@ -266,7 +267,7 @@ const DosageChart = ({
 
       {/* 범례 */}
       {!isEmptyChart && (
-        <div className="flex justify-center gap-6 mb-4">
+        <div className="flex justify-center flex-wrap gap-6 mb-4">
           {/* 환자의 현용법 */}
           {currentMethodSeries && currentMethodSeries.length > 0 && (
             <div className="flex items-center gap-2">
@@ -293,6 +294,8 @@ const DosageChart = ({
               <span className="text-sm text-gray-600">실제 혈중 농도</span>
             </div>
           )}
+          
+          {/* 현재 시점 기준선 - 차트에만 표시, 범례에서는 제거 */}
           
           {/* 평균 농도 */}
           {!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' && (

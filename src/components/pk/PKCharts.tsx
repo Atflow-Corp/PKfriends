@@ -8,6 +8,7 @@ import {
   mergeSeries,
   calculateDataTimeExtents,
   calculateLastActualDoseTime,
+  calculateCurrentTimeOffset,
   calculateAverageConcentration,
   getTdmTargetValue,
   isWithinTargetRange
@@ -72,9 +73,9 @@ const PKCharts = ({
     [ipredSeries, predSeries, observedSeries]
   );
 
-  // 마지막 투약 시간 계산
-  const lastActualDoseTime = useMemo(() => 
-    calculateLastActualDoseTime(drugAdministrations, selectedDrug),
+  // 현재 시점 기준 시간(offset, hours) 계산
+  const lastActualDoseTime = useMemo(
+    () => calculateCurrentTimeOffset(drugAdministrations, selectedDrug),
     [drugAdministrations, selectedDrug]
   );
 
@@ -123,7 +124,7 @@ const PKCharts = ({
       {
         label: '대조군',
         dataKey: 'controlGroup',
-        borderColor: '#f97316',
+        borderColor: '#d1d5db',
         borderWidth: 2
       },
       {
@@ -232,13 +233,13 @@ const PKCharts = ({
       </div>
 
       {/* 범례 */}
-      <div className="flex justify-center gap-6 mb-4">
+      <div className="flex justify-center flex-wrap gap-6 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
+          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현 용법</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-0.5 bg-orange-500"></div>
+          <div className="w-8 h-0.5 bg-gray-300"></div>
           <span className="text-sm text-gray-600">인구집단 평균</span>
         </div>
         <div className="flex items-center gap-2">
@@ -276,7 +277,7 @@ const PKCharts = ({
 
       {/* 그래프 해석 가이드 */}
       <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mt-6">
-        <h3 className="font-semibold text-gray-800 dark:text-white mb-3">그래프 해석 Tip</h3>
+        <h3 className="font-semibold text-gray-800 dark:text-white mb-3">그래프 해석 Tip - 임의 작성된 내용입니다.</h3>
         <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
           {selectedDrug === 'Vancomycin' ? (
             <>

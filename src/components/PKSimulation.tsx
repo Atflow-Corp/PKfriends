@@ -713,51 +713,38 @@ const PKSimulation = ({
       
       setCardTdmChartData((prev) => ({ ...prev, [cardId]: toChartData(cached.data, cached.dataset || []) }));
 
-      const currentMethodData = (
-        (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-      )
-        .map((p) => ({
-          time: Number(p.time) || 0,
-          value: Number(p.IPRED ?? 0) || 0,
-        }))
-        .filter((p) => p.time >= 0 && p.time <= 72);
-
-        setCardTdmExtraSeries((prev) => ({
-          ...prev,
-          [cardId]: {
-            ipredSeries: (
-              (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-            )
-
+      // 캐시를 사용할 때는 baseline(현 용법) 시리즈는 유지하고,
+      // 용법 조정 결과(ipred/pred/observed)만 갱신한다.
+      setCardTdmExtraSeries((prev) => ({
+        ...prev,
+        [cardId]: {
+          ipredSeries: (
+            (cached.data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+          )
             .map((p) => ({
               time: Number(p.time) || 0,
               value: Number(p.IPRED ?? 0) || 0,
             }))
-
             .filter((p) => p.time >= 0),
 
-            predSeries: (
-              (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
-            )
-
+          predSeries: (
+            (cached.data?.PRED_CONC as ConcentrationPoint[] | undefined) || []
+          )
             .map((p) => ({
               time: Number(p.time) || 0,
               value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
             }))
-
             .filter((p) => p.time >= 0),
 
-            observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
-
+          observedSeries: ((cached.dataset as TdmDatasetRow[] | undefined) || [])
             .filter((r) => r.EVID === 0 && r.DV != null)
-
             .map((r) => ({ time: Number(r.TIME) || 0, value: Number(r.DV) }))
-
             .filter((p) => p.time >= 0),
 
-            currentMethodSeries: currentMethodData,
-          },
-        }));
+          // 현 용법(currentMethodSeries)은 loadCurrentMethodForCard에서 한 번만 설정하고 유지
+          currentMethodSeries: prev[cardId]?.currentMethodSeries || [],
+        },
+      }));
 
         // 로딩 종료
         setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
@@ -999,7 +986,7 @@ const PKSimulation = ({
     }
     if (selectedDrug === "Cyclosporin") {
       return [
-        25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300,
+        25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350,
       ];
     }
     return [];
@@ -1339,15 +1326,8 @@ const PKSimulation = ({
           [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
         }));
 
-        const currentMethodData = (
-          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.IPRED ?? 0) || 0,
-          }))
-          .filter((p) => p.time >= 0 && p.time <= 72);
-
+        // 용량 조정 시나리오에서는 baseline(현 용법) 시리즈는 유지하고,
+        // 용법 조정 결과만 ipred/pred/observed에 반영한다.
         setCardTdmExtraSeries((prev) => ({
           ...prev,
           [cardId]: {
@@ -1373,7 +1353,7 @@ const PKSimulation = ({
               }))
               .filter((p) => p.time >= 0),
 
-            currentMethodSeries: currentMethodData,
+            currentMethodSeries: prev[cardId]?.currentMethodSeries || [],
           },
         }));
         
@@ -1548,15 +1528,6 @@ const PKSimulation = ({
           [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
         }));
 
-        const currentMethodData = (
-          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.IPRED ?? 0) || 0,
-          }))
-          .filter((p) => p.time >= 0 && p.time <= 72);
-
         setCardTdmExtraSeries((prev) => ({
           ...prev,
           [cardId]: {
@@ -1579,7 +1550,9 @@ const PKSimulation = ({
                 value: Number(r.DV),
               }))
               .filter((p) => p.time >= 0),
-            currentMethodSeries: currentMethodData,
+            // 현 용법(currentMethodSeries)은 baseline으로 유지하고,
+            // 용법 조정 결과는 ipred/pred/observed에만 반영
+            currentMethodSeries: prev[cardId]?.currentMethodSeries || [],
           },
         }));
         
@@ -1644,15 +1617,6 @@ const PKSimulation = ({
           [cardId]: toChartData(data, (body.dataset as TdmDatasetRow[]) || []),
         }));
 
-        const currentMethodData = (
-          (data?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
-        )
-          .map((p) => ({
-            time: Number(p.time) || 0,
-            value: Number(p.IPRED ?? 0) || 0,
-          }))
-          .filter((p) => p.time >= 0 && p.time <= 72);
-
         setCardTdmExtraSeries((prev) => ({
           ...prev,
           [cardId]: {
@@ -1675,7 +1639,9 @@ const PKSimulation = ({
                 value: Number(r.DV),
               }))
               .filter((p) => p.time >= 0),
-            currentMethodSeries: currentMethodData,
+            // 현 용법(currentMethodSeries)은 baseline으로 유지하고,
+            // 용법 조정 결과는 ipred/pred/observed에만 반영
+            currentMethodSeries: prev[cardId]?.currentMethodSeries || [],
           },
         }));
         
@@ -1745,7 +1711,8 @@ const PKSimulation = ({
             time: Number(p.time) || 0,
             value: Number(p.IPRED ?? 0) || 0,
           }))
-          .filter((p) => p.time >= 0 && p.time <= 72);
+          // baseline 현 용법은 전체 예측 기간을 사용하고, 음수 시간만 제거
+          .filter((p) => p.time >= 0);
 
         // 현용법 시리즈 데이터 저장
         const observedSeries = ((body.dataset as TdmDatasetRow[]) || [])
