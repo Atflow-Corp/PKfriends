@@ -243,12 +243,26 @@ const TDMLineChart = ({
             borderWidth: 0
           } : undefined,
           lastDose: (lastActualDoseTime != null) ? {
-            type: 'line', 
-            xMin: lastActualDoseTime, 
-            xMax: lastActualDoseTime, 
-            borderColor: '#ff6b6b', 
-            borderWidth: 2, 
-            borderDash: [5, 5]
+            type: 'line',
+            xMin: lastActualDoseTime,
+            xMax: lastActualDoseTime,
+            borderColor: '#ff6b6b',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: 'now',
+              position: 'end',
+              backgroundColor: 'rgba(254,202,202,0.9)', // red-200 계열 배경
+              color: '#b91c1c', // red 계열 폰트 색
+              font: {
+                size: 12, // 기존보다 한 단계 크게
+                weight: 'bold'
+              },
+              padding: 4,
+              xAdjust: -20, // 선 오른쪽으로 약간 이동
+              yAdjust: 0
+            }
           } : undefined
         }
       },

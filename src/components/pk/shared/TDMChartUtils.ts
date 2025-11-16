@@ -92,6 +92,27 @@ export const calculateLastActualDoseTime = (
 };
 
 /**
+ * 현재 시각 기준 시간(offset, hours) 계산
+ * - X축이 첫 투약 시각을 0h로 잡고 있기 때문에,
+ *   첫 투약 시각 기준으로 현재 시각까지의 경과 시간(시간)을 반환
+ */
+export const calculateCurrentTimeOffset = (
+  drugAdministrations: DrugAdministration[],
+  selectedDrug?: string
+): number | null => {
+  if (!drugAdministrations || drugAdministrations.length === 0) return null;
+
+  const firstDoseDateTime = getFirstDoseDateTime(drugAdministrations, selectedDrug);
+  const now = new Date();
+  const diffHours = (now.getTime() - firstDoseDateTime.getTime()) / (1000 * 60 * 60);
+
+  // 아직 첫 투약 전인 경우에는 기준선을 0h에 맞추기 위해 0으로 클램프
+  if (diffHours < 0) return 0;
+
+  return diffHours;
+};
+
+/**
  * Series 데이터를 SimulationDataPoint 배열로 병합
  */
 export const mergeSeries = (
