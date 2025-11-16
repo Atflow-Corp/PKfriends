@@ -188,7 +188,7 @@ const PKCharts = ({
 
         <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
           <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
-            예측 결과
+            현 용법의 항정상태 예측 결과
           </span>
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline gap-2">
@@ -239,7 +239,7 @@ const PKCharts = ({
         </div>
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-orange-500"></div>
-          <span className="text-sm text-gray-600">일반 대조군</span>
+          <span className="text-sm text-gray-600">인구집단 평균</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
