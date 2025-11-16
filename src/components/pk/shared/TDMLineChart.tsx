@@ -297,6 +297,8 @@ const TDMLineChart = ({
         min: dataTimeExtents.min,
         max: dataTimeExtents.max,
         ticks: { 
+          // 첫 투약 시점을 0h로 보고, 24시간 단위로 틱을 표시
+          stepSize: 24,
           callback: (v) => formatDateTimeForTick(Number(v), drugAdministrations, selectedDrug) 
         }
       },
