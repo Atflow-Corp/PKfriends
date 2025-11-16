@@ -3351,9 +3351,11 @@ const PKSimulation = ({
                 targetMin={getTargetBand().min}
                 targetMax={getTargetBand().max}
                 drugAdministrations={drugAdministrations}
-                recentAUC={tdmResult?.AUC_24_before}
-                recentMax={tdmResult?.CMAX_before}
-                recentTrough={tdmResult?.CTROUGH_before}
+                // DosageChart의 "현 용법 유지 시" 카드는 PKCharts의 "현 용법의 항정상태 예측 결과"와 동일한 값을 사용
+                recentAUC={tdmResult?.AUC_24_after}
+                recentMax={tdmResult?.CMAX_after}
+                recentTrough={tdmResult?.CTROUGH_after}
+                // "용법 변경 시" 카드는 카드별 조정 후 결과를 사용
                 predictedAUC={cardTdmResults[card.id]?.AUC_24_after}
                 predictedMax={cardTdmResults[card.id]?.CMAX_after}
                 predictedTrough={cardTdmResults[card.id]?.CTROUGH_after}
