@@ -232,10 +232,10 @@ const PKCharts = ({
       </div>
 
       {/* 범례 */}
-      <div className="flex justify-center gap-6 mb-4">
+      <div className="flex justify-center flex-wrap gap-6 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현용법</span>
+          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현 용법</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-orange-500"></div>
@@ -245,6 +245,15 @@ const PKCharts = ({
           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
           <span className="text-sm text-gray-600">실제 혈중 농도</span>
         </div>
+        {lastActualDoseTime != null && (
+          <div className="flex items-center gap-2">
+            <div
+              className="w-8 h-0.5 border-dashed border-t-2"
+              style={{ borderColor: '#ff6b6b' }}
+            ></div>
+            <span className="text-sm text-gray-600">예측 기준선</span>
+          </div>
+        )}
         {!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' && (
           <div className="flex items-center gap-2">
             <div className="w-8 h-0.5 border-dashed border-t-2 border-gray-500"></div>

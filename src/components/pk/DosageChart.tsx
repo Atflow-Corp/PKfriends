@@ -266,7 +266,7 @@ const DosageChart = ({
 
       {/* 범례 */}
       {!isEmptyChart && (
-        <div className="flex justify-center gap-6 mb-4">
+        <div className="flex justify-center flex-wrap gap-6 mb-4">
           {/* 환자의 현용법 */}
           {currentMethodSeries && currentMethodSeries.length > 0 && (
             <div className="flex items-center gap-2">
@@ -291,6 +291,17 @@ const DosageChart = ({
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-red-500"></div>
               <span className="text-sm text-gray-600">실제 혈중 농도</span>
+            </div>
+          )}
+          
+          {/* 예측 기준선 */}
+          {lastActualDoseTime != null && (
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-0.5 border-dashed border-t-2"
+                style={{ borderColor: '#ff6b6b' }}
+              ></div>
+              <span className="text-sm text-gray-600">예측 기준선</span>
             </div>
           )}
           
