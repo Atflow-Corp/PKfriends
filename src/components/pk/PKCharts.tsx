@@ -73,9 +73,15 @@ const PKCharts = ({
     [ipredSeries, predSeries, observedSeries]
   );
 
-  // 현재 시점 기준 시간(offset, hours) 계산
-  const lastActualDoseTime = useMemo(
+  // 현재 시간 계산 (빨간색 점선 "now" 표시용)
+  const currentTime = useMemo(
     () => calculateCurrentTimeOffset(drugAdministrations, selectedDrug),
+    [drugAdministrations, selectedDrug]
+  );
+
+  // 마지막 투약 기록 시간 계산 (파란색 점선 "last dosage" 표시용)
+  const lastActualDoseTime = useMemo(
+    () => calculateLastActualDoseTime(drugAdministrations, selectedDrug),
     [drugAdministrations, selectedDrug]
   );
 
@@ -271,6 +277,8 @@ const PKCharts = ({
         lastActualDoseTime={lastActualDoseTime}
         drugAdministrations={drugAdministrations}
         averageConcentration={averageConcentration}
+        currentTime={currentTime}
+        lastDoseColor="#3b82f6" // 파란색 점선
       />
 
       <div className="border-t border-gray-200 dark:border-gray-700 my-8"></div>

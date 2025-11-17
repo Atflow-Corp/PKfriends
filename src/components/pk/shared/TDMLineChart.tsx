@@ -314,7 +314,7 @@ const TDMLineChart = ({
               display: true,
               content: 'last dose',
               position: 'end',
-              backgroundColor: lastDoseColor === '#3b82f6' ? 'rgba(59,130,246,0.9)' : 'rgba(254,202,202,0.9)',
+              backgroundColor: lastDoseColor === '#3b82f6' ? 'rgba(59,130,246,0.3)' : 'rgba(254,202,202,0.3)',
               color: lastDoseColor === '#3b82f6' ? '#1e40af' : '#b91c1c',
               font: {
                 size: 12,
