@@ -202,7 +202,7 @@ const DosageChart = ({
     // 평균 농도 (Vancomycin AUC 모드가 아닐 때)
     if (!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number') {
       result.push({
-        label: '평균 농도',
+        label: '용법조정 평균 농도',
         dataKey: 'averageLine',
         borderColor: '#6b7280',
         borderDash: [5, 5],
@@ -326,7 +326,7 @@ const DosageChart = ({
           {!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' && (
             <div className="flex items-center gap-2">
               <div className="w-8 h-0.5 border-dashed border-t-2 border-gray-500"></div>
-              <span className="text-sm text-gray-600">평균 농도</span>
+              <span className="text-sm text-gray-600">용법 조정 평균 농도</span>
             </div>
           )}
           

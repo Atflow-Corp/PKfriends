@@ -178,13 +178,23 @@ const TDMLineChart = ({
         if (ds.dataKey === 'averageLine' && averageConcentration !== null && averageConcentration !== undefined) {
           dataPoints = data.map(d => ({ x: d.time, y: averageConcentration }));
         } else {
-          dataPoints = data.map(d => ({ x: d.time, y: d[ds.dataKey] }));
+          // 실제 혈중농도는 null이 아닌 포인트만 포함
+          if (ds.dataKey === 'observed') {
+            dataPoints = data
+              .filter(d => d.observed !== null && typeof d.observed === 'number' && !isNaN(d.observed))
+              .map(d => ({ x: d.time, y: d.observed! }));
+          } else {
+            dataPoints = data.map(d => ({ x: d.time, y: d[ds.dataKey] }));
+          }
         }
 
-        // 너무 많은 포인트일 때 샘플링 적용 (2000개 제한)
-        const sampledPoints = sampleData(dataPoints, 2000);
+        // 실제 혈중농도 데이터셋은 샘플링하지 않음 (모든 포인트가 중요함)
+        // 다른 데이터셋은 너무 많은 포인트일 때 샘플링 적용 (2000개 제한)
+        const sampledPoints = ds.dataKey === 'observed' 
+          ? dataPoints 
+          : sampleData(dataPoints, 2000);
         
-        if (dataPoints.length > 2000) {
+        if (ds.dataKey !== 'observed' && dataPoints.length > 2000) {
           console.warn(`[TDMLineChart] Dataset "${ds.label}" has ${dataPoints.length} points, sampling to ${sampledPoints.length} points for performance.`);
         }
 
