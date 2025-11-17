@@ -46,6 +46,8 @@ interface TDMLineChartProps {
   lastActualDoseTime?: number | null;
   drugAdministrations: DrugAdministration[];
   averageConcentration?: number | null;
+  currentTime?: number | null; // 현재 시간 (빨간색 점선 "now" 표시용)
+  lastDoseColor?: string; // 마지막 투약 시간 선 색상 (기본값: 빨간색)
 }
 
 const TDMLineChart = ({
@@ -57,7 +59,9 @@ const TDMLineChart = ({
   dataTimeExtents,
   lastActualDoseTime,
   drugAdministrations,
-  averageConcentration
+  averageConcentration,
+  currentTime,
+  lastDoseColor = '#ff6b6b' // 기본값: 빨간색
 }: TDMLineChartProps) => {
   const chartRef = useRef<ChartJS<'line'> | null>(null);
 
@@ -140,8 +144,34 @@ const TDMLineChart = ({
     chart.update('none');
   }, [dataTimeExtents]);
 
+  // 데이터 샘플링 함수 (너무 많은 포인트일 때 성능 최적화)
+  const sampleData = useCallback((points: Array<{ x: number; y: number | null }>, maxPoints: number = 2000) => {
+    if (points.length <= maxPoints) return points;
+    
+    // 간단한 균등 샘플링
+    const step = Math.ceil(points.length / maxPoints);
+    const sampled: Array<{ x: number; y: number | null }> = [];
+    
+    for (let i = 0; i < points.length; i += step) {
+      sampled.push(points[i]);
+    }
+    
+    // 마지막 포인트는 항상 포함
+    if (sampled[sampled.length - 1] !== points[points.length - 1]) {
+      sampled.push(points[points.length - 1]);
+    }
+    
+    return sampled;
+  }, []);
+
   // Chart.js 데이터셋 생성
   const chartData = useMemo(() => {
+    // 데이터 포인트 수 확인 및 로깅
+    const totalPoints = data.length;
+    if (totalPoints > 1000) {
+      console.warn(`[TDMLineChart] Large dataset detected: ${totalPoints} points. This may cause performance issues.`);
+    }
+    
     return {
       datasets: datasets.map(ds => {
         let dataPoints;
@@ -151,9 +181,16 @@ const TDMLineChart = ({
           dataPoints = data.map(d => ({ x: d.time, y: d[ds.dataKey] }));
         }
 
+        // 너무 많은 포인트일 때 샘플링 적용 (2000개 제한)
+        const sampledPoints = sampleData(dataPoints, 2000);
+        
+        if (dataPoints.length > 2000) {
+          console.warn(`[TDMLineChart] Dataset "${ds.label}" has ${dataPoints.length} points, sampling to ${sampledPoints.length} points for performance.`);
+        }
+
         return {
           label: ds.label,
-          data: dataPoints,
+          data: sampledPoints,
           borderColor: ds.borderColor,
           backgroundColor: ds.backgroundColor ?? 'transparent',
           pointRadius: ds.pointRadius ?? 0,
@@ -165,7 +202,7 @@ const TDMLineChart = ({
         };
       })
     };
-  }, [data, datasets, averageConcentration]);
+  }, [data, datasets, averageConcentration, sampleData]);
 
   // Chart.js 옵션
   const chartOptions = useMemo<ChartOptions<'line'>>(() => ({
@@ -242,10 +279,11 @@ const TDMLineChart = ({
             backgroundColor: 'rgba(59,130,246,0.08)', 
             borderWidth: 0
           } : undefined,
-          lastDose: (lastActualDoseTime != null) ? {
+          // 현재 시간 (빨간색 점선 "now")
+          currentTime: (currentTime != null) ? {
             type: 'line',
-            xMin: lastActualDoseTime,
-            xMax: lastActualDoseTime,
+            xMin: currentTime,
+            xMax: currentTime,
             borderColor: '#ff6b6b',
             borderWidth: 2,
             borderDash: [5, 5],
@@ -256,11 +294,34 @@ const TDMLineChart = ({
               backgroundColor: 'rgba(254,202,202,0.9)', // red-200 계열 배경
               color: '#b91c1c', // red 계열 폰트 색
               font: {
-                size: 12, // 기존보다 한 단계 크게
+                size: 12,
                 weight: 'bold'
               },
               padding: 4,
-              xAdjust: -20, // 선 오른쪽으로 약간 이동
+              xAdjust: 20,
+              yAdjust: 0
+            }
+          } : undefined,
+          // 마지막 투약 기록 (파란색 점선 "last dosage")
+          lastDose: (lastActualDoseTime != null) ? {
+            type: 'line',
+            xMin: lastActualDoseTime,
+            xMax: lastActualDoseTime,
+            borderColor: lastDoseColor,
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: 'last dose',
+              position: 'end',
+              backgroundColor: lastDoseColor === '#3b82f6' ? 'rgba(59,130,246,0.9)' : 'rgba(254,202,202,0.9)',
+              color: lastDoseColor === '#3b82f6' ? '#1e40af' : '#b91c1c',
+              font: {
+                size: 12,
+                weight: 'bold'
+              },
+              padding: 4,
+              xAdjust: -40,
               yAdjust: 0
             }
           } : undefined
@@ -312,7 +373,7 @@ const TDMLineChart = ({
         ticks: { callback: (v) => `${Number(v).toFixed(2)}` }
       }
     }
-  }), [data, selectedDrug, targetMin, targetMax, dataTimeExtents, lastActualDoseTime, drugAdministrations, yMax]);
+  }), [data, selectedDrug, targetMin, targetMax, dataTimeExtents, lastActualDoseTime, currentTime, drugAdministrations, yMax]);
 
   return (
     <div className="mb-2">
