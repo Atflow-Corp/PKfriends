@@ -671,9 +671,19 @@ export const runTdmApi = async (args: {
 
       if (persist && patientId) {
         try {
+          // 저장 전 데이터 크기 체크 (대략 4MB 제한)
+          const dataString = JSON.stringify(data);
+          const dataSize = new Blob([dataString]).size;
+          const maxSize = 4 * 1024 * 1024; // 4MB
+          
+          if (dataSize > maxSize) {
+            console.warn(`TDM result data too large (${(dataSize / 1024 / 1024).toFixed(2)}MB), skipping localStorage save`);
+            return data;
+          }
+
           window.localStorage.setItem(
             `tdmfriends:tdmResult:${patientId}`,
-            JSON.stringify(data)
+            dataString
           );
 
           if (drugName) {
@@ -692,15 +702,51 @@ export const runTdmApi = async (args: {
               data,
             };
             list.push(entry);
-            window.localStorage.setItem(historyKey, JSON.stringify(list));
-            // Also persist latest result per patient+drug
-            window.localStorage.setItem(
-              `tdmfriends:tdmResult:${patientId}:${drugName}`,
-              JSON.stringify(data)
-            );
+            
+            // 히스토리 최대 5개로 제한 (오래된 것부터 삭제)
+            if (list.length > 5) {
+              list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+              list.splice(0, list.length - 5);
+            }
+            
+            try {
+              const historyString = JSON.stringify(list);
+              window.localStorage.setItem(historyKey, historyString);
+              // Also persist latest result per patient+drug
+              window.localStorage.setItem(
+                `tdmfriends:tdmResult:${patientId}:${drugName}`,
+                dataString
+              );
+            } catch (historyError) {
+              // 히스토리 저장 실패 시 오래된 항목 삭제 후 재시도
+              if (historyError instanceof Error && historyError.name === 'QuotaExceededError') {
+                console.warn('localStorage quota exceeded, cleaning old history entries');
+                // 가장 오래된 항목 2개 삭제 후 재시도
+                if (list.length > 2) {
+                  list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                  list.splice(0, 2);
+                  try {
+                    window.localStorage.setItem(historyKey, JSON.stringify(list));
+                    window.localStorage.setItem(
+                      `tdmfriends:tdmResult:${patientId}:${drugName}`,
+                      dataString
+                    );
+                  } catch (retryError) {
+                    console.error("Failed to save TDM history after cleanup", retryError);
+                  }
+                }
+              } else {
+                throw historyError;
+              }
+            }
           }
         } catch (e) {
-          console.error("Failed to save TDM result/history to localStorage", e);
+          // QuotaExceededError인 경우 더 자세한 로그
+          if (e instanceof Error && e.name === 'QuotaExceededError') {
+            console.error("localStorage quota exceeded. Please clear browser storage or reduce data size.", e);
+          } else {
+            console.error("Failed to save TDM result/history to localStorage", e);
+          }
         }
       }
       return data;

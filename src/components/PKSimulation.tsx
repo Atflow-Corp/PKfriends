@@ -705,11 +705,11 @@ const PKSimulation = ({
       // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
       setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.data }));
       
-      // 데이터 크기 체크
-      if (checkChartDataSize(cached.data, cached.dataset || [])) {
-        setShowChartDataTooLargeAlert(true);
-        return;
-      }
+      // 데이터 크기 체크 - 임시로 예외처리 (차트 오류 확인용)
+      // if (checkChartDataSize(cached.data, cached.dataset || [])) {
+      //   setShowChartDataTooLargeAlert(true);
+      //   return;
+      // }
       
       setCardTdmChartData((prev) => ({ ...prev, [cardId]: toChartData(cached.data, cached.dataset || []) }));
 
@@ -1315,11 +1315,11 @@ const PKSimulation = ({
         // 카드별 차트 데이터만 업데이트
         setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
         
-        // 데이터 크기 체크
-        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
-          setShowChartDataTooLargeAlert(true);
-          return;
-        }
+        // 데이터 크기 체크 - 임시로 예외처리 (차트 오류 확인용)
+        // if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+        //   setShowChartDataTooLargeAlert(true);
+        //   return;
+        // }
         
         setCardTdmChartData((prev) => ({
           ...prev,
@@ -1516,12 +1516,12 @@ const PKSimulation = ({
         // 카드별 차트 데이터만 업데이트
         setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
         
-        // 데이터 크기 체크
-        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
-          setShowChartDataTooLargeAlert(true);
-          setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
-          return;
-        }
+        // 데이터 크기 체크 - 임시로 예외처리 (차트 오류 확인용)
+        // if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+        //   setShowChartDataTooLargeAlert(true);
+        //   setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
+        //   return;
+        // }
         
         setCardTdmChartData((prev) => ({
           ...prev,
@@ -1605,12 +1605,12 @@ const PKSimulation = ({
         // 카드별 차트 데이터만 업데이트
         setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
         
-        // 데이터 크기 체크
-        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
-          setShowChartDataTooLargeAlert(true);
-          setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
-          return;
-        }
+        // 데이터 크기 체크 - 임시로 예외처리 (차트 오류 확인용)
+        // if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+        //   setShowChartDataTooLargeAlert(true);
+        //   setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
+        //   return;
+        // }
         
         setCardTdmChartData((prev) => ({
           ...prev,
@@ -1691,11 +1691,11 @@ const PKSimulation = ({
           drugName: selectedDrug,
         })) as TdmApiResponse;
 
-        // 데이터 크기 체크
-        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
-          setShowChartDataTooLargeAlert(true);
-          return;
-        }
+        // 데이터 크기 체크 - 임시로 예외처리 (차트 오류 확인용)
+        // if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+        //   setShowChartDataTooLargeAlert(true);
+        //   return;
+        // }
 
         // 현용법 차트 데이터 저장
         setCardTdmChartData((prev) => ({

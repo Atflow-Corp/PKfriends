@@ -94,15 +94,40 @@ const DosageChart = ({
     return simulationData;
   }, [ipredSeries, predSeries, observedSeries, currentMethodSeries, simulationData, isEmptyChart]);
 
-  // 시간 범위 계산
-  const dataTimeExtents = useMemo(() => 
-    calculateDataTimeExtents(ipredSeries, predSeries, observedSeries, currentMethodSeries),
+  // 기본 시간 범위 계산 (모든 시리즈 기준)
+  const baseTimeExtents = useMemo(
+    () =>
+      calculateDataTimeExtents(
+        ipredSeries,
+        predSeries,
+        observedSeries,
+        currentMethodSeries
+      ),
     [ipredSeries, predSeries, observedSeries, currentMethodSeries]
   );
 
-  // 현재 시점 기준 시간(offset, hours) 계산
-  const lastActualDoseTime = useMemo(
+  // 용법 조정 결과(ipredSeries)가 있는 경우, 그 max time을 기준으로 x축 상한을 맞춘다.
+  const dataTimeExtents = useMemo(() => {
+    if (ipredSeries && ipredSeries.length > 0) {
+      // 큰 배열에서 call stack 초과를 방지하기 위해 reduce 사용
+      const adjMax = ipredSeries.reduce((max, p) => (p.time > max ? p.time : max), ipredSeries[0].time);
+      return {
+        min: baseTimeExtents.min,
+        max: Math.min(baseTimeExtents.max, adjMax),
+      };
+    }
+    return baseTimeExtents;
+  }, [ipredSeries, baseTimeExtents]);
+
+  // 현재 시간 계산 (빨간색 점선 "now" 표시용)
+  const currentTime = useMemo(
     () => calculateCurrentTimeOffset(drugAdministrations, selectedDrug),
+    [drugAdministrations, selectedDrug]
+  );
+
+  // 마지막 투약 기록 시간 계산 (파란색 점선 "last dosage" 표시용)
+  const lastActualDoseTime = useMemo(
+    () => calculateLastActualDoseTime(drugAdministrations, selectedDrug),
     [drugAdministrations, selectedDrug]
   );
 
@@ -337,6 +362,8 @@ const DosageChart = ({
           lastActualDoseTime={lastActualDoseTime}
           drugAdministrations={drugAdministrations}
           averageConcentration={averageConcentration}
+          currentTime={currentTime}
+          lastDoseColor="#3b82f6" // 파란색 점선
         />
       </div>
 

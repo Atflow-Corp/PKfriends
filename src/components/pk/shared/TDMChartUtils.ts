@@ -195,8 +195,14 @@ export const calculateDataTimeExtents = (
   for (const p of observedSeries || []) candidates.push(p.time);
   for (const p of currentMethodSeries || []) candidates.push(p.time);
   
-  const maxSeriesTime = candidates.length > 0 ? Math.max(...candidates) : 72;
-  const minSeriesTime = candidates.length > 0 ? Math.min(...candidates) : 0;
+  // 큰 배열에서 call stack 초과를 방지하기 위해 reduce 사용
+  let maxSeriesTime = 72;
+  let minSeriesTime = 0;
+  
+  if (candidates.length > 0) {
+    maxSeriesTime = candidates.reduce((max, val) => (val > max ? val : max), candidates[0]);
+    minSeriesTime = candidates.reduce((min, val) => (val < min ? val : min), candidates[0]);
+  }
   
   return { min: Math.max(0, minSeriesTime), max: Math.max(24, maxSeriesTime) };
 };
