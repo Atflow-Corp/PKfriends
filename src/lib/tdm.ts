@@ -91,9 +91,15 @@ const inferModelName = (args: {
   const table: unknown = (MODEL_CODE_TABLE as unknown)[drugName];
   if (!table) return undefined;
 
-  // Detect CRRT from saved renal info
+  // Detect CRRT from saved renal info (BloodTestStep에서 입력한 정보)
   const renal = getSelectedRenalInfo(patientId, drugName);
-  const isCRRT = /crrt/i.test(renal?.renalReplacement || "");
+  const isCRRTFromRenal = /crrt/i.test(renal?.renalReplacement || "");
+  
+  // Detect CRRT from PrescriptionStep additionalInfo (PrescriptionStep에서 입력한 정보)
+  const isCRRTFromPrescription = /crrt/i.test(additionalInfo || "");
+  
+  // 둘 중 하나라도 CRRT이면 CRRT로 간주
+  const isCRRT = isCRRTFromRenal || isCRRTFromPrescription;
 
   // Compute within 72h from last dosing time
   const within72h = lastDoseDate
@@ -593,6 +599,7 @@ export type TdmApiMinimal = {
   AUC_24_after?: number;
   CMAX_after?: number;
   CTROUGH_after?: number;
+  Steady_state?: boolean | string;
 };
 
 type TdmHistoryEntry = {

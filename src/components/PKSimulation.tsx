@@ -136,6 +136,7 @@ interface TdmApiResponse extends TdmApiMinimal {
   // Optional meta
   IPRED_CONC?: ConcentrationPoint[];
   PRED_CONC?: ConcentrationPoint[];
+  Steady_state?: boolean | string;
 }
 
 interface TdmDatasetRow {
@@ -2846,6 +2847,7 @@ const PKSimulation = ({
           // 투약기록 데이터
           latestAdministration={latestAdministration}
           drugAdministrations={drugAdministrations}
+          steadyState={tdmResult?.Steady_state}
         />
       </div>
 

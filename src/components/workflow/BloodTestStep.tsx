@@ -18,6 +18,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface BloodTestStepProps {
   patients: Patient[];
@@ -173,6 +181,30 @@ const BloodTestStep = ({
   // 선택된 처방전 사용 (약품명 기준으로 데이터 분리)
   const tdmDrug = selectedPrescription;
 
+  // 신기능 데이터 사용 여부 확인
+  const shouldUseRenalData = () => {
+    if (!selectedPrescription) return true; // 기본값은 사용
+    
+    // 조건1: Cyclosporin인 경우 신기능 데이터 사용 안 함
+    if (selectedPrescription.drugName === "Cyclosporin") {
+      return false;
+    }
+    
+    // 조건2: Vancomycin + Not specified/Korean + CRRT인 경우 신기능 데이터 사용 안 함
+    if (
+      selectedPrescription.drugName === "Vancomycin" &&
+      selectedPrescription.indication === "Not specified/Korean" &&
+      selectedPrescription.additionalInfo === "CRRT"
+    ) {
+      return false;
+    }
+    
+    // 그 외의 경우 신기능 데이터 필수 입력
+    return true;
+  };
+
+  const useRenalData = shouldUseRenalData();
+
   // Persist renal info list per patient & drug in localStorage (hydrate first, then allow writes)
   useEffect(() => {
     if (!selectedPatient || !tdmDrug) return;
@@ -210,6 +242,7 @@ const BloodTestStep = ({
   
   // 모달 상태 추가
   const [showAlertModal, setShowAlertModal] = useState(false);
+  const [showRenalModal, setShowRenalModal] = useState(false);
 
   const patientBloodTests = selectedPatient && tdmDrug
     ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === tdmDrug.drugName)
@@ -224,21 +257,10 @@ const BloodTestStep = ({
   }, [tdmDrug?.drugName]);
 
   const handleAddRenal = () => {
-    // 필수 데이터 입력 체크 (투석여부는 기본값 N이므로 검증에서 제외)
+    // 필수 데이터 입력 체크
     if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) {
-      alert("신기능 데이터의 필수 항목을 모두 입력해주세요. (혈청 크레아티닌, 검사일, 투석여부)");
+      alert("신기능 데이터의 필수 항목을 모두 입력해주세요. (혈청 크레아티닌, 검사일, 계산식)");
       return;
-    }
-    
-    // 투석 여부가 Y일 때 신 대체요법 입력 체크
-    if (renalForm.dialysis === "Y" && !renalForm.renalReplacement.trim()) {
-      alert("신 대체요법을 입력해주세요.");
-      return;
-    }
-    
-    // 신 대체요법이 CRRT일 때만 모달 띄우기
-    if (renalForm.renalReplacement.toUpperCase() === "CRRT") {
-      setShowAlertModal(true);
     }
 
     const newRenalInfo: RenalInfo = {
@@ -261,6 +283,9 @@ const BloodTestStep = ({
       renalReplacement: "",
       isBlack: false
     });
+    
+    // 모달 닫기
+    setShowRenalModal(false);
   };
 
   const handleDeleteRenal = (id: string) => {
@@ -323,8 +348,8 @@ const BloodTestStep = ({
   };
 
   const handleNext = () => {
-    // TDM이 반코마이신일 때 신기능 데이터 필수 입력 검증
-    if (tdmDrug?.drugName === "Vancomycin") {
+    // 신기능 데이터 필수 입력인 경우 검증
+    if (useRenalData) {
       const hasSelectedRenalData = renalInfoList.some(item => item.isSelected);
       if (!hasSelectedRenalData) {
         alert("신기능 데이터를 입력해주세요.");
@@ -403,10 +428,18 @@ const BloodTestStep = ({
           {/* 신기능 데이터 */}
           <Card>
             <CardHeader>
-              <CardTitle>신기능 데이터 ({renalInfoList.length})</CardTitle>
-              <CardDescription>
-                체크박스를 선택하면 해당 신기능 데이터가 시뮬레이션에 반영됩니다.
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <CardTitle>신기능 데이터 ({renalInfoList.length})</CardTitle>
+                  <CardDescription>
+                    체크박스를 선택하면 해당 신기능 데이터가 시뮬레이션에 반영됩니다.
+                  </CardDescription>
+                </div>
+                <Button onClick={() => setShowRenalModal(true)} className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  신규 추가
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* 신기능 데이터 테이블 */}
@@ -419,26 +452,31 @@ const BloodTestStep = ({
                       <TableHead>검사일</TableHead>
                       <TableHead>계산식</TableHead>
                       <TableHead>결과</TableHead>
-                      <TableHead>투석 여부</TableHead>
-                      <TableHead>신 대체요법</TableHead>
                       <TableHead className="w-16">삭제</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* 기본 행 - 신기능 데이터 없음 */}
+                    {/* 기본 행 - 신기능 데이터 없음/필수 */}
                     <TableRow>
                       <TableCell>
                         <Checkbox 
-                          checked={renalInfoList.every(item => !item.isSelected)}
+                          checked={!useRenalData && renalInfoList.every(item => !item.isSelected)}
                           onCheckedChange={(checked) => {
-                            if (checked) {
+                            if (checked && !useRenalData) {
                               setRenalInfoList(renalInfoList.map(item => ({ ...item, isSelected: false })));
                             }
                           }}
+                          disabled={useRenalData} // 신기능 데이터 필수 입력인 경우 체크 해제 불가
                         />
                       </TableCell>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        해당 회차 TDM은 신기능 데이터를 사용하지 않습니다
+                      <TableCell 
+                        colSpan={4} 
+                        className={`text-center ${!useRenalData && renalInfoList.every(item => !item.isSelected) ? 'text-black' : 'text-muted-foreground'}`}
+                      >
+                        {useRenalData 
+                          ? "해당 TDM은 신기능 데이터를 필수 입력해야 합니다"
+                          : "해당 TDM은 신기능 데이터를 사용하지 않습니다"
+                        }
                       </TableCell>
                       <TableCell></TableCell>
                     </TableRow>
@@ -456,13 +494,6 @@ const BloodTestStep = ({
                         <TableCell>{renalInfo.date}</TableCell>
                         <TableCell>{renalInfo.formula}</TableCell>
                         <TableCell>{renalInfo.result || "-"}</TableCell>
-                        <TableCell>{renalInfo.dialysis}</TableCell>
-                        <TableCell>
-                          {renalInfo.dialysis === "Y" 
-                            ? (renalInfo.renalReplacement || "-") 
-                            : "N"
-                          }
-                        </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -476,131 +507,6 @@ const BloodTestStep = ({
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-
-              {/* 신기능 데이터 추가 폼 */}
-              <div className="border-t pt-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Plus className="h-4 w-4" />
-                  <h3 className="text-lg font-semibold">신기능 데이터 추가</h3>
-                </div>
-                <form className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="creatinine">혈청 크레아티닌 (mg/dL) *</Label>
-                      <Input
-                        id="creatinine"
-                        type="number"
-                        step="0.01"
-                        value={renalForm.creatinine}
-                        onChange={e => setRenalForm({ ...renalForm, creatinine: e.target.value })}
-                        onBlur={() => {
-                          if (renalForm.creatinine && selectedPatient) {
-                            const creatinine = parseFloat(renalForm.creatinine);
-                            if (!isNaN(creatinine)) {
-                              const result = calculateRenalFunction(creatinine, renalForm.formula, selectedPatient, renalForm.isBlack);
-                              setRenalForm(prev => ({ ...prev, result }));
-                            }
-                          }
-                        }}
-                        placeholder="예: 1.2"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="renalDate">검사일 *</Label>
-                      <Input
-                        id="renalDate"
-                        type="date"
-                        value={renalForm.date}
-                        max={today}
-                        onChange={e => setRenalForm({ ...renalForm, date: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="renalFormula">계산식 *</Label>
-                      <Select 
-                        value={renalForm.formula} 
-                        onValueChange={v => {
-                          setRenalForm(prev => {
-                            const newForm = { ...prev, formula: v };
-                            // 계산식 변경 시 자동 계산
-                            if (prev.creatinine && selectedPatient) {
-                              const creatinine = parseFloat(prev.creatinine);
-                              if (!isNaN(creatinine)) {
-                                const result = calculateRenalFunction(creatinine, v, selectedPatient, prev.isBlack);
-                                newForm.result = result;
-                              }
-                            }
-                            return newForm;
-                          });
-                        }} 
-                        required
-                      >
-                        <SelectTrigger><SelectValue placeholder="계산식 선택" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cockcroft-gault">Cockcroft-Gault</SelectItem>
-                          <SelectItem value="mdrd">MDRD</SelectItem>
-                          <SelectItem value="ckd-epi">CKD-EPI</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="result">계산 결과</Label>
-                      <Input
-                        id="result"
-                        value={renalForm.result}
-                        onChange={e => {
-                          // 자동계산된 값이 있고 사용자가 수정하려고 할 때 얼럿
-                          if (renalForm.result && renalForm.result.includes("=") && e.target.value !== renalForm.result) {
-                            const confirmed = window.confirm("자동계산된 데이터를 삭제하고 직접 입력하시겠습니까?");
-                            if (!confirmed) {
-                              return; // 취소 시 원래 값 유지
-                            }
-                          }
-                          setRenalForm({ ...renalForm, result: e.target.value });
-                        }}
-                        placeholder="자동계산"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="dialysis">투석 여부 *</Label>
-                      <Select value={renalForm.dialysis} onValueChange={v => setRenalForm({ ...renalForm, dialysis: v as "Y" | "N" })} required>
-                        <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="N">N</SelectItem>
-                          <SelectItem value="Y">Y</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="renalReplacement">신 대체요법</Label>
-                      <Select 
-                        value={renalForm.renalReplacement} 
-                        onValueChange={v => setRenalForm({ ...renalForm, renalReplacement: v })}
-                        disabled={renalForm.dialysis === "N"}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="신 대체요법 선택" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="HD">HD</SelectItem>
-                          <SelectItem value="CRRT">CRRT</SelectItem>
-                          <SelectItem value="PD">PD</SelectItem>
-                          <SelectItem value="기타">기타</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  <Button type="button" onClick={handleAddRenal} className="w-full">
-                    신기능 데이터 추가
-                  </Button>
-                </form>
               </div>
             </CardContent>
           </Card>
@@ -673,6 +579,7 @@ const BloodTestStep = ({
                     <SelectContent>
                       <SelectItem value="Trough">Trough</SelectItem>
                       <SelectItem value="Peak">Peak</SelectItem>
+                      <SelectItem value="N/A">N/A</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -731,6 +638,109 @@ const BloodTestStep = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* 신기능 데이터 추가 모달 */}
+      <Dialog open={showRenalModal} onOpenChange={setShowRenalModal}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>신기능 데이터 추가</DialogTitle>
+            <DialogDescription>
+              신기능 데이터를 입력하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleAddRenal(); }}>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="modal-renalDate">검사일 *</Label>
+                <Input
+                  id="modal-renalDate"
+                  type="date"
+                  value={renalForm.date}
+                  max={today}
+                  onChange={e => setRenalForm({ ...renalForm, date: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="modal-creatinine" className="whitespace-nowrap">혈청 크레아티닌 (mg/dL) *</Label>
+                <Input
+                  id="modal-creatinine"
+                  type="number"
+                  step="0.01"
+                  value={renalForm.creatinine}
+                  onChange={e => setRenalForm({ ...renalForm, creatinine: e.target.value })}
+                  onBlur={() => {
+                    if (renalForm.creatinine && selectedPatient) {
+                      const creatinine = parseFloat(renalForm.creatinine);
+                      if (!isNaN(creatinine)) {
+                        const result = calculateRenalFunction(creatinine, renalForm.formula, selectedPatient, renalForm.isBlack);
+                        setRenalForm(prev => ({ ...prev, result }));
+                      }
+                    }
+                  }}
+                  placeholder="예: 1.2"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="modal-renalFormula">계산식 *</Label>
+                <Select 
+                  value={renalForm.formula} 
+                  onValueChange={v => {
+                    setRenalForm(prev => {
+                      const newForm = { ...prev, formula: v };
+                      // 계산식 변경 시 자동 계산
+                      if (prev.creatinine && selectedPatient) {
+                        const creatinine = parseFloat(prev.creatinine);
+                        if (!isNaN(creatinine)) {
+                          const result = calculateRenalFunction(creatinine, v, selectedPatient, prev.isBlack);
+                          newForm.result = result;
+                        }
+                      }
+                      return newForm;
+                    });
+                  }} 
+                  required
+                >
+                  <SelectTrigger><SelectValue placeholder="계산식 선택" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cockcroft-gault">Cockcroft-Gault</SelectItem>
+                    <SelectItem value="mdrd">MDRD</SelectItem>
+                    <SelectItem value="ckd-epi">CKD-EPI</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="modal-result">계산 결과</Label>
+                <Input
+                  id="modal-result"
+                  value={renalForm.result}
+                  onChange={e => {
+                    // 자동계산된 값이 있고 사용자가 수정하려고 할 때 얼럿
+                    if (renalForm.result && renalForm.result.includes("=") && e.target.value !== renalForm.result) {
+                      const confirmed = window.confirm("자동계산된 데이터를 삭제하고 직접 입력하시겠습니까?");
+                      if (!confirmed) {
+                        return; // 취소 시 원래 값 유지
+                      }
+                    }
+                    setRenalForm({ ...renalForm, result: e.target.value });
+                  }}
+                  placeholder="자동계산"
+                />
+              </div>
+            </div>
+            
+            <DialogFooter className="justify-center sm:justify-center">
+              <Button type="button" variant="outline" onClick={() => setShowRenalModal(false)}>
+                취소
+              </Button>
+              <Button type="submit">
+                추가
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* 모달 얼럿 컴포넌트 */}
       {selectedPatient && (

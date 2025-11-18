@@ -38,6 +38,7 @@ interface PKChartsProps {
     intervalHours?: number;
   } | null;
   drugAdministrations?: DrugAdministration[];
+  steadyState?: boolean | string;
 }
 
 const PKCharts = ({
@@ -59,7 +60,8 @@ const PKCharts = ({
   tdmTarget,
   tdmTargetValue,
   latestAdministration,
-  drugAdministrations = []
+  drugAdministrations = [],
+  steadyState
 }: PKChartsProps) => {
   // 데이터 병합
   const data = useMemo(() => 
@@ -318,6 +320,7 @@ const PKCharts = ({
         predictedMax={predictedMax}
         predictedTrough={predictedTrough}
         commentTitle="TDM friends Comments"
+        steadyState={steadyState}
       />
     </div>
   );
