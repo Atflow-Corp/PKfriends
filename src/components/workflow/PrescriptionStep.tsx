@@ -259,6 +259,11 @@ const PrescriptionStep = ({
   const getAdditionalInfoOptions = () => {
     if (!selectedDrug || !formData.indication) return [];
     
+    // Vancomycin + Not specified/Korean 조합일 때 투석여부 옵션 제공
+    if (selectedDrug.name === "Vancomycin" && formData.indication === "Not specified/Korean") {
+      return ["투석 안 함", "CRRT", "HD", "PT", "기타"];
+    }
+    
     // 적응증별로 다른 옵션이 있는 경우
     if (typeof selectedDrug.additionalInfo === 'object' && !Array.isArray(selectedDrug.additionalInfo)) {
       const indicationOptions = selectedDrug.additionalInfo[formData.indication];
@@ -287,6 +292,11 @@ const PrescriptionStep = ({
   const shouldShowAdditionalInfo = () => {
     if (!selectedDrug || !formData.indication) return false;
     
+    // Vancomycin + Not specified/Korean 조합
+    if (selectedDrug.name === "Vancomycin" && formData.indication === "Not specified/Korean") {
+      return true;
+    }
+    
     // Vancomycin + Neurosurgical patients/Korean 조합
     if (selectedDrug.name === "Vancomycin" && formData.indication === "Neurosurgical patients/Korean") {
       return true;
@@ -304,6 +314,10 @@ const PrescriptionStep = ({
   const getAdditionalInfoTitle = () => {
     if (!selectedDrug || !formData.indication) return "추가정보";
     
+    if (selectedDrug.name === "Vancomycin" && formData.indication === "Not specified/Korean") {
+      return "투석여부(신 대체요법)";
+    }
+    
     if (selectedDrug.name === "Vancomycin" && formData.indication === "Neurosurgical patients/Korean") {
       return "복용 중인 약물";
     }
@@ -317,6 +331,11 @@ const PrescriptionStep = ({
 
   // 추가정보 필드 필수 여부 확인
   const isAdditionalInfoRequired = () => {
+    if (selectedDrug?.name === "Vancomycin" && 
+        formData.indication === "Not specified/Korean") {
+      return true;
+    }
+    
     if (selectedDrug?.name === "Vancomycin" && 
         formData.indication === "Neurosurgical patients/Korean") {
       return true;
@@ -477,6 +496,13 @@ const PrescriptionStep = ({
     
     // 기존 신규 TDM이 없는 경우의 로직
     // 추가정보 필수 입력 체크
+    if (formData.drugName === "Vancomycin" && 
+        formData.indication === "Not specified/Korean" && 
+        !formData.additionalInfo) {
+      alert(`투석여부(신 대체요법) 정보를 입력해주세요.`);
+      return;
+    }
+    
     if (formData.drugName === "Vancomycin" && 
         formData.indication === "Neurosurgical patients/Korean" && 
         !formData.additionalInfo) {
@@ -778,7 +804,13 @@ const PrescriptionStep = ({
                         required={isAdditionalInfoRequired()}
                       >
                         <SelectTrigger id="additionalInfo">
-                          <SelectValue placeholder={formData.indication === "Renal transplant recipients/Korean" ? "POD를 선택하세요" : "약물명 선택"} />
+                          <SelectValue placeholder={
+                            formData.drugName === "Vancomycin" && formData.indication === "Not specified/Korean" 
+                              ? "투석여부(신 대체요법)를 선택하세요" 
+                              : formData.indication === "Renal transplant recipients/Korean" 
+                                ? "POD를 선택하세요" 
+                                : "약물명 선택"
+                          } />
                         </SelectTrigger>
                         <SelectContent>
                           {additionalInfoOptions.map(info => (
