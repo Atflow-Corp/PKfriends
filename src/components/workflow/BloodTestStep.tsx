@@ -181,6 +181,30 @@ const BloodTestStep = ({
   // 선택된 처방전 사용 (약품명 기준으로 데이터 분리)
   const tdmDrug = selectedPrescription;
 
+  // 신기능 데이터 사용 여부 확인
+  const shouldUseRenalData = () => {
+    if (!selectedPrescription) return true; // 기본값은 사용
+    
+    // 조건1: Cyclosporin인 경우 신기능 데이터 사용 안 함
+    if (selectedPrescription.drugName === "Cyclosporin") {
+      return false;
+    }
+    
+    // 조건2: Vancomycin + Not specified/Korean + CRRT인 경우 신기능 데이터 사용 안 함
+    if (
+      selectedPrescription.drugName === "Vancomycin" &&
+      selectedPrescription.indication === "Not specified/Korean" &&
+      selectedPrescription.additionalInfo === "CRRT"
+    ) {
+      return false;
+    }
+    
+    // 그 외의 경우 신기능 데이터 필수 입력
+    return true;
+  };
+
+  const useRenalData = shouldUseRenalData();
+
   // Persist renal info list per patient & drug in localStorage (hydrate first, then allow writes)
   useEffect(() => {
     if (!selectedPatient || !tdmDrug) return;
@@ -324,8 +348,8 @@ const BloodTestStep = ({
   };
 
   const handleNext = () => {
-    // TDM이 반코마이신일 때 신기능 데이터 필수 입력 검증
-    if (tdmDrug?.drugName === "Vancomycin") {
+    // 신기능 데이터 필수 입력인 경우 검증
+    if (useRenalData) {
       const hasSelectedRenalData = renalInfoList.some(item => item.isSelected);
       if (!hasSelectedRenalData) {
         alert("신기능 데이터를 입력해주세요.");
@@ -432,23 +456,27 @@ const BloodTestStep = ({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* 기본 행 - 신기능 데이터 없음 */}
+                    {/* 기본 행 - 신기능 데이터 없음/필수 */}
                     <TableRow>
                       <TableCell>
                         <Checkbox 
-                          checked={renalInfoList.every(item => !item.isSelected)}
+                          checked={!useRenalData && renalInfoList.every(item => !item.isSelected)}
                           onCheckedChange={(checked) => {
-                            if (checked) {
+                            if (checked && !useRenalData) {
                               setRenalInfoList(renalInfoList.map(item => ({ ...item, isSelected: false })));
                             }
                           }}
+                          disabled={useRenalData} // 신기능 데이터 필수 입력인 경우 체크 해제 불가
                         />
                       </TableCell>
                       <TableCell 
                         colSpan={4} 
-                        className={`text-center ${renalInfoList.every(item => !item.isSelected) ? 'text-black' : 'text-muted-foreground'}`}
+                        className={`text-center ${!useRenalData && renalInfoList.every(item => !item.isSelected) ? 'text-black' : 'text-muted-foreground'}`}
                       >
-                        해당 TDM은 신기능 데이터를 사용하지 않습니다
+                        {useRenalData 
+                          ? "해당 TDM은 신기능 데이터를 필수 입력해야 합니다"
+                          : "해당 TDM은 신기능 데이터를 사용하지 않습니다"
+                        }
                       </TableCell>
                       <TableCell></TableCell>
                     </TableRow>
