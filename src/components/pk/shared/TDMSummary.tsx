@@ -26,6 +26,7 @@ interface TDMSummaryProps {
   currentResultTitle?: string; // 좌측 카드 제목 (기본: 현 시점 약동학 분석 결과)
   predictedResultTitle?: string; // 우측 카드 제목 (기본: 현 용법의 항정상태 예측 결과)
   showSteadyStateComment?: boolean; // 항정상태 조건부 문장 표시 여부 (기본: true)
+  steadyState?: boolean | string; // Steady_state 값 (API 응답에서 받아옴, boolean 또는 문자열 "true"/"false")
 }
 
 const TDMSummary = ({
@@ -44,11 +45,17 @@ const TDMSummary = ({
   commentTitle = "TDM friends Comments",
   currentResultTitle = "현 시점 약동학 분석 결과",
   predictedResultTitle = "현 용법의 항정상태 예측 결과",
-  showSteadyStateComment = true
+  showSteadyStateComment = true,
+  steadyState
 }: TDMSummaryProps) => {
   const concentrationUnit = getConcentrationUnit(selectedDrug);
   const targetValue = getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug);
   const withinRange = isWithinTargetRange(tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug);
+  
+  // Steady_state가 문자열로 올 수 있으므로 boolean으로 변환
+  const isSteadyState = typeof steadyState === 'boolean' 
+    ? steadyState 
+    : String(steadyState).toLowerCase() === 'true';
   
   // 변경된 값 확인
   const isDoseChanged = originalAdministration && latestAdministration && 
@@ -130,9 +137,9 @@ const TDMSummary = ({
         </CardHeader>
         <CardContent className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
           {/* 항정상태 조건부 문장 (옵션) */}
-          {showSteadyStateComment && (
+          {showSteadyStateComment && steadyState !== undefined && (
             <div className="leading-relaxed">
-              {withinRange ? (
+              {isSteadyState ? (
                 <p className="text-base font-bold text-black dark:text-white">현재 항정상태에 도달하였습니다.</p>
               ) : (
                 <>

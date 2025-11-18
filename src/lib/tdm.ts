@@ -599,6 +599,7 @@ export type TdmApiMinimal = {
   AUC_24_after?: number;
   CMAX_after?: number;
   CTROUGH_after?: number;
+  Steady_state?: boolean | string;
 };
 
 type TdmHistoryEntry = {
