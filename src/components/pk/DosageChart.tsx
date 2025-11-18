@@ -95,7 +95,7 @@ const DosageChart = ({
   }, [ipredSeries, predSeries, observedSeries, currentMethodSeries, simulationData, isEmptyChart]);
 
   // 기본 시간 범위 계산 (모든 시리즈 기준)
-  const baseTimeExtents = useMemo(
+  const dataTimeExtents = useMemo(
     () =>
       calculateDataTimeExtents(
         ipredSeries,
@@ -105,19 +105,6 @@ const DosageChart = ({
       ),
     [ipredSeries, predSeries, observedSeries, currentMethodSeries]
   );
-
-  // 용법 조정 결과(ipredSeries)가 있는 경우, 그 max time을 기준으로 x축 상한을 맞춘다.
-  const dataTimeExtents = useMemo(() => {
-    if (ipredSeries && ipredSeries.length > 0) {
-      // 큰 배열에서 call stack 초과를 방지하기 위해 reduce 사용
-      const adjMax = ipredSeries.reduce((max, p) => (p.time > max ? p.time : max), ipredSeries[0].time);
-      return {
-        min: baseTimeExtents.min,
-        max: Math.min(baseTimeExtents.max, adjMax),
-      };
-    }
-    return baseTimeExtents;
-  }, [ipredSeries, baseTimeExtents]);
 
   // 현재 시간 계산 (빨간색 점선 "now" 표시용)
   const currentTime = useMemo(
