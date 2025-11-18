@@ -360,7 +360,13 @@ export const buildTdmRequestBody = (args: {
   );
 
   const patientDoses = (drugAdministrations || []).filter(
-    (d) => d.patientId === selectedPatientId
+    (d) => {
+      const matchesPatient = d.patientId === selectedPatientId;
+      const matchesDrug = selectedDrugName 
+        ? d.drugName === selectedDrugName 
+        : true;
+      return matchesPatient && matchesDrug;
+    }
   );
 
   // 4단계에서 저장된 처방 내역 불러오기

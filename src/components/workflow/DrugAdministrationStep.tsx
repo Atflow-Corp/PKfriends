@@ -258,35 +258,37 @@ const DrugAdministrationStep = ({
               <ArrowLeft className="h-4 w-4" />
               Lab
             </Button>
-            <Button
-              onClick={async () => {
-                if (!selectedPatient) { onNext(); return; }
-                setLoading(true);
-                try {
-                  const body = buildTdmRequestBody({
-                    patients,
-                    prescriptions,
-                    bloodTests,
-                    drugAdministrations,
-                    selectedPatientId: selectedPatient.id,
-                    selectedDrugName: tdmDrug?.drugName,
-                  });
-                  if (body) {
-                    await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
+            {isCompleted && (
+              <Button
+                onClick={async () => {
+                  if (!selectedPatient) { onNext(); return; }
+                  setLoading(true);
+                  try {
+                    const body = buildTdmRequestBody({
+                      patients,
+                      prescriptions,
+                      bloodTests,
+                      drugAdministrations,
+                      selectedPatientId: selectedPatient.id,
+                      selectedDrugName: tdmDrug?.drugName,
+                    });
+                    if (body) {
+                      await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  } finally {
+                    setLoading(false);
+                    onNext();
                   }
-                } catch (e) {
-                  console.error(e);
-                } finally {
-                  setLoading(false);
-                  onNext();
-                }
-              }}
-              disabled={loading}
-              className="flex items-center gap-2 w-[300px] bg-black dark:bg-blue-700 text-white font-bold text-lg py-3 px-6 justify-center dark:hover:bg-blue-800 disabled:opacity-60"
-            >
-              {loading ? '처리 중...' : 'TDM Simulation'}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+                }}
+                disabled={loading}
+                className="flex items-center gap-2 w-[300px] bg-black dark:bg-blue-700 text-white font-bold text-lg py-3 px-6 justify-center dark:hover:bg-blue-800 disabled:opacity-60"
+              >
+                {loading ? '처리 중...' : 'TDM Simulation'}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
           </div>
           
         </CardContent>
