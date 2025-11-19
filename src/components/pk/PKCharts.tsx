@@ -39,6 +39,7 @@ interface PKChartsProps {
   } | null;
   drugAdministrations?: DrugAdministration[];
   steadyState?: boolean | string;
+  input_TOXI?: number;
 }
 
 const PKCharts = ({
@@ -61,7 +62,8 @@ const PKCharts = ({
   tdmTargetValue,
   latestAdministration,
   drugAdministrations = [],
-  steadyState
+  steadyState,
+  input_TOXI
 }: PKChartsProps) => {
   // 데이터 병합
   const data = useMemo(() => 
@@ -351,6 +353,7 @@ const PKCharts = ({
         predictedTrough={predictedTrough}
         commentTitle="TDM friends Comments"
         steadyState={steadyState}
+        input_TOXI={input_TOXI}
       />
     </div>
   );

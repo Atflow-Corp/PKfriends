@@ -268,6 +268,8 @@ const PKSimulation = ({
   const [tdmResultInterval, setTdmResultInterval] =
     useState<TdmApiResponse | null>(null);
 
+  const [input_TOXI, setInput_TOXI] = useState<number | undefined>(undefined);
+
   const [adjustmentCards, setAdjustmentCards] = useState<
     Array<{ id: number; type: "dosage" | "interval" | "dosageV2" | "dosageAndInterval" }>
   >([]);
@@ -1194,8 +1196,14 @@ const PKSimulation = ({
 
         setTdmResult(data);
 
+        // dataset에서 TOXI 값 추출
+        const dataset = (body.dataset as TdmDatasetRow[]) || [];
+        if (dataset.length > 0 && dataset[0].TOXI !== undefined) {
+          setInput_TOXI(dataset[0].TOXI);
+        }
+
         // 데이터 크기 체크
-        if (checkChartDataSize(data, (body.dataset as TdmDatasetRow[]) || [])) {
+        if (checkChartDataSize(data, dataset)) {
           setShowChartDataTooLargeAlert(true);
           return;
         }
@@ -2848,6 +2856,7 @@ const PKSimulation = ({
           latestAdministration={latestAdministration}
           drugAdministrations={drugAdministrations}
           steadyState={tdmResult?.Steady_state}
+          input_TOXI={input_TOXI}
         />
       </div>
 
