@@ -82,20 +82,43 @@ const StepWorkflow = ({
     ? bloodTests.filter(b => b.patientId === selectedPatient.id)
     : [];
 
+  // 선택된 약품에 대한 Lab 데이터 확인
+  const selectedDrugBloodTests = selectedPatient && selectedPrescription
+    ? bloodTests.filter(b => 
+        b.patientId === selectedPatient.id && 
+        b.drugName === selectedPrescription.drugName
+      )
+    : [];
+
+  // 선택된 약품에 대한 투약 기록 확인
+  const selectedDrugAdministrations = selectedPatient && selectedPrescription
+    ? drugAdministrations.filter(d => 
+        d.patientId === selectedPatient.id && 
+        d.drugName === selectedPrescription.drugName
+      )
+    : [];
+
   const isStepCompleted = (stepId: number) => {
     switch (stepId) {
       case 1: return selectedPatient !== null;
-      case 2: return selectedPatient && patientPrescriptions.length > 0;
-      case 3: return selectedPatient && patientBloodTests.length > 0;
-      case 4: return selectedPatient && drugAdministrations.length > 0;
-      case 5: return selectedPatient && patientBloodTests.length > 0 && patientPrescriptions.length > 0 && drugAdministrations.length > 0;
+      case 2: return selectedPatient && selectedPrescription !== null;
+      case 3: return selectedPatient && selectedPrescription && selectedDrugBloodTests.length > 0;
+      case 4: return selectedPatient && selectedPrescription && selectedDrugAdministrations.length > 0;
+      case 5: return selectedPatient && selectedPrescription && selectedDrugBloodTests.length > 0 && selectedDrugAdministrations.length > 0;
       default: return false;
     }
   };
 
   const canAccessStep = (stepId: number) => {
     if (stepId === 1) return true;
-    return isStepCompleted(stepId - 1);
+    if (stepId === 2) return isStepCompleted(1);
+    if (stepId === 3) return isStepCompleted(2);
+    if (stepId === 4) {
+      // 투약기록 단계 접근: Lab 단계 완료 (선택된 약품의 Lab 데이터 존재)
+      return selectedPatient && selectedPrescription && selectedDrugBloodTests.length > 0;
+    }
+    if (stepId === 5) return isStepCompleted(4);
+    return false;
   };
 
   // 워크플로우 확인 함수

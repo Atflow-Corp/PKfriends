@@ -243,6 +243,7 @@ const BloodTestStep = ({
   // 모달 상태 추가
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [showRenalModal, setShowRenalModal] = useState(false);
+  const [alertModalShown, setAlertModalShown] = useState(false); // 모달이 이미 표시되었는지 추적
 
   const patientBloodTests = selectedPatient && tdmDrug
     ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === tdmDrug.drugName)
@@ -250,11 +251,32 @@ const BloodTestStep = ({
 
   const today = dayjs().format("YYYY-MM-DD");
 
+  // 투석환자 CRRT 환자 여부 확인 (PrescriptionStep의 additionalInfo 기준)
+  const isCRRTPatient = () => {
+    if (!selectedPatient || !selectedPrescription) return false;
+    // PrescriptionStep에서 추가정보에 CRRT가 입력된 경우
+    return selectedPrescription.additionalInfo?.toUpperCase() === "CRRT" || 
+           selectedPrescription.additionalInfo?.toUpperCase().includes("CRRT");
+  };
+
+  // 날짜/시간 입력창 포커스 시 모달 표시
+  const handleDateTimeFocus = () => {
+    if (isCRRTPatient() && !alertModalShown) {
+      setShowAlertModal(true);
+      setAlertModalShown(true);
+    }
+  };
+
   // TDM 약물이 변경될 때마다 단위 업데이트
   useEffect(() => {
     const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";
     setFormData(prev => ({ ...prev, unit: defaultUnit }));
   }, [tdmDrug?.drugName]);
+
+  // TDM 선택이 변경되면 모달 표시 상태 리셋
+  useEffect(() => {
+    setAlertModalShown(false);
+  }, [selectedPrescription?.id]);
 
   const handleAddRenal = () => {
     // 필수 데이터 입력 체크
@@ -526,6 +548,7 @@ const BloodTestStep = ({
                     value={formData.testDate}
                     placeholder="예: 2025-07-25 14:00 또는 202507251400"
                     onChange={e => setFormData({ ...formData, testDate: e.target.value })}
+                    onFocus={handleDateTimeFocus}
                     max={today + ' 23:59'}
                   />
                 </div>
@@ -743,7 +766,7 @@ const BloodTestStep = ({
       </Dialog>
 
       {/* 모달 얼럿 컴포넌트 */}
-      {selectedPatient && (
+      {selectedPatient && isCRRTPatient() && (
         <AlertDialog open={showAlertModal} onOpenChange={setShowAlertModal}>
           <AlertDialogContent className="transform scale-[1.5]">
             <AlertDialogHeader>
