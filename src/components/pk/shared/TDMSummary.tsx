@@ -129,13 +129,14 @@ const TDMSummary = ({
       </div>
 
       {/* Comments / 용법 조정 결과 */}
-      <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
-            {commentTitle}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
+      {commentTitle && (
+        <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg text-gray-900 dark:text-white flex items-center gap-2">
+              {commentTitle}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
           {/* 항정상태 조건부 문장 (옵션) */}
           {showSteadyStateComment && steadyState !== undefined && (
             <div className="leading-relaxed">
@@ -187,6 +188,7 @@ const TDMSummary = ({
           </div>
         </CardContent>
       </Card>
+      )}
 
     
     </div>

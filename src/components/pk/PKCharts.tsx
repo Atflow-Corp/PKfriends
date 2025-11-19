@@ -115,6 +115,32 @@ const PKCharts = ({
     [tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug]
   );
 
+  // TDM 목표 유형 추출 (AUC, Max, Trough)
+  const targetTypeLabel = useMemo(() => {
+    if (!tdmTarget) return '';
+    const target = tdmTarget.toLowerCase();
+    if (target.includes('auc')) return 'AUC';
+    if (target.includes('max') || target.includes('peak')) return 'Max';
+    if (target.includes('trough')) return 'Trough';
+    return '';
+  }, [tdmTarget]);
+
+  // 목표 범위 상태 판단 (초과/미달/도달)
+  const targetRangeStatus = useMemo(() => {
+    if (!tdmTargetValue || !targetHighlight.numericValue) return null;
+    
+    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+    if (!rangeMatch) return null;
+    
+    const minValue = parseFloat(rangeMatch[1]);
+    const maxValue = parseFloat(rangeMatch[2]);
+    const currentValue = targetHighlight.numericValue;
+    
+    if (currentValue > maxValue) return '초과';
+    if (currentValue < minValue) return '미달';
+    return '도달';
+  }, [tdmTargetValue, targetHighlight.numericValue]);
+
   const targetLabel = useMemo(
     () => tdmTarget?.split('(')[0]?.trim() || '',
     [tdmTarget]
@@ -197,45 +223,49 @@ const PKCharts = ({
 
         <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
           <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
-            현 용법의 항정상태 예측 결과
+            TDM 목표
           </span>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-baseline gap-2">
-              {tdmTarget && (
-                <span className="text-xl font-bold text-gray-900 dark:text-white">
-                  {tdmTarget.split('(')[0]?.trim().replace(/Concentration/gi, '').trim() || ''}
+          <div className="flex flex-col gap-2">
+            {targetHighlight.numericValue != null && targetRangeStatus && (
+              <div className="text-xl font-bold">
+                <span
+                  className={`${
+                    withinTargetRange
+                      ? 'text-blue-700 dark:text-blue-200'
+                      : 'text-red-600 dark:text-red-300'
+                  }`}
+                >
+                  {targetHighlight.value}
                 </span>
-              )}
-              <span
-                className={`text-xl font-bold ${
-                  withinTargetRange
-                    ? 'text-blue-700 dark:text-blue-200'
-                    : 'text-red-600 dark:text-red-300'
-                }`}
-              >
-                {targetHighlight.value}
-              </span>
+                <span className="text-gray-900 dark:text-white">
+                  {' '}으로 목표범위 {targetRangeStatus}
+                </span>
+              </div>
+            )}
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              목표 범위 {targetTypeLabel} {tdmTargetValue || '-'}
             </div>
-            <span className="text-xs text-gray-500 dark:text-gray-500">
-              목표 범위: {tdmTargetValue || '-'}
-            </span>
           </div>
         </div>
 
         <div
           className={`rounded-lg p-4 ${
-            withinTargetRange === undefined
+            steadyState === undefined
               ? 'bg-gray-100 dark:bg-gray-800'
-              : withinTargetRange
+              : (typeof steadyState === 'boolean' ? steadyState : String(steadyState).toLowerCase() === 'true')
               ? 'bg-blue-100 dark:bg-blue-900/40'
               : 'bg-red-100 dark:bg-red-900/40'
           }`}
         >
           <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-2">
-            적합 여부
+            항정 상태
           </span>
           <div className="text-2xl font-extrabold text-gray-900 dark:text-white">
-            {withinTargetRange === undefined ? '-' : withinTargetRange ? '적합' : '부적합'}
+            {steadyState === undefined 
+              ? '-' 
+              : (typeof steadyState === 'boolean' ? steadyState : String(steadyState).toLowerCase() === 'true')
+              ? '도달'
+              : '미도달'}
           </div>
         </div>
       </div>

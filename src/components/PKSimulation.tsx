@@ -3364,6 +3364,7 @@ const PKSimulation = ({
                   // 선택된 옵션이 없으면 원래 값 반환
                   return updated;
                 })()}
+                steadyState={cardTdmResults[card.id]?.Steady_state}
                 // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
                 isEmptyChart={
                   !cardChartData[card.id] ||
