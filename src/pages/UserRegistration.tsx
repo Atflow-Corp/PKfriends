@@ -66,6 +66,17 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
   };
 
   const handleWelcomeConfirm = () => {
+    // 임시처리: 회원가입 완료된 전화번호를 localStorage에 저장
+    try {
+      const registeredUsers = JSON.parse(window.localStorage.getItem('tdmfriends:registeredUsers') || '[]');
+      if (!registeredUsers.includes(formData.phoneNumber)) {
+        registeredUsers.push(formData.phoneNumber);
+        window.localStorage.setItem('tdmfriends:registeredUsers', JSON.stringify(registeredUsers));
+      }
+    } catch (error) {
+      console.error('회원가입 정보 저장 실패:', error);
+    }
+    
     setShowWelcomeDialog(false);
     onComplete();
   };
