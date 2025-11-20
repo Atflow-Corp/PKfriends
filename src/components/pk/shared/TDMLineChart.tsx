@@ -144,6 +144,22 @@ const TDMLineChart = ({
     chart.update('none');
   }, [dataTimeExtents]);
 
+  // 안전한 숫자 값 변환 유틸리티 함수
+  // undefined, null, NaN, 문자열 등을 null로 변환하여 Chart.js가 안전하게 처리하도록 함
+  const safeNumberValue = useCallback((value: unknown): number | null => {
+    // null 또는 undefined는 null로 반환 (Chart.js가 스킵)
+    if (value === null || value === undefined) return null;
+    
+    // 숫자가 아니면 null 반환 (문자열, 객체 등 필터링)
+    if (typeof value !== 'number') return null;
+    
+    // NaN 체크
+    if (isNaN(value)) return null;
+    
+    // 유효한 숫자만 반환
+    return value;
+  }, []);
+
   // 데이터 샘플링 함수 (너무 많은 포인트일 때 성능 최적화)
   const sampleData = useCallback((points: Array<{ x: number; y: number | null }>, maxPoints: number = 2000) => {
     if (points.length <= maxPoints) return points;
@@ -169,7 +185,7 @@ const TDMLineChart = ({
     // 데이터 포인트 수 확인 및 로깅
     const totalPoints = data.length;
     if (totalPoints > 1000) {
-      console.warn(`[TDMLineChart] Large dataset detected: ${totalPoints} points. This may cause performance issues.`);
+      console.log(`[TDMLineChart] Large dataset detected: ${totalPoints} points. This may cause performance issues.`);
     }
     
     return {
@@ -184,7 +200,12 @@ const TDMLineChart = ({
               .filter(d => d.observed !== null && typeof d.observed === 'number' && !isNaN(d.observed))
               .map(d => ({ x: d.time, y: d.observed! }));
           } else {
-            dataPoints = data.map(d => ({ x: d.time, y: d[ds.dataKey] }));
+            // controlGroup, predicted, currentMethod 등의 경우
+            // 숫자가 아닌 값(undefined, NaN, 문자열 등)을 null로 변환하여 Chart.js가 안전하게 처리하도록 함
+            dataPoints = data.map(d => ({ 
+              x: d.time, 
+              y: safeNumberValue(d[ds.dataKey]) 
+            }));
           }
         }
 
@@ -195,7 +216,7 @@ const TDMLineChart = ({
           : sampleData(dataPoints, 2000);
         
         if (ds.dataKey !== 'observed' && dataPoints.length > 2000) {
-          console.warn(`[TDMLineChart] Dataset "${ds.label}" has ${dataPoints.length} points, sampling to ${sampledPoints.length} points for performance.`);
+          console.log(`[TDMLineChart] Dataset "${ds.label}" has ${dataPoints.length} points, sampling to ${sampledPoints.length} points for performance.`);
         }
 
         return {
@@ -212,7 +233,7 @@ const TDMLineChart = ({
         };
       })
     };
-  }, [data, datasets, averageConcentration, sampleData]);
+  }, [data, datasets, averageConcentration, sampleData, safeNumberValue]);
 
   // Chart.js 옵션
   const chartOptions = useMemo<ChartOptions<'line'>>(() => ({
