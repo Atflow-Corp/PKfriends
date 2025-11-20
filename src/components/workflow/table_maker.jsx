@@ -436,24 +436,9 @@ function TablePage(props) {
       setConditions(prev => [...prev, newCondition]);
     }
 
-    // 처방 내역을 localStorage에 저장 (추가/수정 모두 적용)
-    if (props.selectedPatient && props.tdmDrug) {
-      const routeKorean = convertRouteToKorean(currentCondition.route);
-      // CMT 매핑: 정맥(IV) -> 1, 경구(oral) -> 2
-      const cmt = routeKorean === "정맥" ? 1 : 2;
-      
-      savePrescriptionInfo(
-        props.selectedPatient.id,
-        props.tdmDrug.drugName,
-        {
-          amount: parseFloat(currentCondition.dosage) || 0,
-          tau: parseFloat(currentCondition.intervalHours) || 12,
-          cmt: cmt,
-          route: routeKorean,
-          infusionTime: parseFloat(currentCondition.injectionTime) || undefined
-        }
-      );
-    }
+    // 처방 내역 저장은 테이블 생성 시에만 수행
+    // (시계열상 가장 최근 투약 기록의 정보를 저장하기 위해)
+    // 조건 추가/수정 시에는 저장하지 않음
 
     // 현재 조건 초기화
     setCurrentCondition({
@@ -593,6 +578,30 @@ function TablePage(props) {
     });
     newTableData = [newTableData[0], ...allDoses];
 
+    // 시계열상 가장 최근 투약 기록의 intervalHours 찾기
+    if (allDoses.length > 0 && props.selectedPatient && props.tdmDrug) {
+      const latestDose = allDoses[allDoses.length - 1]; // 정렬된 마지막 요소 = 가장 최근
+      const latestCondition = conditions.find(c => c.id === latestDose.conditionId);
+      
+      if (latestCondition) {
+        const routeKorean = convertRouteToKorean(latestCondition.route);
+        const cmt = routeKorean === "정맥" ? 1 : 2;
+        
+        // 시계열상 가장 최근 투약 기록의 정보로 저장
+        savePrescriptionInfo(
+          props.selectedPatient.id,
+          props.tdmDrug.drugName,
+          {
+            amount: parseFloat(latestCondition.dosage) || 0,
+            tau: parseFloat(latestCondition.intervalHours) || 12, // 시계열상 최근 투약 기록의 intervalHours
+            cmt: cmt,
+            route: routeKorean,
+            infusionTime: parseFloat(latestCondition.injectionTime) || undefined
+          }
+        );
+      }
+    }
+
     setTableData(newTableData);
     setIsTableGenerated(true);
     if (props.onTableGenerated) props.onTableGenerated();
@@ -601,12 +610,19 @@ function TablePage(props) {
     // 초기 로드가 아닐 때만 onSaveRecords 호출 (중복 저장 방지)
     if (props.onSaveRecords && !isInitialLoad) {
       // title row 제외, 실제 투약기록만 전달
-      const records = newTableData.filter(row => !row.isTitle).map(row => ({
-        timeStr: row.timeStr,
-        amount: row.amount,
-        route: row.route,
-        injectionTime: row.injectionTime
-      }));
+      // 각 기록의 conditionId와 intervalHours 포함
+      const records = newTableData.filter(row => !row.isTitle).map(row => {
+        // conditionId로 해당 조건 찾기
+        const condition = conditions.find(c => c.id === row.conditionId);
+        return {
+          timeStr: row.timeStr,
+          amount: row.amount,
+          route: row.route,
+          injectionTime: row.injectionTime,
+          conditionId: row.conditionId,
+          intervalHours: condition ? Number(condition.intervalHours) : undefined
+        };
+      });
       props.onSaveRecords(records);
     }
   };
