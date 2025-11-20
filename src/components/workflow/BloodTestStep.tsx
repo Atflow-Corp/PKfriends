@@ -590,22 +590,6 @@ const BloodTestStep = ({
                     </Select>
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="measurementType">측정 기준</Label>
-                  <Select 
-                    value={formData.measurementType} 
-                    onValueChange={v => setFormData({ ...formData, measurementType: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="측정 기준 선택" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Trough">Trough</SelectItem>
-                      <SelectItem value="Peak">Peak</SelectItem>
-                      <SelectItem value="N/A">N/A</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <Button type="submit">추가</Button>
               </form>
               {/* 입력된 혈중 약물 농도 리스트 */}
@@ -617,7 +601,6 @@ const BloodTestStep = ({
                         <TableHead>날짜</TableHead>
                         <TableHead>시간</TableHead>
                         <TableHead>농도</TableHead>
-                        <TableHead>측정 기준</TableHead>
                         <TableHead className="w-16">삭제</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -627,7 +610,6 @@ const BloodTestStep = ({
                           <TableCell>{test.testDate.toLocaleDateString()}</TableCell>
                           <TableCell>{test.testDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
                           <TableCell>{test.concentration} {test.unit}</TableCell>
-                          <TableCell>{test.measurementType || "-"}</TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"
