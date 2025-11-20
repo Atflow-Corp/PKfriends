@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { savePrescriptionInfo } from '../../lib/tdm';
 
 // 주입시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
@@ -173,7 +173,34 @@ function TablePage(props) {
     totalDoses: ""
   });
   
-  const [conditions, setConditions] = useState(props.initialConditions || []);
+  // localStorage 키 생성
+  const getStorageKey = useCallback(() => {
+    if (!props.selectedPatient || !props.tdmDrug?.drugName) return null;
+    return `tdmfriends:conditions:${props.selectedPatient.id}:${props.tdmDrug.drugName}`;
+  }, [props.selectedPatient, props.tdmDrug?.drugName]);
+
+  // localStorage에서 conditions 복원
+  const restoreConditionsFromStorage = useCallback(() => {
+    const storageKey = getStorageKey();
+    if (!storageKey) return null;
+    
+    try {
+      const savedConditions = localStorage.getItem(storageKey);
+      if (savedConditions) {
+        return JSON.parse(savedConditions);
+      }
+    } catch (error) {
+      console.error('Failed to restore conditions from localStorage:', error);
+    }
+    return null;
+  }, [getStorageKey]);
+
+  // 초기 conditions: localStorage에서 복원하거나 props.initialConditions 사용
+  const [conditions, setConditions] = useState(() => {
+    const restored = restoreConditionsFromStorage();
+    return restored || props.initialConditions || [];
+  });
+  
   const [tableData, setTableData] = useState(props.initialTableData || []);
   const [isTableGenerated, setIsTableGenerated] = useState(props.initialIsTableGenerated || false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -268,6 +295,61 @@ function TablePage(props) {
     onRecordsChangeRef.current(records);
   }, [tableData]);
 
+  // selectedPatient나 tdmDrug가 변경될 때 localStorage에서 conditions 복원
+  // 의존성에서 restoreConditionsFromStorage와 props.initialConditions 제거하여 무한 루프 방지
+  useEffect(() => {
+    const storageKey = getStorageKey();
+    if (!storageKey) {
+      // storageKey가 없으면 초기화
+      if (props.initialConditions && props.initialConditions.length > 0) {
+        setConditions(props.initialConditions);
+      } else {
+        setConditions([]);
+      }
+      return;
+    }
+    
+    try {
+      const savedConditions = localStorage.getItem(storageKey);
+      if (savedConditions) {
+        const parsed = JSON.parse(savedConditions);
+        if (parsed && parsed.length > 0) {
+          setConditions(parsed);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore conditions from localStorage:', error);
+    }
+    
+    // localStorage에 없고 props.initialConditions가 있으면 사용
+    if (props.initialConditions && props.initialConditions.length > 0) {
+      setConditions(props.initialConditions);
+    }
+  }, [props.selectedPatient?.id, props.tdmDrug?.drugName, getStorageKey]);
+
+  // conditions 변경 시 localStorage에 저장
+  // 단, 현재 localStorage의 값과 동일하면 저장하지 않아 무한 루프 방지
+  useEffect(() => {
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
+    
+    try {
+      const currentSaved = localStorage.getItem(storageKey);
+      const currentSavedParsed = currentSaved ? JSON.parse(currentSaved) : null;
+      const conditionsJson = JSON.stringify(conditions);
+      
+      // 현재 저장된 값과 동일하면 저장하지 않음 (무한 루프 방지)
+      if (currentSavedParsed && JSON.stringify(currentSavedParsed) === conditionsJson) {
+        return;
+      }
+      
+      localStorage.setItem(storageKey, conditionsJson);
+    } catch (error) {
+      console.error('Failed to save conditions to localStorage:', error);
+    }
+  }, [conditions, getStorageKey]);
+
   // Propagate conditions changes to parent
   useEffect(() => {
     if (!onConditionsChangeRef.current) return;
@@ -283,9 +365,30 @@ function TablePage(props) {
 
 
   // props가 변경될 때 state 업데이트
+  // 단, localStorage에 저장된 값이 있으면 우선 사용
+  // 이 useEffect는 props.initialConditions가 변경될 때만 실행되지만,
+  // localStorage에 저장된 값이 있으면 무시 (무한 루프 방지)
   useEffect(() => {
     let changed = false;
-    if (props.initialConditions) {
+    // localStorage에서 복원된 값이 없을 때만 props.initialConditions 사용
+    const storageKey = getStorageKey();
+    if (storageKey) {
+      try {
+        const savedConditions = localStorage.getItem(storageKey);
+        if (savedConditions) {
+          const parsed = JSON.parse(savedConditions);
+          if (parsed && parsed.length > 0) {
+            // localStorage에 저장된 값이 있으면 props.initialConditions 무시
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check localStorage:', error);
+      }
+    }
+    
+    // localStorage에 없고 props.initialConditions가 있으면 사용
+    if (props.initialConditions && props.initialConditions.length > 0) {
       setConditions(props.initialConditions);
       changed = true;
     }
@@ -436,24 +539,9 @@ function TablePage(props) {
       setConditions(prev => [...prev, newCondition]);
     }
 
-    // 처방 내역을 localStorage에 저장 (추가/수정 모두 적용)
-    if (props.selectedPatient && props.tdmDrug) {
-      const routeKorean = convertRouteToKorean(currentCondition.route);
-      // CMT 매핑: 정맥(IV) -> 1, 경구(oral) -> 2
-      const cmt = routeKorean === "정맥" ? 1 : 2;
-      
-      savePrescriptionInfo(
-        props.selectedPatient.id,
-        props.tdmDrug.drugName,
-        {
-          amount: parseFloat(currentCondition.dosage) || 0,
-          tau: parseFloat(currentCondition.intervalHours) || 12,
-          cmt: cmt,
-          route: routeKorean,
-          infusionTime: parseFloat(currentCondition.injectionTime) || undefined
-        }
-      );
-    }
+    // 처방 내역 저장은 테이블 생성 시에만 수행
+    // (시계열상 가장 최근 투약 기록의 정보를 저장하기 위해)
+    // 조건 추가/수정 시에는 저장하지 않음
 
     // 현재 조건 초기화
     setCurrentCondition({
@@ -593,6 +681,30 @@ function TablePage(props) {
     });
     newTableData = [newTableData[0], ...allDoses];
 
+    // 시계열상 가장 최근 투약 기록의 intervalHours 찾기
+    if (allDoses.length > 0 && props.selectedPatient && props.tdmDrug) {
+      const latestDose = allDoses[allDoses.length - 1]; // 정렬된 마지막 요소 = 가장 최근
+      const latestCondition = conditions.find(c => c.id === latestDose.conditionId);
+      
+      if (latestCondition) {
+        const routeKorean = convertRouteToKorean(latestCondition.route);
+        const cmt = routeKorean === "정맥" ? 1 : 2;
+        
+        // 시계열상 가장 최근 투약 기록의 정보로 저장
+        savePrescriptionInfo(
+          props.selectedPatient.id,
+          props.tdmDrug.drugName,
+          {
+            amount: parseFloat(latestCondition.dosage) || 0,
+            tau: parseFloat(latestCondition.intervalHours) || 12, // 시계열상 최근 투약 기록의 intervalHours
+            cmt: cmt,
+            route: routeKorean,
+            infusionTime: parseFloat(latestCondition.injectionTime) || undefined
+          }
+        );
+      }
+    }
+
     setTableData(newTableData);
     setIsTableGenerated(true);
     if (props.onTableGenerated) props.onTableGenerated();
@@ -601,12 +713,19 @@ function TablePage(props) {
     // 초기 로드가 아닐 때만 onSaveRecords 호출 (중복 저장 방지)
     if (props.onSaveRecords && !isInitialLoad) {
       // title row 제외, 실제 투약기록만 전달
-      const records = newTableData.filter(row => !row.isTitle).map(row => ({
-        timeStr: row.timeStr,
-        amount: row.amount,
-        route: row.route,
-        injectionTime: row.injectionTime
-      }));
+      // 각 기록의 conditionId와 intervalHours 포함
+      const records = newTableData.filter(row => !row.isTitle).map(row => {
+        // conditionId로 해당 조건 찾기
+        const condition = conditions.find(c => c.id === row.conditionId);
+        return {
+          timeStr: row.timeStr,
+          amount: row.amount,
+          route: row.route,
+          injectionTime: row.injectionTime,
+          conditionId: row.conditionId,
+          intervalHours: condition ? Number(condition.intervalHours) : undefined
+        };
+      });
       props.onSaveRecords(records);
     }
   };

@@ -418,8 +418,14 @@ const PKSimulation = ({
     [patientPrescriptions, patientBloodTests],
   );
 
-  // 사용 가능한 약물이 있고 선택된 약물이 없으면 첫 번째 약물 자동 선택
+  // selectedPrescription이 변경될 때 selectedDrug 동기화
+  useEffect(() => {
+    if (selectedPrescription?.drugName) {
+      setSelectedDrug(selectedPrescription.drugName);
+    }
+  }, [selectedPrescription?.drugName]);
 
+  // 사용 가능한 약물이 있고 선택된 약물이 없으면 첫 번째 약물 자동 선택
   useEffect(() => {
     if (availableDrugs.length > 0 && !selectedDrug) {
       setSelectedDrug(availableDrugs[0]);
@@ -2594,9 +2600,14 @@ const PKSimulation = ({
     setTdmChartDataInterval([]);
   }, [selectedPatientId, selectedDrug, toChartData, buildTdmRequestBody, checkChartDataSize]);
 
-  // 최근 선택한 약물 복원
+  // 최근 선택한 약물 복원 (selectedPrescription이 없을 때만)
   useEffect(() => {
     if (!selectedPatientId) return;
+    // selectedPrescription이 있으면 우선 사용하고 localStorage 복원은 건너뜀
+    if (selectedPrescription?.drugName) {
+      setSelectedDrug(selectedPrescription.drugName);
+      return;
+    }
     try {
       const saved = window.localStorage.getItem(
         `tdmfriends:selectedDrug:${selectedPatientId}`,
@@ -2605,7 +2616,7 @@ const PKSimulation = ({
     } catch {
       console.warn("failed to restore selectedDrug from localStorage");
     }
-  }, [selectedPatientId]);
+  }, [selectedPatientId, selectedPrescription?.drugName]);
 
   // 약물 변경 시 저장
   useEffect(() => {
@@ -2700,11 +2711,12 @@ const PKSimulation = ({
   }, [selectedPatientId, selectedDrug, tdmResult]);
 
   const getTargetBand = (): { min?: number; max?: number } => {
-    const cp =
-      patientPrescriptions.find((p) => p.drugName === selectedDrug) ||
-      patientPrescriptions[0];
+    // selectedPrescription을 직접 사용하여 현재 선택된 약품의 처방 정보 사용
+    const cp = selectedPrescription || patientPrescriptions.find((p) => p.drugName === selectedDrug);
 
-    const target = (cp?.tdmTarget || "").toLowerCase();
+    if (!cp) return {};
+
+    const target = (cp.tdmTarget || "").toLowerCase();
 
     // AUC 목표는 제외
     if (!target || target.includes("auc")) return {};
@@ -2848,10 +2860,10 @@ const PKSimulation = ({
           ipredSeries={tdmExtraSeries?.ipredSeries}
           predSeries={tdmExtraSeries?.predSeries}
           observedSeries={tdmExtraSeries?.observedSeries}
-          // TDM 내역 데이터
-          tdmIndication={getTdmData(selectedDrug).indication}
-          tdmTarget={getTdmData(selectedDrug).target}
-          tdmTargetValue={getTdmData(selectedDrug).targetValue}
+          // TDM 내역 데이터 - selectedPrescription을 직접 사용하여 현재 선택된 약품의 정보 사용
+          tdmIndication={getTdmData(selectedPrescription?.drugName || selectedDrug).indication}
+          tdmTarget={getTdmData(selectedPrescription?.drugName || selectedDrug).target}
+          tdmTargetValue={getTdmData(selectedPrescription?.drugName || selectedDrug).targetValue}
           // 투약기록 데이터
           latestAdministration={latestAdministration}
           drugAdministrations={drugAdministrations}
@@ -3343,10 +3355,10 @@ const PKSimulation = ({
                 currentMethodSeries={cardTdmExtraSeries[card.id]?.currentMethodSeries}
                 chartColor={isDosageCard ? "pink" : "green"}
                 isLoading={cardChartLoading[card.id] || false}
-                // TDM 내역 데이터
-                tdmIndication={getTdmData(selectedDrug).indication}
-                tdmTarget={getTdmData(selectedDrug).target}
-                tdmTargetValue={getTdmData(selectedDrug).targetValue}
+                // TDM 내역 데이터 - selectedPrescription을 직접 사용하여 현재 선택된 약품의 정보 사용
+                tdmIndication={getTdmData(selectedPrescription?.drugName || selectedDrug).indication}
+                tdmTarget={getTdmData(selectedPrescription?.drugName || selectedDrug).target}
+                tdmTargetValue={getTdmData(selectedPrescription?.drugName || selectedDrug).targetValue}
                 // 투약기록 데이터 - 용법 조정 카드에서 선택된 값 반영
                 originalAdministration={latestAdministration}
                 latestAdministration={(() => {

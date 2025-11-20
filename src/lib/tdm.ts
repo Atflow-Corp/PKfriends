@@ -235,7 +235,9 @@ export const computeTauFromAdministrations = (
     toDate(last.date, last.time),
     toDate(prev.date, prev.time)
   );
-  return tauHours > 0 ? tauHours : undefined;
+  // NaN이나 Infinity, 음수 체크하여 안전하게 처리
+  if (!Number.isFinite(tauHours) || tauHours <= 0) return undefined;
+  return tauHours;
 };
 
 export const parseTargetValue = (
@@ -386,8 +388,21 @@ export const buildTdmRequestBody = (args: {
   // before 값: 저장된 처방 내역 사용
   const amountBefore =
     savedPrescription?.amount ?? (lastDose ? lastDose.dose : 100);
-  const tauBefore =
-    savedPrescription?.tau ?? computeTauFromAdministrations(patientDoses) ?? 12;
+  
+  // tauBefore 계산: 
+  // 1) 저장된 처방 내역의 tau 우선
+  // 2) 시계열 상 가장 최근 투약 기록의 intervalHours 사용
+  // 3) 없으면 연속된 투약 기록 간의 간격 계산
+  // 4) 그것도 없으면 기본값 12시간
+  // NaN이나 Infinity가 나와도 안전하게 처리
+  const rawTau =
+    savedPrescription?.tau ??
+    lastDose?.intervalHours ??
+    computeTauFromAdministrations(patientDoses) ??
+    12;
+  
+  const tauBefore = Number.isFinite(rawTau) && rawTau > 0 ? rawTau : 12;
+  
   const cmtBefore = savedPrescription?.cmt ?? 1;
 
   // after 값: overrides가 있으면 사용, 없으면 before 값 사용

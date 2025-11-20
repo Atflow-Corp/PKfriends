@@ -207,20 +207,27 @@ const DrugAdministrationStep = ({
             onConditionsChange={setConditions}
             onSaveRecords={(records) => {
               if (selectedPatient && tdmDrug) {
-                const newAdministrations = records.map((row, idx) => ({
-                  id: `${Date.now()}_${idx}`,
-                  patientId: selectedPatient.id,
-                  drugName: tdmDrug.drugName,
-                  route: row.route,
-                  date: row.timeStr.split(" ")[0],
-                  time: row.timeStr.split(" ")[1],
-                  dose: Number(row.amount.split(" ")[0]),
-                  unit: row.amount.split(" ")[1] || "mg",
-                  isIVInfusion: row.route === "정맥",
-                  infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
-                  administrationTime: undefined,
-                  intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
-                }));
+                const newAdministrations = records.map((row, idx) => {
+                  // row에 conditionId와 intervalHours가 있으면 사용, 없으면 fallback
+                  const intervalHours = row.intervalHours !== undefined 
+                    ? Number(row.intervalHours)
+                    : (conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined);
+                  
+                  return {
+                    id: `${Date.now()}_${idx}`,
+                    patientId: selectedPatient.id,
+                    drugName: tdmDrug.drugName,
+                    route: row.route,
+                    date: row.timeStr.split(" ")[0],
+                    time: row.timeStr.split(" ")[1],
+                    dose: Number(row.amount.split(" ")[0]),
+                    unit: row.amount.split(" ")[1] || "mg",
+                    isIVInfusion: row.route === "정맥",
+                    infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : undefined,
+                    administrationTime: undefined,
+                    intervalHours: intervalHours
+                  };
+                });
                 const updatedAdministrations = [
                   ...drugAdministrations.filter(d => !(d.patientId === selectedPatient.id && d.drugName === tdmDrug?.drugName)),
                   ...newAdministrations

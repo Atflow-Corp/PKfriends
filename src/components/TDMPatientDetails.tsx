@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
@@ -28,13 +28,109 @@ const TDMPatientDetails = ({
   const setIsExpanded = onToggleExpanded || setInternalIsExpanded;
   
   // 투약기록 데이터 계산
-  const patientDrugAdministrations = drugAdministrations.filter(d => d.patientId === currentPatient?.id);
+  const patientDrugAdministrations = drugAdministrations.filter(d => 
+    d.patientId === currentPatient?.id && 
+    d.drugName === selectedPrescription?.drugName
+  );
   const latestAdministration = patientDrugAdministrations.length > 0 
     ? [...patientDrugAdministrations].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())[patientDrugAdministrations.length - 1]
     : null;
   const firstAdministration = patientDrugAdministrations.length > 0 
     ? [...patientDrugAdministrations].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())[0]
     : null;
+
+  // localStorage에서 저장된 처방 내역 conditions 가져오기 (시계열상 과거부터 정렬)
+  const prescriptionConditions = useMemo(() => {
+    if (!currentPatient?.id || !selectedPrescription?.drugName) return [];
+    
+    const storageKey = `tdmfriends:conditions:${currentPatient.id}:${selectedPrescription.drugName}`;
+    try {
+      const savedConditions = localStorage.getItem(storageKey);
+      if (savedConditions) {
+        const conditions = JSON.parse(savedConditions);
+        
+        // 시계열상 과거부터 정렬 (firstDoseDate와 firstDoseTime 기준)
+        return [...conditions].sort((a, b) => {
+          // 날짜와 시간이 모두 있는 경우만 정렬
+          if (!a.firstDoseDate || !a.firstDoseTime || !b.firstDoseDate || !b.firstDoseTime) {
+            // 날짜/시간이 없는 항목은 뒤로
+            if (!a.firstDoseDate || !a.firstDoseTime) return 1;
+            if (!b.firstDoseDate || !b.firstDoseTime) return -1;
+            return 0;
+          }
+          
+          // 날짜와 시간을 결합하여 비교
+          const dateTimeA = new Date(`${a.firstDoseDate}T${a.firstDoseTime}`).getTime();
+          const dateTimeB = new Date(`${b.firstDoseDate}T${b.firstDoseTime}`).getTime();
+          
+          return dateTimeA - dateTimeB; // 오름차순 (과거 → 현재)
+        });
+      }
+    } catch (error) {
+      console.error('Failed to restore conditions from localStorage:', error);
+    }
+    return [];
+  }, [currentPatient?.id, selectedPrescription?.drugName]);
+
+  // 처방 내역 summary 생성 함수
+  const getConditionSummary = (condition: any) => {
+    if (!condition.firstDoseDate || !condition.firstDoseTime) {
+      return "날짜와 시간을 입력해주세요";
+    }
+    const unitText = condition.unit ? condition.unit : "mg";
+    return `${condition.totalDoses}회 투약, ${condition.intervalHours}시간 간격, ${condition.firstDoseDate} ${condition.firstDoseTime}, ${condition.dosage} ${unitText}, ${condition.route}${condition.route === "정맥" && condition.injectionTime ? ` (${condition.injectionTime})` : ""}`;
+  };
+
+  // localStorage에서 저장된 신기능 데이터 가져오기
+  const renalInfo = useMemo(() => {
+    if (!currentPatient?.id || !selectedPrescription?.drugName) return null;
+    
+    const storageKey = `tdmfriends:renal:${currentPatient.id}:${selectedPrescription.drugName}`;
+    try {
+      const savedRenalInfo = localStorage.getItem(storageKey);
+      if (savedRenalInfo) {
+        const renalInfoList = JSON.parse(savedRenalInfo) as Array<{
+          id: string;
+          creatinine: string;
+          date: string;
+          formula: string;
+          result: string;
+          isSelected?: boolean;
+        }>;
+        
+        // 선택된 항목이 있으면 선택된 항목, 없으면 가장 최근 항목 반환
+        const selected = renalInfoList.find(r => r.isSelected);
+        if (selected) return selected;
+        
+        // 날짜 기준으로 정렬하여 가장 최근 항목 반환
+        if (renalInfoList.length > 0) {
+          const sorted = [...renalInfoList].sort((a, b) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return dateB - dateA; // 최신순
+          });
+          return sorted[0];
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore renal info from localStorage:', error);
+    }
+    return null;
+  }, [currentPatient?.id, selectedPrescription?.drugName]);
+
+  // 계산식 한글 변환 함수
+  const getFormulaName = (formula: string): string => {
+    switch (formula) {
+      case 'cockcroft-gault':
+        return 'Cockcroft-Gault';
+      case 'mdrd':
+        return 'MDRD';
+      case 'ckd-epi':
+        return 'CKD-EPI';
+      default:
+        return formula;
+    }
+  };
   
   return (
     <div className="bg-white dark:bg-slate-900 rounded-lg p-6 shadow mb-6 border border-gray-200 dark:border-gray-700">
@@ -142,91 +238,119 @@ const TDMPatientDetails = ({
           {/* 처방 내역 섹션 */}
           <div className="space-y-3">
             <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">처방 내역</div>
-            <div className="grid grid-cols-5 gap-4">
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">투약 용량</div>
-              <div className="font-medium">
-                {latestAdministration ? 
-                  `${latestAdministration.dose}${latestAdministration.unit}` : 
-                  (selectedPrescription ? 
-                    `${selectedPrescription.dosage}${selectedPrescription.unit}` : 
-                    'N/A')
-                }
+            {prescriptionConditions.length > 0 ? (
+              <div className="space-y-2">
+                {prescriptionConditions.map((condition: any, index: number) => (
+                  <div 
+                    key={condition.id || index} 
+                    className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-slate-800"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 min-w-[60px]">
+                        기록 {index + 1}:
+                      </span>
+                      <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">
+                        {getConditionSummary(condition)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">투약 간격</div>
-              <div className="font-medium">
-                {latestAdministration?.intervalHours ? 
-                  `${latestAdministration.intervalHours}시간` : 
-                  (selectedPrescription?.frequency ? 
-                    `${selectedPrescription.frequency}` : 
-                    'N/A')
-                }
+            ) : (
+              <div className="grid grid-cols-5 gap-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">투약 용량</div>
+                  <div className="font-medium">
+                    {latestAdministration ? 
+                      `${latestAdministration.dose}${latestAdministration.unit}` : 
+                      (selectedPrescription ? 
+                        `${selectedPrescription.dosage}${selectedPrescription.unit}` : 
+                        'N/A')
+                    }
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">투약 간격</div>
+                  <div className="font-medium">
+                    {latestAdministration?.intervalHours ? 
+                      `${latestAdministration.intervalHours}시간` : 
+                      (selectedPrescription?.frequency ? 
+                        `${selectedPrescription.frequency}` : 
+                        'N/A')
+                    }
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">투약 경로</div>
+                  <div className="font-medium">
+                    {latestAdministration ? 
+                      `${latestAdministration.route}${latestAdministration.infusionTime ? ` (${latestAdministration.infusionTime}분)` : ''}` : 
+                      'N/A'
+                    }
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">투약횟수</div>
+                  <div className="font-medium">
+                    {patientDrugAdministrations.length > 0 ? 
+                      `${patientDrugAdministrations.length}회` : 
+                      'N/A'
+                    }
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">투약 시작 일시</div>
+                  <div className="font-medium">
+                    {firstAdministration ? 
+                      `${firstAdministration.date} ${firstAdministration.time}` : 
+                      'N/A'
+                    }
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">투약 경로</div>
-              <div className="font-medium">
-                {latestAdministration ? 
-                  `${latestAdministration.route}${latestAdministration.infusionTime ? ` (${latestAdministration.infusionTime}분)` : ''}` : 
-                  'N/A'
-                }
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">투약횟수</div>
-              <div className="font-medium">
-                {patientDrugAdministrations.length > 0 ? 
-                  `${patientDrugAdministrations.length}회` : 
-                  'N/A'
-                }
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">투약 시작 일시</div>
-              <div className="font-medium">
-                {firstAdministration ? 
-                  `${firstAdministration.date} ${firstAdministration.time}` : 
-                  'N/A'
-                }
-              </div>
-            </div>
-            </div>
+            )}
           </div>
 
           {/* 신 기능 데이터 섹션 */}
           <div className="space-y-3">
             <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">신기능 데이터</div>
-            <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">혈청 크레아티닌</div>
-              <div className="font-medium">
-                {latestBloodTest?.creatinine ? 
-                  latestBloodTest.creatinine : 
-                  <span className="text-gray-400 italic">미입력</span>
-                }
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">검사일자</div>
+                <div className="font-medium">
+                  {renalInfo?.date ? 
+                    renalInfo.date : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">투석 정보</div>
-              <div className="font-medium">
-                {latestBloodTest?.dialysis === 'Y' ? 
-                  latestBloodTest?.renalReplacement || <span className="text-gray-400 italic">미입력</span> : 
-                  'N'
-                }
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">혈청 크레아티닌</div>
+                <div className="font-medium">
+                  {renalInfo?.creatinine ? 
+                    `${renalInfo.creatinine} mg/dL` : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">모니터링 레벨</div>
-              <div className="font-medium">
-                {/* 임시 데이터: 빈값으로 설정, 추후 백엔드에서 연결 예정 */}
-                {latestBloodTest?.dialysis === 'Y' && latestBloodTest?.renalReplacement === 'CRRT' ? 
-                  '고위험군' : 
-                  <span className="text-gray-400 italic">미입력</span>
-                }
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">계산식</div>
+                <div className="font-medium">
+                  {renalInfo?.formula ? 
+                    getFormulaName(renalInfo.formula) : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
               </div>
-            </div>
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">결과값</div>
+                <div className="font-medium">
+                  {renalInfo?.result ? 
+                    renalInfo.result : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
+              </div>
             </div>
           </div>
         </div>
