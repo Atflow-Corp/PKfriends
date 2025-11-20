@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { savePrescriptionInfo } from '../../lib/tdm';
 
 // 주입시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
@@ -173,7 +173,34 @@ function TablePage(props) {
     totalDoses: ""
   });
   
-  const [conditions, setConditions] = useState(props.initialConditions || []);
+  // localStorage 키 생성
+  const getStorageKey = useCallback(() => {
+    if (!props.selectedPatient || !props.tdmDrug?.drugName) return null;
+    return `tdmfriends:conditions:${props.selectedPatient.id}:${props.tdmDrug.drugName}`;
+  }, [props.selectedPatient, props.tdmDrug?.drugName]);
+
+  // localStorage에서 conditions 복원
+  const restoreConditionsFromStorage = useCallback(() => {
+    const storageKey = getStorageKey();
+    if (!storageKey) return null;
+    
+    try {
+      const savedConditions = localStorage.getItem(storageKey);
+      if (savedConditions) {
+        return JSON.parse(savedConditions);
+      }
+    } catch (error) {
+      console.error('Failed to restore conditions from localStorage:', error);
+    }
+    return null;
+  }, [getStorageKey]);
+
+  // 초기 conditions: localStorage에서 복원하거나 props.initialConditions 사용
+  const [conditions, setConditions] = useState(() => {
+    const restored = restoreConditionsFromStorage();
+    return restored || props.initialConditions || [];
+  });
+  
   const [tableData, setTableData] = useState(props.initialTableData || []);
   const [isTableGenerated, setIsTableGenerated] = useState(props.initialIsTableGenerated || false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -268,6 +295,61 @@ function TablePage(props) {
     onRecordsChangeRef.current(records);
   }, [tableData]);
 
+  // selectedPatient나 tdmDrug가 변경될 때 localStorage에서 conditions 복원
+  // 의존성에서 restoreConditionsFromStorage와 props.initialConditions 제거하여 무한 루프 방지
+  useEffect(() => {
+    const storageKey = getStorageKey();
+    if (!storageKey) {
+      // storageKey가 없으면 초기화
+      if (props.initialConditions && props.initialConditions.length > 0) {
+        setConditions(props.initialConditions);
+      } else {
+        setConditions([]);
+      }
+      return;
+    }
+    
+    try {
+      const savedConditions = localStorage.getItem(storageKey);
+      if (savedConditions) {
+        const parsed = JSON.parse(savedConditions);
+        if (parsed && parsed.length > 0) {
+          setConditions(parsed);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore conditions from localStorage:', error);
+    }
+    
+    // localStorage에 없고 props.initialConditions가 있으면 사용
+    if (props.initialConditions && props.initialConditions.length > 0) {
+      setConditions(props.initialConditions);
+    }
+  }, [props.selectedPatient?.id, props.tdmDrug?.drugName, getStorageKey]);
+
+  // conditions 변경 시 localStorage에 저장
+  // 단, 현재 localStorage의 값과 동일하면 저장하지 않아 무한 루프 방지
+  useEffect(() => {
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
+    
+    try {
+      const currentSaved = localStorage.getItem(storageKey);
+      const currentSavedParsed = currentSaved ? JSON.parse(currentSaved) : null;
+      const conditionsJson = JSON.stringify(conditions);
+      
+      // 현재 저장된 값과 동일하면 저장하지 않음 (무한 루프 방지)
+      if (currentSavedParsed && JSON.stringify(currentSavedParsed) === conditionsJson) {
+        return;
+      }
+      
+      localStorage.setItem(storageKey, conditionsJson);
+    } catch (error) {
+      console.error('Failed to save conditions to localStorage:', error);
+    }
+  }, [conditions, getStorageKey]);
+
   // Propagate conditions changes to parent
   useEffect(() => {
     if (!onConditionsChangeRef.current) return;
@@ -283,9 +365,30 @@ function TablePage(props) {
 
 
   // props가 변경될 때 state 업데이트
+  // 단, localStorage에 저장된 값이 있으면 우선 사용
+  // 이 useEffect는 props.initialConditions가 변경될 때만 실행되지만,
+  // localStorage에 저장된 값이 있으면 무시 (무한 루프 방지)
   useEffect(() => {
     let changed = false;
-    if (props.initialConditions) {
+    // localStorage에서 복원된 값이 없을 때만 props.initialConditions 사용
+    const storageKey = getStorageKey();
+    if (storageKey) {
+      try {
+        const savedConditions = localStorage.getItem(storageKey);
+        if (savedConditions) {
+          const parsed = JSON.parse(savedConditions);
+          if (parsed && parsed.length > 0) {
+            // localStorage에 저장된 값이 있으면 props.initialConditions 무시
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check localStorage:', error);
+      }
+    }
+    
+    // localStorage에 없고 props.initialConditions가 있으면 사용
+    if (props.initialConditions && props.initialConditions.length > 0) {
       setConditions(props.initialConditions);
       changed = true;
     }
