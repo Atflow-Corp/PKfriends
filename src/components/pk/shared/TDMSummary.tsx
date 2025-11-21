@@ -84,7 +84,8 @@ const TDMSummary = ({
   const getTargetRangeStatus = (): string => {
     if (!tdmTargetValue || !targetValue.numericValue) return '도달';
     
-    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+    // 다양한 범위 형식 지원: "400-600", "400 - 600", "400~600" 등
+    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*[-~–]\s*(\d+(?:\.\d+)?)/);
     if (!rangeMatch) return '도달';
     
     const minValue = parseFloat(rangeMatch[1]);
@@ -110,18 +111,30 @@ const TDMSummary = ({
     const status = getTargetRangeStatus();
     if (status !== '도달') return null;
     
+    // input_TOXI가 1이 아니면 null 반환
     if (input_TOXI !== 1) return null;
-    if (!tdmTargetValue || !targetValue.numericValue) return null;
     
-    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+    // 필수 값 체크
+    if (!tdmTargetValue || targetValue.numericValue == null) return null;
+    
+    // 다양한 범위 형식 지원: "400-600", "400 - 600", "400~600", "400–600" 등
+    // 중간점(·)이나 다른 특수문자가 있어도 숫자 범위를 추출
+    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*[-~–]\s*(\d+(?:\.\d+)?)/);
     if (!rangeMatch) return null;
     
     const maxValue = parseFloat(rangeMatch[2]);
     const currentValue = targetValue.numericValue;
+    
+    // 유효하지 않은 값 체크
+    if (!Number.isFinite(maxValue) || !Number.isFinite(currentValue)) return null;
+    
     const diffFromMax = maxValue - currentValue;
     
     // 반코마이신 + AUC: 100 이내
-    if (selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) {
+    const isVancomycinAUC = selectedDrug === 'Vancomycin' && 
+      (tdmTarget?.toLowerCase().includes('auc') || tdmTarget?.toLowerCase().includes('auc24'));
+    
+    if (isVancomycinAUC) {
       if (diffFromMax <= 100 && diffFromMax >= 0) {
         return "환자가 신독성 고위험군인 경우, 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
       }

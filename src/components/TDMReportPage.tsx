@@ -11,6 +11,7 @@ import TDMSummary from "./pk/shared/TDMSummary";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
+import { buildTdmRequestBody } from "@/lib/tdm";
 
 const TDMReportPage = () => {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -397,6 +398,22 @@ const TDMReportPage = () => {
                   date: da.date,
                   time: da.time
                 }))}
+              tauBefore={selectedPatient && selectedDrug ? buildTdmRequestBody({
+                patients,
+                prescriptions,
+                bloodTests,
+                drugAdministrations,
+                selectedPatientId: selectedPatient.id,
+                selectedDrugName: selectedDrug
+              })?.input_tau_before : undefined}
+              amountBefore={selectedPatient && selectedDrug ? buildTdmRequestBody({
+                patients,
+                prescriptions,
+                bloodTests,
+                drugAdministrations,
+                selectedPatientId: selectedPatient.id,
+                selectedDrugName: selectedDrug
+              })?.input_amount_before : undefined}
             />
           </CardContent>
         </Card>
