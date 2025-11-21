@@ -40,6 +40,8 @@ interface PKChartsProps {
   drugAdministrations?: DrugAdministration[];
   steadyState?: boolean | string;
   input_TOXI?: number;
+  tauBefore?: number;
+  amountBefore?: number;
 }
 
 const PKCharts = ({
@@ -63,7 +65,9 @@ const PKCharts = ({
   latestAdministration,
   drugAdministrations = [],
   steadyState,
-  input_TOXI
+  input_TOXI,
+  tauBefore,
+  amountBefore
 }: PKChartsProps) => {
   // 데이터 병합
   const data = useMemo(() => 
@@ -99,9 +103,14 @@ const PKCharts = ({
   const predictedMax: number | null = typeof propPredictedMax === 'number' ? propPredictedMax : null;
   const predictedTrough: number | null = typeof propPredictedTrough === 'number' ? propPredictedTrough : null;
 
-  const intervalHours = latestAdministration?.intervalHours ?? null;
+  // tauBefore가 있으면 우선 사용 (API의 input_tau_before와 동일)
+  // 없으면 latestAdministration의 intervalHours 사용 (하위 호환성)
+  const intervalHours = tauBefore ?? latestAdministration?.intervalHours ?? null;
   const emphasizedInterval = intervalHours != null ? intervalHours.toLocaleString() : '-';
-  const doseValue = latestAdministration?.dose ?? null;
+  
+  // amountBefore가 있으면 우선 사용 (API의 input_amount_before와 동일)
+  // 없으면 latestAdministration의 dose 사용 (하위 호환성)
+  const doseValue = amountBefore ?? latestAdministration?.dose ?? null;
   const emphasizedDose = doseValue != null ? Number(doseValue).toLocaleString() : '-';
   const doseUnit = latestAdministration?.unit || 'mg';
   const intervalLabel = intervalHours != null ? `${intervalHours.toLocaleString()} 시간` : '투약 간격 정보 없음';

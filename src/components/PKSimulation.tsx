@@ -2493,8 +2493,21 @@ const PKSimulation = ({
               .data as TdmApiResponse;
             setTdmResult(data);
             const bodyForObs = buildTdmRequestBody();
+            
+            // buildTdmRequestBody의 반환값에서 input_TOXI 추출
+            if (bodyForObs?.input_TOXI !== undefined) {
+              setInput_TOXI(bodyForObs.input_TOXI);
+            } else {
+              // fallback: dataset에서 TOXI 값 추출
+              const dataset = (bodyForObs?.dataset as TdmDatasetRow[]) || [];
+              if (dataset.length > 0 && dataset[0].TOXI !== undefined) {
+                setInput_TOXI(dataset[0].TOXI);
+              }
+            }
+            
+            const dataset = (bodyForObs?.dataset as TdmDatasetRow[]) || [];
             setTdmChartDataMain(
-              toChartData(data, (bodyForObs?.dataset as TdmDatasetRow[]) || []),
+              toChartData(data, dataset),
             );
             setTdmExtraSeries({
               ipredSeries: (
@@ -2545,8 +2558,20 @@ const PKSimulation = ({
         setTdmResult(data);
         const bodyForObs = buildTdmRequestBody();
         
+        // buildTdmRequestBody의 반환값에서 input_TOXI 추출
+        if (bodyForObs?.input_TOXI !== undefined) {
+          setInput_TOXI(bodyForObs.input_TOXI);
+        } else {
+          // fallback: dataset에서 TOXI 값 추출
+          const dataset = (bodyForObs?.dataset as TdmDatasetRow[]) || [];
+          if (dataset.length > 0 && dataset[0].TOXI !== undefined) {
+            setInput_TOXI(dataset[0].TOXI);
+          }
+        }
+        
+        const dataset = (bodyForObs?.dataset as TdmDatasetRow[]) || [];
         // 데이터 크기 체크
-        if (checkChartDataSize(data, (bodyForObs?.dataset as TdmDatasetRow[]) || [])) {
+        if (checkChartDataSize(data, dataset)) {
           setShowChartDataTooLargeAlert(true);
           return;
         }
@@ -2869,6 +2894,10 @@ const PKSimulation = ({
           drugAdministrations={drugAdministrations}
           steadyState={tdmResult?.Steady_state}
           input_TOXI={input_TOXI}
+          // API의 input_tau_before와 동일한 값 전달
+          tauBefore={buildTdmRequestBody()?.input_tau_before}
+          // API의 input_amount_before와 동일한 값 전달
+          amountBefore={buildTdmRequestBody()?.input_amount_before}
         />
       </div>
 
