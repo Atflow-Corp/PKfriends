@@ -2,7 +2,23 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { savePrescriptionInfo } from '../../lib/tdm';
 
 // 주입시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
-const InjectionTimeInput = ({ row, onUpdate, isDarkMode }) => {
+const InjectionTimeInput = ({ row, onUpdate, isDarkMode, readOnly = false }) => {
+  if (readOnly) {
+    return (
+      <div
+        style={{
+          textAlign: "center",
+          width: "100%",
+          color: isDarkMode ? "#e0e6f0" : undefined,
+          minHeight: "24px",
+          lineHeight: "24px",
+        }}
+      >
+        {row.injectionTime ?? "-"}
+      </div>
+    );
+  }
+
   const [localValue, setLocalValue] = useState(row.injectionTime);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -281,19 +297,220 @@ function TablePage(props) {
   useEffect(() => {
     if (!onRecordsChangeRef.current) return;
     if (skipPropagateRef.current) { skipPropagateRef.current = false; return; }
-    const records = tableData.filter(r => !r.isTitle).map(r => ({
-      timeStr: r.timeStr,
-      amount: r.amount,
-      route: r.route,
-      injectionTime: r.injectionTime
-    }));
+    const records = tableData.filter(r => !r.isTitle).map(r => {
+      // conditionId로 해당 조건 찾기
+      const condition = r.conditionId ? conditions.find(c => c.id === r.conditionId) : null;
+      return {
+        timeStr: r.timeStr,
+        amount: r.amount,
+        route: r.route,
+        injectionTime: r.injectionTime,
+        conditionId: r.conditionId,
+        intervalHours: condition ? Number(condition.intervalHours) : undefined
+      };
+    });
     try {
       const json = JSON.stringify(records);
       if (lastRecordsJsonRef.current === json) return;
       lastRecordsJsonRef.current = json;
     } catch {}
     onRecordsChangeRef.current(records);
-  }, [tableData]);
+  }, [tableData, conditions]);
+
+  // 이전 테이블 row 개수와 conditions 총 투약 횟수를 추적 (무한 루프 방지)
+  const lastSyncCheckRef = useRef({ tableRowCount: 0, conditionsTotalDoses: 0 });
+  
+  // 업데이트 필요 여부 추적
+  const [needsUpdate, setNeedsUpdate] = useState(false);
+  const updateInfoRef = useRef({ tableRowCount: 0, conditionsTotalDoses: 0 });
+
+  // 테이블 row 개수와 처방내역 summary(conditions) 개수 비교 및 업데이트 필요 여부 확인
+  useEffect(() => {
+    // 테이블이 생성되지 않았거나 conditions가 없으면 스킵
+    if (!isTableGenerated || conditions.length === 0) return;
+    if (skipPropagateRef.current) return;
+    
+    const tableRowCount = tableData.filter(r => !r.isTitle).length;
+    const conditionsTotalDoses = conditions.reduce((sum, c) => {
+      const totalDoses = parseInt(c.totalDoses) || 0;
+      return sum + totalDoses;
+    }, 0);
+    
+    // 이전 값과 동일하면 스킵 (무한 루프 방지)
+    if (lastSyncCheckRef.current.tableRowCount === tableRowCount && 
+        lastSyncCheckRef.current.conditionsTotalDoses === conditionsTotalDoses) {
+      return;
+    }
+    
+    // row 개수가 다르면 업데이트 필요 (즉시 업데이트하지 않고 플래그만 설정)
+    if (tableRowCount !== conditionsTotalDoses && tableRowCount > 0) {
+      setNeedsUpdate(true);
+      updateInfoRef.current = {
+        tableRowCount: tableRowCount,
+        conditionsTotalDoses: conditionsTotalDoses
+      };
+    } else {
+      // 동일하면 이전 값 업데이트 및 업데이트 필요 플래그 해제
+      lastSyncCheckRef.current = {
+        tableRowCount: tableRowCount,
+        conditionsTotalDoses: conditionsTotalDoses
+      };
+      setNeedsUpdate(false);
+    }
+  }, [tableData, conditions, isTableGenerated]);
+
+  // 처방 내역 Summary 업데이트 함수 (외부에서 호출)
+  const performUpdate = useCallback(() => {
+    if (!needsUpdate) return false;
+    
+    const tableRowCount = updateInfoRef.current.tableRowCount;
+    const conditionsTotalDoses = updateInfoRef.current.conditionsTotalDoses;
+    
+    // 테이블 데이터를 기반으로 conditions 업데이트
+    const updatedConditions = updateConditionsFromTableData(tableData, conditions);
+    
+    if (updatedConditions && updatedConditions.length > 0) {
+      // 업데이트 전에 플래그 설정하여 무한 루프 방지
+      skipPropagateRef.current = true;
+      setConditions(updatedConditions);
+      
+      // 이전 값 업데이트
+      lastSyncCheckRef.current = {
+        tableRowCount: tableRowCount,
+        conditionsTotalDoses: updatedConditions.reduce((sum, c) => sum + (parseInt(c.totalDoses) || 0), 0)
+      };
+      
+      // 다음 틱에서 플래그 해제
+      setTimeout(() => { skipPropagateRef.current = false; }, 0);
+      
+      // 업데이트 필요 플래그 해제
+      setNeedsUpdate(false);
+      
+      // 시계열상 가장 최근 투약 기록의 정보로 savePrescriptionInfo 업데이트
+      if (props.selectedPatient && props.tdmDrug) {
+        const sortedRows = tableData
+          .filter(r => !r.isTitle && r.timeStr)
+          .sort((a, b) => {
+            const dateA = new Date(a.timeStr);
+            const dateB = new Date(b.timeStr);
+            return dateB.getTime() - dateA.getTime();
+          });
+        
+        if (sortedRows.length > 0) {
+          const latestRow = sortedRows[0];
+          const latestCondition = updatedConditions.find(c => {
+            // latestRow의 시간이 해당 condition의 범위 내에 있는지 확인
+            if (!c.firstDoseDate || !c.firstDoseTime) return false;
+            const conditionStart = new Date(`${c.firstDoseDate}T${c.firstDoseTime}`);
+            const interval = parseInt(c.intervalHours) || 12;
+            const totalDoses = parseInt(c.totalDoses) || 1;
+            const conditionEnd = new Date(conditionStart.getTime() + (totalDoses - 1) * interval * 60 * 60 * 1000);
+            const rowTime = new Date(latestRow.timeStr);
+            return rowTime >= conditionStart && rowTime <= conditionEnd;
+          }) || updatedConditions[updatedConditions.length - 1];
+          
+          if (latestCondition) {
+            const routeKorean = convertRouteToKorean(latestCondition.route);
+            const cmt = routeKorean === "정맥" ? 1 : 2;
+            
+            savePrescriptionInfo(
+              props.selectedPatient.id,
+              props.tdmDrug.drugName,
+              {
+                amount: parseFloat(latestCondition.dosage) || 0,
+                tau: parseFloat(latestCondition.intervalHours) || 12,
+                cmt: cmt,
+                route: routeKorean,
+                infusionTime: parseFloat(latestCondition.injectionTime) || undefined
+              }
+            );
+          }
+        }
+      }
+      
+      return true;
+    }
+    
+    return false;
+  }, [needsUpdate, tableData, conditions, props.selectedPatient, props.tdmDrug]);
+
+  // 업데이트 필요 여부 및 정보를 외부에 노출
+  useEffect(() => {
+    if (props.onUpdateNeeded) {
+      props.onUpdateNeeded(needsUpdate, updateInfoRef.current, performUpdate);
+    }
+  }, [needsUpdate, performUpdate, props.onUpdateNeeded]);
+
+  // 테이블 데이터를 기반으로 conditions 업데이트하는 함수
+  const updateConditionsFromTableData = (tableData, existingConditions) => {
+    const rows = tableData.filter(r => !r.isTitle && r.timeStr);
+    if (rows.length === 0) return existingConditions;
+    
+    const tableRowCount = rows.length;
+    const conditionsTotalDoses = existingConditions.reduce((sum, c) => {
+      const totalDoses = parseInt(c.totalDoses) || 0;
+      return sum + totalDoses;
+    }, 0);
+    
+    // conditions를 시간순으로 정렬
+    const sortedConditions = [...existingConditions].sort((a, b) => {
+      if (!a.firstDoseDate || !a.firstDoseTime || !b.firstDoseDate || !b.firstDoseTime) return 0;
+      const dateA = new Date(`${a.firstDoseDate}T${a.firstDoseTime}`);
+      const dateB = new Date(`${b.firstDoseDate}T${b.firstDoseTime}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+    
+    // 시간순으로 정렬된 rows
+    const sortedRows = [...rows].sort((a, b) => {
+      const dateA = new Date(a.timeStr);
+      const dateB = new Date(b.timeStr);
+      return dateA.getTime() - dateB.getTime();
+    });
+    
+    // 각 condition에 속하는 row 개수를 계산하여 totalDoses 업데이트
+    const updatedConditions = sortedConditions.map((condition) => {
+      if (!condition.firstDoseDate || !condition.firstDoseTime) return condition;
+      
+      const conditionStart = new Date(`${condition.firstDoseDate}T${condition.firstDoseTime}`);
+      const interval = parseInt(condition.intervalHours) || 12;
+      const originalTotalDoses = parseInt(condition.totalDoses) || 1;
+      const conditionEnd = new Date(conditionStart.getTime() + (originalTotalDoses - 1) * interval * 60 * 60 * 1000);
+      
+      // 이 condition 범위에 속하는 row 개수 계산 (시간 범위 내)
+      const rowsInCondition = sortedRows.filter(row => {
+        const rowTime = new Date(row.timeStr);
+        return rowTime >= conditionStart && rowTime <= conditionEnd;
+      }).length;
+      
+      // row 개수가 있으면 totalDoses 업데이트
+      if (rowsInCondition > 0) {
+        return {
+          ...condition,
+          totalDoses: String(rowsInCondition)
+        };
+      }
+      
+      return condition;
+    });
+    
+    // 전체 row 개수와 conditions의 총 투약 횟수가 여전히 다르면
+    // 마지막 condition의 totalDoses를 조정
+    const updatedTotalDoses = updatedConditions.reduce((sum, c) => sum + (parseInt(c.totalDoses) || 0), 0);
+    const difference = tableRowCount - updatedTotalDoses;
+    
+    if (difference !== 0 && updatedConditions.length > 0) {
+      const lastCondition = updatedConditions[updatedConditions.length - 1];
+      const lastConditionDoses = parseInt(lastCondition.totalDoses) || 0;
+      const newTotalDoses = Math.max(1, lastConditionDoses + difference);
+      
+      updatedConditions[updatedConditions.length - 1] = {
+        ...lastCondition,
+        totalDoses: String(newTotalDoses)
+      };
+    }
+    
+    return updatedConditions;
+  };
 
   // selectedPatient나 tdmDrug가 변경될 때 localStorage에서 conditions 복원
   // 의존성에서 restoreConditionsFromStorage와 props.initialConditions 제거하여 무한 루프 방지
@@ -928,11 +1145,27 @@ function TablePage(props) {
         return 0;
       })[0];
     
+    // 최근 처방내역 summary(conditions)에서 가장 최근 condition 찾기
+    const latestCondition = conditions.length > 0
+      ? [...conditions].sort((a, b) => {
+          // firstDoseDate와 firstDoseTime 기준으로 정렬
+          if (!a.firstDoseDate || !a.firstDoseTime || !b.firstDoseDate || !b.firstDoseTime) return 0;
+          const dateA = new Date(`${a.firstDoseDate}T${a.firstDoseTime}`);
+          const dateB = new Date(`${b.firstDoseDate}T${b.firstDoseTime}`);
+          return dateB.getTime() - dateA.getTime(); // 최신순 정렬
+        })[0]
+      : null;
+    
     let nextDateTime;
+    let defaultInterval = 12; // 기본 간격
+    
     if (lastDoseRow && lastDoseRow.timeStr) {
-      // 마지막 투약 시간에서 12시간 후로 계산 (기본 간격)
+      // 마지막 투약 시간에서 intervalHours 후로 계산
+      if (latestCondition && latestCondition.intervalHours) {
+        defaultInterval = parseInt(latestCondition.intervalHours) || 12;
+      }
       const lastDateTime = new Date(lastDoseRow.timeStr);
-      nextDateTime = new Date(lastDateTime.getTime() + 12 * 60 * 60 * 1000); // 12시간 추가
+      nextDateTime = new Date(lastDateTime.getTime() + defaultInterval * 60 * 60 * 1000);
     } else {
       // 기존 투약 기록이 없으면 오늘 오전 9시로 설정
       nextDateTime = new Date();
@@ -958,18 +1191,68 @@ function TablePage(props) {
         amountCounts[a] > amountCounts[b] ? a : b
       );
       defaultAmount = mostCommonAmount;
+    } else if (latestCondition && latestCondition.dosage && latestCondition.unit) {
+      // conditions에서 용량 정보 가져오기
+      defaultAmount = `${latestCondition.dosage} ${latestCondition.unit}`;
+    }
+    
+    // 최근 처방내역에서 투약 경로 가져오기
+    let defaultRoute = "경구"; // 기본값
+    if (latestCondition && latestCondition.route) {
+      defaultRoute = convertRouteToKorean(latestCondition.route);
+    } else {
+      // 기존 투약 기록에서 가장 많이 사용된 투약 경로 찾기
+      const existingRoutes = tableData
+        .filter(row => !row.isTitle && row.route)
+        .map(row => row.route);
+      
+      if (existingRoutes.length > 0) {
+        const routeCounts = {};
+        existingRoutes.forEach(route => {
+          routeCounts[route] = (routeCounts[route] || 0) + 1;
+        });
+        const mostCommonRoute = Object.keys(routeCounts).reduce((a, b) => 
+          routeCounts[a] > routeCounts[b] ? a : b
+        );
+        defaultRoute = mostCommonRoute;
+      }
+    }
+    
+    // 최근 처방내역에서 주입시간 가져오기 (정맥인 경우)
+    let defaultInjectionTime = "-";
+    if (defaultRoute === "정맥") {
+      if (latestCondition && latestCondition.injectionTime) {
+        defaultInjectionTime = String(latestCondition.injectionTime);
+      } else {
+        // 기존 투약 기록에서 정맥 투약의 주입시간 찾기
+        const existingInjectionTimes = tableData
+          .filter(row => !row.isTitle && row.route === "정맥" && row.injectionTime && row.injectionTime !== "-")
+          .map(row => row.injectionTime);
+        
+        if (existingInjectionTimes.length > 0) {
+          const injectionTimeCounts = {};
+          existingInjectionTimes.forEach(time => {
+            injectionTimeCounts[time] = (injectionTimeCounts[time] || 0) + 1;
+          });
+          const mostCommonInjectionTime = Object.keys(injectionTimeCounts).reduce((a, b) => 
+            injectionTimeCounts[a] > injectionTimeCounts[b] ? a : b
+          );
+          defaultInjectionTime = mostCommonInjectionTime;
+        }
+      }
     }
     
     const newRow = {
       id: String(newId),
-        round: `${newId}회차`,
+      round: `${newId}회차`,
       date: nextDate,
       time: nextTime,
       timeStr: `${nextDate} ${nextTime}`,
       amount: defaultAmount,
-        route: "경구",
-        injectionTime: "-",
-        isTitle: false
+      route: defaultRoute,
+      injectionTime: defaultInjectionTime,
+      isTitle: false,
+      conditionId: latestCondition?.id || null
     };
     
     setTableData(prev => [...prev, newRow]);
@@ -1510,18 +1793,15 @@ function TablePage(props) {
                           {row.isTitle ? (
                             row.round
                           ) : (
-                            <input
-                              type="text"
-                              value={row.round}
-                              onChange={(e) => handleTableEdit(row.id, "round", e.target.value)}
+                            <div
                               style={{
-                                border: "none",
-                                background: "transparent",
                                 textAlign: "center",
                                 width: "100%",
                                 color: isDarkMode ? "#e0e6f0" : undefined
                               }}
-                            />
+                            >
+                              {row.round}
+                            </div>
                           )}
                         </td>
                         {/* 투약 시간 */}
@@ -1615,18 +1895,15 @@ function TablePage(props) {
                           {row.isTitle ? (
                             row.amount
                           ) : (
-                            <input
-                              type="text"
-                              value={row.amount}
-                              onChange={(e) => handleTableEdit(row.id, "amount", e.target.value)}
+                            <div
                               style={{
-                                border: "none",
-                                background: "transparent",
                                 textAlign: "center",
                                 width: "100%",
                                 color: isDarkMode ? "#e0e6f0" : undefined
                               }}
-                            />
+                            >
+                              {row.amount}
+                            </div>
                           )}
                         </td>
                         {/* 투약 경로 */}
@@ -1641,22 +1918,15 @@ function TablePage(props) {
                           {row.isTitle ? (
                             row.route
                           ) : (
-                            <select
-                              value={row.route}
-                              onChange={(e) => handleTableEdit(row.id, "route", e.target.value)}
+                            <div
                               style={{
-                                border: "none",
-                                background: "transparent",
                                 textAlign: "center",
                                 width: "100%",
-                                color: isDarkMode ? "#e0e6f0" : undefined,
-                                backgroundColor: isDarkMode ? "#23293a" : undefined
+                                color: isDarkMode ? "#e0e6f0" : undefined
                               }}
                             >
-                              {routeOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
+                              {row.route}
+                            </div>
                           )}
                         </td>
                         {/* 주입 시간 */}
@@ -1675,6 +1945,7 @@ function TablePage(props) {
                               row={row}
                               onUpdate={handleTableEdit}
                               isDarkMode={isDarkMode}
+                              readOnly
                             />
                           )}
                         </td>

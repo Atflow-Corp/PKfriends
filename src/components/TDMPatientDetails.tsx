@@ -235,6 +235,49 @@ const TDMPatientDetails = ({
             </div>
           </div>
 
+          {/* 신 기능 데이터 섹션 */}
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">신기능 데이터</div>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">검사일자</div>
+                <div className="font-medium">
+                  {renalInfo?.date ? 
+                    renalInfo.date : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">혈청 크레아티닌</div>
+                <div className="font-medium">
+                  {renalInfo?.creatinine ? 
+                    `${renalInfo.creatinine} mg/dL` : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">계산식</div>
+                <div className="font-medium">
+                  {renalInfo?.formula ? 
+                    getFormulaName(renalInfo.formula) : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">결과값</div>
+                <div className="font-medium">
+                  {renalInfo?.result ? 
+                    renalInfo.result : 
+                    <span className="text-gray-400 italic">미입력</span>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 처방 내역 섹션 */}
           <div className="space-y-3">
             <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">처방 내역</div>
@@ -309,49 +352,6 @@ const TDMPatientDetails = ({
                 </div>
               </div>
             )}
-          </div>
-
-          {/* 신 기능 데이터 섹션 */}
-          <div className="space-y-3">
-            <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">신기능 데이터</div>
-            <div className="grid grid-cols-4 gap-4">
-              <div className="space-y-1">
-                <div className="text-sm text-muted-foreground">검사일자</div>
-                <div className="font-medium">
-                  {renalInfo?.date ? 
-                    renalInfo.date : 
-                    <span className="text-gray-400 italic">미입력</span>
-                  }
-                </div>
-              </div>
-              <div className="space-y-1">
-                <div className="text-sm text-muted-foreground">혈청 크레아티닌</div>
-                <div className="font-medium">
-                  {renalInfo?.creatinine ? 
-                    `${renalInfo.creatinine} mg/dL` : 
-                    <span className="text-gray-400 italic">미입력</span>
-                  }
-                </div>
-              </div>
-              <div className="space-y-1">
-                <div className="text-sm text-muted-foreground">계산식</div>
-                <div className="font-medium">
-                  {renalInfo?.formula ? 
-                    getFormulaName(renalInfo.formula) : 
-                    <span className="text-gray-400 italic">미입력</span>
-                  }
-                </div>
-              </div>
-              <div className="space-y-1">
-                <div className="text-sm text-muted-foreground">결과값</div>
-                <div className="font-medium">
-                  {renalInfo?.result ? 
-                    renalInfo.result : 
-                    <span className="text-gray-400 italic">미입력</span>
-                  }
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}

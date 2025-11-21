@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,13 @@ const DrugAdministrationStep = ({
   const [loading, setLoading] = useState(false);
   type ConditionItem = { intervalHours?: number; [key: string]: string | number | boolean | null | undefined };
   const [conditions, setConditions] = useState<ConditionItem[]>([]);
+  
+  // table_maker에서 업데이트 필요 여부를 받기 위한 ref
+  const tableUpdateRef = useRef<{
+    needsUpdate: boolean;
+    updateInfo: { tableRowCount: number; conditionsTotalDoses: number };
+    performUpdate: () => boolean;
+  } | null>(null);
 
   // 날짜 오늘 이후 선택 불가
   const today = dayjs().format("YYYY-MM-DD");
@@ -205,6 +212,13 @@ const DrugAdministrationStep = ({
             initialAdministrations={patientDrugAdministrations}
             initialConditions={conditions}
             onConditionsChange={setConditions}
+            onUpdateNeeded={(needsUpdate, updateInfo, performUpdate) => {
+              tableUpdateRef.current = {
+                needsUpdate,
+                updateInfo,
+                performUpdate
+              };
+            }}
             onSaveRecords={(records) => {
               if (selectedPatient && tdmDrug) {
                 const newAdministrations = records.map((row, idx) => {
@@ -237,20 +251,27 @@ const DrugAdministrationStep = ({
             }}
             onRecordsChange={(records) => {
               if (selectedPatient && tdmDrug) {
-                const mapped = records.map((row, idx) => ({
-                  id: `${Date.now()}_${idx}`,
-                  patientId: selectedPatient.id,
-                  drugName: tdmDrug.drugName,
-                  route: row.route,
-                  date: row.timeStr.split(" ")[0],
-                  time: row.timeStr.split(" ")[1],
-                  dose: Number(row.amount.split(" ")[0]),
-                  unit: row.amount.split(" ")[1] || "mg",
-                  isIVInfusion: row.route === "정맥",
-                  infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : (row.route === "정맥" ? 0 : undefined),
-                  administrationTime: undefined,
-                  intervalHours: conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined
-                }));
+                const mapped = records.map((row, idx) => {
+                  // row에 conditionId와 intervalHours가 있으면 사용, 없으면 fallback
+                  const intervalHours = row.intervalHours !== undefined 
+                    ? Number(row.intervalHours)
+                    : (conditions.length > 0 ? Number(conditions[0].intervalHours) : undefined);
+                  
+                  return {
+                    id: `${Date.now()}_${idx}`,
+                    patientId: selectedPatient.id,
+                    drugName: tdmDrug.drugName,
+                    route: row.route,
+                    date: row.timeStr.split(" ")[0],
+                    time: row.timeStr.split(" ")[1],
+                    dose: Number(row.amount.split(" ")[0]),
+                    unit: row.amount.split(" ")[1] || "mg",
+                    isIVInfusion: row.route === "정맥",
+                    infusionTime: row.injectionTime && row.injectionTime !== "-" ? parseInt(String(row.injectionTime).replace(/[^0-9]/g, "")) : (row.route === "정맥" ? 0 : undefined),
+                    administrationTime: undefined,
+                    intervalHours: intervalHours
+                  };
+                });
                 const updatedAdministrations = [
                   ...drugAdministrations.filter(d => !(d.patientId === selectedPatient.id && d.drugName === tdmDrug?.drugName)),
                   ...mapped
@@ -269,6 +290,24 @@ const DrugAdministrationStep = ({
               <Button
                 onClick={async () => {
                   if (!selectedPatient) { onNext(); return; }
+                  
+                  // 처방 내역 Summary 업데이트 필요 여부 확인
+                  if (tableUpdateRef.current?.needsUpdate) {
+                    const updateInfo = tableUpdateRef.current.updateInfo;
+                    const message = `변경된 투약 기록으로 시뮬레이션을 진행합니다.\n(투약 횟수 ${updateInfo.conditionsTotalDoses}회 → ${updateInfo.tableRowCount}회)`;
+                    const confirmed = window.confirm(message);
+                    
+                    if (!confirmed) {
+                      return; // 사용자가 취소하면 시뮬레이션 진행하지 않음
+                    }
+                    
+                    // 처방 내역 Summary 업데이트
+                    const updated = tableUpdateRef.current.performUpdate();
+                    if (!updated) {
+                      console.warn("Failed to update conditions");
+                    }
+                  }
+                  
                   setLoading(true);
                   try {
                     const body = buildTdmRequestBody({
