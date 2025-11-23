@@ -41,12 +41,182 @@ const SimulationStep = ({
   // PDF 저장 함수
   const handleDownloadPDF = async () => {
     const element = document.getElementById('pk-simulation-content');
-    if (!element) return;
-    const canvas = await html2canvas(element);
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [canvas.width, canvas.height] });
-    pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
-    pdf.save("PK_simulation_report.pdf");
+    if (!element) {
+      alert('보고서 내용을 찾을 수 없습니다.');
+      return;
+    }
+
+    try {
+      // 로딩 표시를 위한 버튼 비활성화
+      const reportButton = document.querySelector('[data-report-button]') as HTMLButtonElement;
+      if (reportButton) {
+        reportButton.disabled = true;
+        reportButton.textContent = 'PDF 생성 중...';
+      }
+
+      // PDF 생성 전에 "용법 조정 시뮬레이션을 진행하시겠습니까?" 섹션 숨기기
+      // 해당 섹션은 h2 태그에 "용법 조정 시뮬레이션을 진행하시겠습니까?" 텍스트가 있는 부모 div
+      const allDivs = element.querySelectorAll('div');
+      let dosageAdjustmentSection: HTMLElement | null = null;
+      for (const div of Array.from(allDivs)) {
+        const h2 = div.querySelector('h2');
+        if (h2 && h2.textContent?.includes('용법 조정 시뮬레이션을 진행하시겠습니까?')) {
+          dosageAdjustmentSection = div;
+          break;
+        }
+      }
+      let originalDisplay: string | null = null;
+      if (dosageAdjustmentSection) {
+        originalDisplay = dosageAdjustmentSection.style.display;
+        dosageAdjustmentSection.style.display = 'none';
+      }
+
+      // 타이틀 HTML 요소 생성 및 추가
+      const downloadDate = new Date().toLocaleString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const titleText = `${selectedPatient?.name || '환자'} 환자의 ${selectedPrescription?.drugName || '약품'} TDM분석 보고서 - ${downloadDate}`;
+      
+      const titleElement = document.createElement('div');
+      titleElement.style.cssText = `
+        width: 100%;
+        padding: 12px 0;
+        margin-bottom: 16px;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        color: #000;
+        background-color: #ffffff;
+        border-bottom: 2px solid #000;
+      `;
+      titleElement.textContent = titleText;
+      
+      // 타이틀을 요소의 맨 위에 추가
+      element.insertBefore(titleElement, element.firstChild);
+
+      // html2canvas로 HTML을 이미지로 변환
+      const canvas = await html2canvas(element, {
+        scale: 1.5,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        width: element.scrollWidth,
+        height: element.scrollHeight,
+        scrollX: 0,
+        scrollY: 0
+      });
+
+      // 추가한 타이틀 제거
+      element.removeChild(titleElement);
+
+      // 숨긴 섹션 다시 보이게 하기
+      if (dosageAdjustmentSection) {
+        (dosageAdjustmentSection as HTMLElement).style.display = originalDisplay || '';
+      }
+
+      const imgData = canvas.toDataURL('image/png', 0.95);
+      
+      // PDF 생성 (portrait 형식)
+      // A4 크기 계산 (210mm x 297mm)
+      const pdfWidth = 210; // A4 width in mm
+      const pdfHeight = 297; // A4 height in mm
+      const margin = 15;
+      const contentWidth = pdfWidth - (margin * 2);
+      const contentHeight = pdfHeight - (margin * 2);
+
+      // 이미지 크기 계산 (가로폭 고정, 세로는 비율에 맞게 조정)
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      
+      // 가로폭을 contentWidth로 고정하고 비율에 맞게 세로 계산
+      const widthRatio = contentWidth / imgWidth;
+      const scaledWidth = contentWidth; // 가로폭 고정 (mm)
+      const scaledHeight = imgHeight * widthRatio; // 세로는 비율에 맞게 조정 (mm)
+
+      // 페이지 분할 처리
+      const pageHeight = contentHeight; // 한 페이지의 높이 (mm)
+      const totalPages = Math.ceil(scaledHeight / pageHeight);
+
+      // 픽셀 단위로 변환 (canvas는 픽셀 단위)
+      const pageHeightPixels = pageHeight / widthRatio; // 한 페이지의 높이 (픽셀)
+
+      const pdf = new jsPDF({ 
+        orientation: "portrait", 
+        unit: "mm", 
+        format: "a4"
+      });
+      
+      // 페이지 분할하여 이미지 추가 (타이틀은 이미지에 포함됨)
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          pdf.addPage();
+        }
+
+        // 현재 페이지에서 표시할 이미지 영역 계산 (픽셀 단위)
+        const sourceYPixels = i * pageHeightPixels; // 원본 이미지에서 시작할 y 좌표 (픽셀)
+        const sourceHeightPixels = Math.min(pageHeightPixels, imgHeight - sourceYPixels); // 현재 페이지에 표시할 높이 (픽셀)
+        
+        // 각 페이지에 해당하는 부분을 별도의 canvas로 추출
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = imgWidth;
+        pageCanvas.height = sourceHeightPixels;
+        const pageCtx = pageCanvas.getContext('2d');
+        
+        if (pageCtx) {
+          // 원본 canvas에서 해당 영역만 복사
+          pageCtx.drawImage(
+            canvas,
+            0, sourceYPixels, imgWidth, sourceHeightPixels, // 원본에서 가져올 영역
+            0, 0, imgWidth, sourceHeightPixels // 새 canvas에 그릴 영역
+          );
+        }
+
+        // 페이지 canvas를 이미지 데이터로 변환
+        const pageImgData = pageCanvas.toDataURL('image/png', 0.95);
+        
+        // 현재 페이지의 높이 (mm 단위)
+        const currentPageHeight = sourceHeightPixels * widthRatio;
+
+        // 이미지를 PDF에 추가 (각 페이지에 해당하는 부분만 표시)
+        pdf.addImage(
+          pageImgData, 
+          'PNG', 
+          margin, // PDF에서의 x 좌표
+          margin, // PDF에서의 y 좌표 (항상 margin부터 시작)
+          scaledWidth, // PDF에서의 너비 (고정)
+          currentPageHeight, // PDF에서의 높이 (현재 페이지 높이)
+          undefined, // alias
+          'FAST' // compression
+        );
+      }
+      
+      // 파일명 생성
+      const fileName = `${selectedPatient?.name || '환자'}_${selectedPrescription?.drugName || '약품'}_TDM_분석보고서_${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      // PDF 다운로드
+      pdf.save(fileName);
+
+      // 버튼 상태 복원
+      if (reportButton) {
+        reportButton.disabled = false;
+        reportButton.textContent = 'TDM 분석 보고서 생성';
+      }
+    } catch (error) {
+      console.error('PDF 생성 중 오류 발생:', error);
+      alert('PDF 생성 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : String(error)));
+      
+      // 버튼 상태 복원
+      const reportButton = document.querySelector('[data-report-button]') as HTMLButtonElement;
+      if (reportButton) {
+        reportButton.disabled = false;
+        reportButton.textContent = 'TDM 분석 보고서 생성';
+      }
+    }
   };
 
   // 보고서 생성 버튼 클릭 핸들러
@@ -55,12 +225,10 @@ const SimulationStep = ({
   };
 
   // 보고서 생성 확인 핸들러
-  const handleConfirmReport = () => {
+  const handleConfirmReport = async () => {
     setShowReportAlert(false);
-    // 새 탭에서 보고서 페이지 열기 (동적 URL 구성)
-    const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/');
-    const reportUrl = `${baseUrl}/report?patientId=${selectedPatient.id}`;
-    window.open(reportUrl, '_blank');
+    // 현재 화면의 PKSimulation 내용을 PDF로 저장
+    await handleDownloadPDF();
   };
 
   // 보고서 생성 취소 핸들러
@@ -121,7 +289,11 @@ const SimulationStep = ({
               <ArrowLeft className="h-4 w-4" />
               투약 기록
             </Button>
-            <Button onClick={handleReportButtonClick} className="flex items-center gap-2">
+            <Button 
+              onClick={handleReportButtonClick} 
+              className="flex items-center gap-2"
+              data-report-button
+            >
               <FileText className="h-4 w-4" />
               TDM 분석 보고서 생성
             </Button>
@@ -134,10 +306,10 @@ const SimulationStep = ({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {selectedPatient.name} 환자의 TDM 분석을 종료하시겠습니까?
+              TDM 분석 보고서를 생성하시겠습니까?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              분석 종료 후 데이터 수정은 불가하며 새 탭에서 PDF 파일로 보고서를 다운로드할 수 있습니다.
+              현재 화면의 TDM 분석 결과를 PDF 파일로 다운로드합니다. 환자 정보, 차트, 용법 조정 결과가 포함됩니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

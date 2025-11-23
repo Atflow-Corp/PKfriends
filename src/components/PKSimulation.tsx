@@ -2796,6 +2796,7 @@ const PKSimulation = ({
         selectedPrescription={selectedPrescription}
         latestBloodTest={latestBloodTest}
         drugAdministrations={drugAdministrations}
+        isExpanded={true}
       />
 
       {/* PK Simulation 그래프 (가로 전체) */}
