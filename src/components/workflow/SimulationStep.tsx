@@ -316,7 +316,7 @@ const SimulationStep = ({
             <AlertDialogCancel onClick={handleCancelReport}>
               취소
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmReport} className="bg-black text-white hover:bg-gray-800">
+            <AlertDialogAction onClick={handleConfirmReport} className="bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90">
               보고서 생성
             </AlertDialogAction>
           </AlertDialogFooter>

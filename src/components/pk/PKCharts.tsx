@@ -285,26 +285,26 @@ const PKCharts = ({
       <div className="flex justify-center flex-wrap gap-6 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-8 h-0.5 bg-blue-500"></div>
-          <span className="text-sm text-gray-600">{currentPatientName || '환자'}님의 현 용법</span>
+          <span className="text-sm text-muted-foreground">{currentPatientName || '환자'}님의 현 용법</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-0.5 bg-gray-300"></div>
-          <span className="text-sm text-gray-600">인구집단 평균</span>
+          <div className="w-8 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
+          <span className="text-sm text-muted-foreground">인구집단 평균</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-          <span className="text-sm text-gray-600">실제 혈중 농도</span>
+          <span className="text-sm text-muted-foreground">실제 혈중 농도</span>
         </div>
         {!(selectedDrug === 'Vancomycin' && tdmTarget?.toLowerCase().includes('auc')) && typeof averageConcentration === 'number' && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-0.5 border-dashed border-t-2 border-gray-500"></div>
-            <span className="text-sm text-gray-600">평균 농도</span>
+            <div className="w-8 h-0.5 border-dashed border-t-2 border-gray-500 dark:border-gray-400"></div>
+            <span className="text-sm text-muted-foreground">평균 농도</span>
           </div>
         )}
         {typeof targetMin === 'number' && typeof targetMax === 'number' && targetMax > targetMin && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-4 bg-blue-500 bg-opacity-20"></div>
-            <span className="text-sm text-gray-600">TDM 목표치</span>
+            <div className="w-8 h-4 bg-blue-500 bg-opacity-20 dark:bg-opacity-30"></div>
+            <span className="text-sm text-muted-foreground">TDM 목표치</span>
           </div>
         )}
       </div>
@@ -329,7 +329,7 @@ const PKCharts = ({
       {/* 그래프 해석 가이드 */}
       <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mt-6">
         <h3 className="font-semibold text-gray-800 dark:text-white mb-3">그래프 해석 Tip - 임의 작성된 내용입니다.</h3>
-        <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+        <div className="space-y-2 text-sm text-muted-foreground">
           {selectedDrug === 'Vancomycin' ? (
             <>
               <p><strong>(1)</strong> 차트의 곡선은 TDM Simulation을 통해 예측한 혈중 농도의 변화를 의미합니다.</p>

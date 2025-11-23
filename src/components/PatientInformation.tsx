@@ -660,8 +660,8 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                         return (
                           <TableRow 
                             key={prescription.id}
-                            className={`cursor-pointer hover:bg-blue-50/50 ${
-                              selectedTdmPrescription?.id === prescription.id ? "bg-blue-50" : ""
+                            className={`cursor-pointer hover:bg-accent/50 dark:hover:bg-accent/30 ${
+                              selectedTdmPrescription?.id === prescription.id ? "bg-accent dark:bg-accent/50" : ""
                             }`}
                             onClick={() => setSelectedTdmPrescription(prescription)}
                           >
