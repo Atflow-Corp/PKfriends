@@ -211,10 +211,10 @@ const TDMReportPage = () => {
               <div className="text-center">
                 <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">환자 정보를 찾을 수 없습니다.</p>
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-gray-500 dark:text-muted-foreground mt-2">
                   URL: {window.location.href}
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-muted-foreground">
                   환자 수: {patients.length}
                 </p>
               </div>
@@ -227,14 +227,14 @@ const TDMReportPage = () => {
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-background">
       <Header />
       
       <div className="container mx-auto px-4 py-8">
         {/* 안내문 */}
         <Card className="mb-6">
           <CardContent className="py-4">
-            <p className="text-sm text-gray-600 text-center">
+            <p className="text-sm text-gray-600 dark:text-muted-foreground text-center">
               Report를 조회한 후 이 탭을 닫고 이전 창으로 복귀하면 계속해서 서비스를 이용하실 수 있습니다.
             </p>
           </CardContent>
@@ -358,7 +358,7 @@ const TDMReportPage = () => {
                 amountBefore={prescriptionInfo?.amount || selectedPrescription?.dosage || null}
               />
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 dark:text-muted-foreground">
                   <p>TDM 분석 결과 데이터가 없습니다.</p>
                   <p className="text-sm mt-2">시뮬레이션을 먼저 실행해주세요.</p>
                 </div>
