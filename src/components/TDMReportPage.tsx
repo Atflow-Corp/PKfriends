@@ -6,12 +6,9 @@ import { useEffect, useState } from "react";
 import Header from "./ui/Header";
 import Footer from "./ui/Footer";
 import TDMPatientDetails from "./TDMPatientDetails";
-import PKCharts from "./pk/PKCharts";
-import TDMSummary from "./pk/shared/TDMSummary";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
-import { buildTdmRequestBody } from "@/lib/tdm";
 
 const TDMReportPage = () => {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -22,10 +19,6 @@ const TDMReportPage = () => {
   const [bloodTests, setBloodTests] = useState<BloodTest[]>([]);
   const [drugAdministrations, setDrugAdministrations] = useState<DrugAdministration[]>([]);
   const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
-  
-  // PKCharts에 필요한 상태들
-  const [tdmResults, setTdmResults] = useState<any>(null);
-  const [tdmExtraSeries, setTdmExtraSeries] = useState<any>(null);
 
   useEffect(() => {
     // localStorage에서 모든 데이터 로드
@@ -83,28 +76,6 @@ const TDMReportPage = () => {
               );
               if (prescription) {
                 setSelectedPrescription(prescription);
-              }
-
-              // TDM 결과 데이터 로드
-              try {
-                const savedTdmResults = window.localStorage.getItem(`tdmfriends:tdmResults:${patientIdFromUrl}:${savedDrug}`);
-                if (savedTdmResults) {
-                  const parsedResults = JSON.parse(savedTdmResults);
-                  setTdmResults(parsedResults);
-                }
-              } catch (error) {
-                console.error('TDM 결과 로드 실패:', error);
-              }
-
-              // TDM 시리즈 데이터 로드
-              try {
-                const savedTdmExtraSeries = window.localStorage.getItem(`tdmfriends:tdmExtraSeries:${patientIdFromUrl}:${savedDrug}`);
-                if (savedTdmExtraSeries) {
-                  const parsedSeries = JSON.parse(savedTdmExtraSeries);
-                  setTdmExtraSeries(parsedSeries);
-                }
-              } catch (error) {
-                console.error('TDM 시리즈 로드 실패:', error);
               }
             }
           } catch (error) {
@@ -316,104 +287,6 @@ const TDMReportPage = () => {
               isExpanded={true}
               onToggleExpanded={() => {}} // 빈 함수로 클릭 이벤트 무시
               disableHover={true} // 마우스 오버 이벤트 비활성화
-            />
-          </CardContent>
-          {/* TDM Summary */}
-          <CardContent>
-            <TDMSummary
-              selectedDrug={selectedDrug}
-              tdmIndication={selectedPrescription?.indication}
-              tdmTarget={selectedPrescription?.tdmTarget}
-              tdmTargetValue={selectedPrescription?.tdmTargetValue}
-              latestAdministration={drugAdministrations
-                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                .slice(-1)[0] ? {
-                  dose: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].dose,
-                  unit: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].unit,
-                  intervalHours: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].intervalHours
-                } : null}
-              recentAUC={tdmResults?.recentAUC}
-              recentMax={tdmResults?.recentMax}
-              recentTrough={tdmResults?.recentTrough}
-              predictedAUC={tdmResults?.predictedAUC}
-              predictedMax={tdmResults?.predictedMax}
-              predictedTrough={tdmResults?.predictedTrough}
-              commentTitle="TDM friends Comments"
-              showSteadyStateComment={true}
-            />
-          </CardContent>
-          {/* 두 번째 카드: 현용법 결과과 */}
-          <CardContent>
-            <PKCharts
-              showSimulation={false} // 보고서에서는 시뮬레이션 영역 숨김
-              currentPatientName={selectedPatient?.name}
-              selectedDrug={selectedDrug}
-              targetMin={tdmResults?.targetMin}
-              targetMax={tdmResults?.targetMax}
-              recentAUC={tdmResults?.recentAUC}
-              recentMax={tdmResults?.recentMax}
-              recentTrough={tdmResults?.recentTrough}
-              predictedAUC={tdmResults?.predictedAUC}
-              predictedMax={tdmResults?.predictedMax}
-              predictedTrough={tdmResults?.predictedTrough}
-              ipredSeries={tdmExtraSeries?.ipredSeries}
-              predSeries={tdmExtraSeries?.predSeries}
-              observedSeries={tdmExtraSeries?.observedSeries}
-              tdmIndication={selectedPrescription?.indication}
-              tdmTarget={selectedPrescription?.tdmTarget}
-              tdmTargetValue={selectedPrescription?.tdmTargetValue}
-              latestAdministration={drugAdministrations
-                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                .slice(-1)[0] ? {
-                  dose: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].dose,
-                  unit: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].unit,
-                  intervalHours: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].intervalHours
-                } : null}
-              drugAdministrations={drugAdministrations
-                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                .map(da => ({
-                  id: da.id,
-                  patientId: da.patientId,
-                  drugName: da.drugName,
-                  date: da.date,
-                  time: da.time
-                }))}
-              tauBefore={selectedPatient && selectedDrug ? buildTdmRequestBody({
-                patients,
-                prescriptions,
-                bloodTests,
-                drugAdministrations,
-                selectedPatientId: selectedPatient.id,
-                selectedDrugName: selectedDrug
-              })?.input_tau_before : undefined}
-              amountBefore={selectedPatient && selectedDrug ? buildTdmRequestBody({
-                patients,
-                prescriptions,
-                bloodTests,
-                drugAdministrations,
-                selectedPatientId: selectedPatient.id,
-                selectedDrugName: selectedDrug
-              })?.input_amount_before : undefined}
             />
           </CardContent>
         </Card>
