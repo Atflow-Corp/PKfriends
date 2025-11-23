@@ -46,12 +46,22 @@ const SimulationStep = ({
       return;
     }
 
+    // PDF 생성 전에 다크 모드 여부 확인 (try-catch 블록 밖에서 선언)
+    const wasDarkMode = document.documentElement.classList.contains('dark');
+
     try {
       // 로딩 표시를 위한 버튼 비활성화
       const reportButton = document.querySelector('[data-report-button]') as HTMLButtonElement;
       if (reportButton) {
         reportButton.disabled = true;
         reportButton.textContent = 'PDF 생성 중...';
+      }
+
+      // 다크 모드인 경우 임시로 light 모드로 전환
+      if (wasDarkMode) {
+        document.documentElement.classList.remove('dark');
+        // 스타일이 적용될 시간을 주기 위해 짧은 대기
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // PDF 생성 전에 "용법 조정 시뮬레이션을 진행하시겠습니까?" 섹션 숨기기
@@ -206,6 +216,11 @@ const SimulationStep = ({
         reportButton.disabled = false;
         reportButton.textContent = 'TDM 분석 보고서 생성';
       }
+
+      // 다크 모드 복원
+      if (wasDarkMode) {
+        document.documentElement.classList.add('dark');
+      }
     } catch (error) {
       console.error('PDF 생성 중 오류 발생:', error);
       alert('PDF 생성 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : String(error)));
@@ -215,6 +230,11 @@ const SimulationStep = ({
       if (reportButton) {
         reportButton.disabled = false;
         reportButton.textContent = 'TDM 분석 보고서 생성';
+      }
+
+      // 다크 모드 복원 (에러 발생 시에도)
+      if (wasDarkMode) {
+        document.documentElement.classList.add('dark');
       }
     }
   };

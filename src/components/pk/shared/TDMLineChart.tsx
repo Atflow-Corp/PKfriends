@@ -418,7 +418,15 @@ const TDMLineChart = ({
         ticks: { 
           // 첫 투약 시점을 0h로 보고, 24시간 단위로 틱을 표시
           stepSize: 24,
-          callback: (v) => formatDateTimeForTick(Number(v), drugAdministrations, selectedDrug) 
+          callback: (v) => formatDateTimeForTick(Number(v), drugAdministrations, selectedDrug),
+          color: isDarkMode ? '#9ca3af' : '#374151' // 다크모드에서 더 밝은 색상
+        },
+        grid: {
+          color: isDarkMode ? '#374155' : '#e5e7eb', // 다크모드에서 더 밝은 그리드 라인
+          borderColor: isDarkMode ? '#475569' : '#d1d5da' // 축 테두리 색상
+        },
+        border: {
+          color: isDarkMode ? '#475569' : '#d1d5da' // 축 테두리 색상
         }
       },
       y: {
@@ -426,9 +434,20 @@ const TDMLineChart = ({
         max: yMax,
         title: {
           display: true,
-          text: `Concentration (${getConcentrationUnit(selectedDrug)})`
+          text: `Concentration (${getConcentrationUnit(selectedDrug)})`,
+          color: isDarkMode ? '#e5e7eb' : '#374151' // 제목 색상
         },
-        ticks: { callback: (v) => `${Number(v).toFixed(2)}` }
+        ticks: { 
+          callback: (v) => `${Number(v).toFixed(2)}`,
+          color: isDarkMode ? '#9ca3af' : '#374151' // 다크모드에서 더 밝은 색상
+        },
+        grid: {
+          color: isDarkMode ? '#374155' : '#e5e7eb', // 다크모드에서 더 밝은 그리드 라인
+          borderColor: isDarkMode ? '#475569' : '#d1d5da' // 축 테두리 색상
+        },
+        border: {
+          color: isDarkMode ? '#475569' : '#d1d5da' // 축 테두리 색상
+        }
       }
     }
   }), [data, selectedDrug, targetMin, targetMax, dataTimeExtents, lastActualDoseTime, currentTime, drugAdministrations, yMax, isDarkMode, lastDoseColor]);

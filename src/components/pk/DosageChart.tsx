@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import TDMLineChart, { ChartDataset } from "./shared/TDMLineChart";
 import TDMSummary from "./shared/TDMSummary";
 import {
@@ -85,6 +85,29 @@ const DosageChart = ({
   isLoading = false,
   steadyState
 }: DosageChartProps) => {
+  // 다크모드 감지
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return document.documentElement.classList.contains('dark');
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const updateDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    
+    updateDarkMode();
+    const observer = new MutationObserver(updateDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
+
   // 데이터 병합
   const data = useMemo(() => {
     if (isEmptyChart) return [];
@@ -219,14 +242,14 @@ const DosageChart = ({
       result.push({
         label: '용법조정 평균 농도',
         dataKey: 'averageLine',
-        borderColor: '#6b7280',
+        borderColor: isDarkMode ? '#9ca3af' : '#6b7280', // 다크모드에서 더 밝은 회색
         borderDash: [5, 5],
         borderWidth: 2
       });
     }
 
     return result;
-  }, [currentMethodSeries, selectedColor, selectedDrug, tdmTarget, observedSeries, averageConcentration]);
+  }, [currentMethodSeries, selectedColor, selectedDrug, tdmTarget, observedSeries, averageConcentration, isDarkMode]);
 
   return (
     <div className="w-full">
