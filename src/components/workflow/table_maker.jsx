@@ -1383,17 +1383,17 @@ function TablePage(props) {
 
                        {/* 현재 조건 입력 박스 */}
             <div style={{
-              border: "2px solid #e0e7ff",
+              border: isDarkMode ? "2px solid #334155" : "2px solid #e0e7ff",
               padding: "20px",
               marginBottom: "20px",
               borderRadius: "8px",
-              background: "white"
+              background: isDarkMode ? "#23293a" : "white"
             }}>
               
               {/* 1행: 모든 항목을 한 줄에 배치 (새로운 순서) */}
               <div style={{ display: "flex", gap: "15px", marginBottom: "15px" }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 경로
                   </label>
                   <select
@@ -1402,13 +1402,13 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: "#fff",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   >
                     <option value="">투약 경로를 선택해주세요</option>
@@ -1420,7 +1420,7 @@ function TablePage(props) {
 
             {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (
               <div style={{ flex: 1 }}>
-                <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                   제형
                 </label>
                 <select
@@ -1429,13 +1429,13 @@ function TablePage(props) {
                   style={{
                     width: "100%",
                     padding: "8px 12px",
-                    border: "1px solid #ced4da",
+                    border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                     borderRadius: "6px",
                     fontSize: "14px",
-                    backgroundColor: "#fff",
+                    backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                     height: "40px",
                     boxSizing: "border-box",
-                    color: "#495057"
+                    color: isDarkMode ? "#e0e6f0" : "#495057"
                   }}
                 >
                   <option value="">제형을 선택해주세요</option>
@@ -1446,7 +1446,7 @@ function TablePage(props) {
             )}
 
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 용량
                   </label>
                   <input
@@ -1457,19 +1457,19 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: "#fff",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   />
                 </div>
 
                 <div style={{ width: "5%" }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     단위
                   </label>
                   <select
@@ -1478,13 +1478,13 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: "#fff",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   >
                     {unitOptions.map(option => (
@@ -1494,7 +1494,7 @@ function TablePage(props) {
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 간격(시간)
                   </label>
                   <input
@@ -1505,19 +1505,19 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: "#fff",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   />
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     주입시간 (분)
                   </label>
                   <input
@@ -1529,19 +1529,19 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: currentCondition.route !== "정맥" ? "#f8f9fa" : "#fff",
+                      backgroundColor: currentCondition.route !== "정맥" ? (isDarkMode ? "#1a1f2e" : "#f8f9fa") : (isDarkMode ? "#1e293b" : "#fff"),
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   />
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
                   <input
@@ -1552,20 +1552,20 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: "#fff",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                     max={todayStr + ' 23:59'}
                   />
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: "#495057", fontSize: "13px" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     총 투약 횟수
                   </label>
                   <input
@@ -1576,13 +1576,13 @@ function TablePage(props) {
                     style={{
                       width: "100%",
                       padding: "8px 12px",
-                      border: "1px solid #ced4da",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
                       borderRadius: "6px",
                       fontSize: "14px",
-                      backgroundColor: "#fff",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
                       height: "40px",
                       boxSizing: "border-box",
-                      color: "#495057"
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   />
                 </div>
@@ -1598,9 +1598,9 @@ function TablePage(props) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    background: "#eaf0fd",
+                    background: isDarkMode ? "#1B44C8" : "#eaf0fd",
                     border: "none",
-                    color: "#1B44C8",
+                    color: isDarkMode ? "#fff" : "#1B44C8",
                     fontWeight: 600,
                     fontSize: 16,
                     cursor: "pointer",
@@ -1610,8 +1610,8 @@ function TablePage(props) {
                     borderRadius: "12px",
                     transition: "background 0.2s, color 0.2s"
                   }}
-                  onMouseOver={e => { e.target.style.backgroundColor = "#dbeafe"; }}
-                  onMouseOut={e => { e.target.style.backgroundColor = "#eaf0fd"; }}
+                  onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#274fcf" : "#dbeafe"; }}
+                  onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#1B44C8" : "#eaf0fd"; }}
                 >
                   <span style={{ fontSize: 20, marginRight: 6, fontWeight: 600, background: "transparent" }}>
                     {isEditMode ? "✓" : "+"}
@@ -1623,29 +1623,29 @@ function TablePage(props) {
 
             {/* 투약 기록 summary */}
             <div style={{ marginTop: "20px" }}>
-              <h3 style={{ marginBottom: "10px", color: "#495057" }}>
+              <h3 style={{ marginBottom: "10px", color: isDarkMode ? "#e0e6f0" : "#495057" }}>
                 처방 내역 summary
               </h3>
               <div style={{
-                border: "1px solid #dee2e6",
+                border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                 borderRadius: "8px",
                 padding: "15px",
-                background: "white",
+                background: isDarkMode ? "#23293a" : "white",
                 maxHeight: "200px",
                 overflowY: "auto"
               }}>
                 {conditions.length === 0 ? (
-                  <div style={{ color: "#6c757d", fontStyle: "italic" }}>
+                  <div style={{ color: isDarkMode ? "#9ca3af" : "#6c757d", fontStyle: "italic" }}>
                     처방 내역을 추가해주세요.
                   </div>
                 ) : (
                   conditions.map((condition, index) => (
                   <div key={condition.id} style={{
-                    borderBottom: "1px dashed #eee",
+                    borderBottom: isDarkMode ? "1px dashed #334155" : "1px dashed #eee",
                     paddingBottom: "10px",
                     marginBottom: "10px",
                     fontSize: "13px",
-                    color: "#6c757d",
+                    color: isDarkMode ? "#9ca3af" : "#6c757d",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center"
@@ -1653,7 +1653,7 @@ function TablePage(props) {
                     <div>
                       <span style={{ 
                         fontWeight: "bold", 
-                        color: "#007bff",
+                        color: isDarkMode ? "#60a5fa" : "#007bff",
                         marginRight: "10px"
                       }}>
                         기록 {index + 1}:
@@ -1665,13 +1665,15 @@ function TablePage(props) {
                         onClick={() => startEditCondition(condition.id)}
                         style={{
                           padding: "4px 8px",
-                          backgroundColor: "#17a2b8",
+                          backgroundColor: isDarkMode ? "#0ea5e9" : "#17a2b8",
                           color: "white",
                           border: "none",
                           borderRadius: "4px",
                           cursor: "pointer",
                           fontSize: "11px"
                         }}
+                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#0284c7" : "#138496"; }}
+                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0ea5e9" : "#17a2b8"; }}
                       >
                         수정
                       </button>
@@ -1679,13 +1681,15 @@ function TablePage(props) {
                         onClick={() => removeCondition(condition.id)}
                         style={{
                           padding: "4px 8px",
-                          backgroundColor: "#dc3545",
+                          backgroundColor: isDarkMode ? "#ef4444" : "#dc3545",
                           color: "white",
                           border: "none",
                           borderRadius: "4px",
                           cursor: "pointer",
                           fontSize: "11px"
                         }}
+                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#dc2626" : "#c82333"; }}
+                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#ef4444" : "#dc3545"; }}
                       >
                         삭제
                       </button>
@@ -1996,17 +2000,17 @@ function TablePage(props) {
                   onClick={resetTableData}
                   style={{
                     padding: "8px 16px",
-                    backgroundColor: "#fff",
-                    color: "#dc2626",
-                    border: "1px solid #fecaca",
+                    backgroundColor: isDarkMode ? "#23293a" : "#fff",
+                    color: isDarkMode ? "#ef4444" : "#dc2626",
+                    border: isDarkMode ? "1px solid #7f1d1d" : "1px solid #fecaca",
                     borderRadius: "8px",
                     cursor: "pointer",
                     fontWeight: 400,
                     fontSize: "15px",
                     transition: "background 0.2s, color 0.2s"
                   }}
-                  onMouseOver={e => { e.target.style.backgroundColor = "#fef2f2"; }}
-                  onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
+                  onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#7f1d1d" : "#fef2f2"; }}
+                  onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#23293a" : "#fff"; }}
                 >
                   🗑️ 전체 삭제
                 </button>
@@ -2016,17 +2020,17 @@ function TablePage(props) {
                     onClick={addRow}
                     style={{
                       padding: "8px 16px",
-                      backgroundColor: "#fff",
-                      color: "#222",
-                      border: "1px solid #dee2e6",
+                      backgroundColor: isDarkMode ? "#23293a" : "#fff",
+                      color: isDarkMode ? "#e0e6f0" : "#222",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
                       borderRadius: "8px",
                       cursor: "pointer",
                       fontWeight: 400,
                       fontSize: "15px",
                       transition: "background 0.2s, color 0.2s"
                     }}
-                    onMouseOver={e => { e.target.style.backgroundColor = "#f4f6fa"; }}
-                    onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
+                    onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#334155" : "#f4f6fa"; }}
+                    onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#23293a" : "#fff"; }}
                   >
                     + 행추가
                   </button>
@@ -2035,17 +2039,17 @@ function TablePage(props) {
                     onClick={deleteSelectedRows}
                     style={{
                       padding: "8px 16px",
-                      backgroundColor: "#fff",
-                      color: "#fb7185",
-                      border: "1px solid #ffe4e6",
+                      backgroundColor: isDarkMode ? "#23293a" : "#fff",
+                      color: isDarkMode ? "#f87171" : "#fb7185",
+                      border: isDarkMode ? "1px solid #7f1d1d" : "1px solid #ffe4e6",
                       borderRadius: "8px",
                       cursor: "pointer",
                       fontWeight: 400,
                       fontSize: "15px",
                       transition: "background 0.2s, color 0.2s"
                     }}
-                    onMouseOver={e => { e.target.style.backgroundColor = "#f4f6fa"; }}
-                    onMouseOut={e => { e.target.style.backgroundColor = "#fff"; }}
+                    onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#7f1d1d" : "#f4f6fa"; }}
+                    onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#23293a" : "#fff"; }}
                   >
                     선택 삭제
                   </button>

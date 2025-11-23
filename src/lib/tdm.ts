@@ -403,7 +403,30 @@ export const buildTdmRequestBody = (args: {
   
   const tauBefore = Number.isFinite(rawTau) && rawTau > 0 ? rawTau : 12;
   
-  const cmtBefore = savedPrescription?.cmt ?? 1;
+  // CMT 계산: 저장된 처방 정보 사용, 없으면 기본값
+  // Vancomycin의 경우 정맥 투약이 일반적이므로 기본값은 1
+  let cmtBefore = savedPrescription?.cmt ?? 1;
+  
+  // Vancomycin의 경우: 저장된 CMT가 2(경구)인데 route가 정맥이면 1로 수정
+  // API 서버가 모델과 CMT 값의 일관성을 검증하므로, 모델이 정맥 모델이면 CMT도 1이어야 함
+  if (tdmPrescription.drugName === "Vancomycin") {
+    const savedRoute = savedPrescription?.route?.toLowerCase() || "";
+    const isSavedOral = savedRoute.includes("po") || 
+                        savedRoute.includes("oral") || 
+                        savedRoute.includes("경구");
+    // 경구가 명시적으로 아니면 정맥(CMT=1)으로 강제
+    if (!isSavedOral && cmtBefore === 2) {
+      console.warn(`[TDM API] Vancomycin CMT correction: saved CMT was 2 but route is not oral, changing to 1`);
+      cmtBefore = 1;
+    }
+  }
+  
+  // 디버깅: 저장된 처방 정보 로깅
+  if (savedPrescription) {
+    console.log(`[TDM API] Saved prescription - route: "${savedPrescription.route}", cmt: ${savedPrescription.cmt} -> ${cmtBefore}, amount: ${savedPrescription.amount}, tau: ${savedPrescription.tau}`);
+  } else {
+    console.log(`[TDM API] No saved prescription, using default cmt: ${cmtBefore}`);
+  }
 
   // after 값: overrides가 있으면 사용, 없으면 before 값 사용
   const amountAfter = overrides?.amount ?? amountBefore;
@@ -477,8 +500,25 @@ export const buildTdmRequestBody = (args: {
         hoursDiff(toDate(d.date, d.time), anchorDoseTime)
       );
       const rate = computeInfusionRateFromAdministration(ext);
-      const cmt =
-        ext.route.includes("po") || ext.route.includes("경구") ? 2 : 1;
+      // CMT 계산: 경구 투약이면 2, 정맥 투약이면 1
+      // route 값이 "IV", "정맥", "oral", "경구" 등 다양한 형식으로 올 수 있음
+      const routeLower = (ext.route || "").toLowerCase();
+      const isOral = routeLower.includes("po") || 
+                     routeLower.includes("oral") || 
+                     routeLower.includes("경구");
+      let cmt = isOral ? 2 : 1;
+      
+      // Vancomycin의 경우: 현재 사용 가능한 모델이 모두 정맥 투약 모델이므로,
+      // route가 명시적으로 "경구"가 아니면 정맥(CMT=1)으로 강제
+      // API 서버가 모델과 CMT 값의 일관성을 검증하므로, 모델이 정맥 모델이면 CMT도 1이어야 함
+      if (tdmPrescription.drugName === "Vancomycin" && !isOral) {
+        cmt = 1;
+      }
+      
+      // 디버깅: route와 CMT 값 로깅
+      if (sortedDoses.length <= 3 || d === sortedDoses[0] || d === sortedDoses[sortedDoses.length - 1]) {
+        console.log(`[TDM API] Dose route: "${ext.route}" -> CMT: ${cmt}, AMT: ${d.dose}, TIME: ${relativeTime}`);
+      }
 
       dataset.push({
         ID: selectedPatientId,
@@ -692,7 +732,23 @@ export const runTdmApi = async (args: {
       }
 
       if (!response.ok) {
-        throw new Error(`TDM API error: ${response.status}`);
+        // 서버 응답 본문 읽기 시도
+        let errorMessage = `TDM API error: ${response.status}`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            try {
+              const errorJson = JSON.parse(errorText);
+              errorMessage = `TDM API error: ${response.status} - ${JSON.stringify(errorJson)}`;
+            } catch {
+              errorMessage = `TDM API error: ${response.status} - ${errorText.substring(0, 200)}`;
+            }
+          }
+        } catch (e) {
+          // 응답 본문 읽기 실패 시 기본 메시지 사용
+        }
+        console.error('TDM API Request Body:', JSON.stringify(body, null, 2));
+        throw new Error(errorMessage);
       }
 
       const data: TdmApiMinimal = await response.json();

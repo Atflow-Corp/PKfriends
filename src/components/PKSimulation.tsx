@@ -2796,6 +2796,7 @@ const PKSimulation = ({
         selectedPrescription={selectedPrescription}
         latestBloodTest={latestBloodTest}
         drugAdministrations={drugAdministrations}
+        isExpanded={true}
       />
 
       {/* PK Simulation 그래프 (가로 전체) */}
@@ -2922,7 +2923,7 @@ const PKSimulation = ({
                   용법 조정 {card.id}
                 </h2>
 
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   {card.type === "dosage"
                     ? "투약 용량을 조정하고 즉시 예측 결과를 확인해보세요"
                     : card.type === "dosageV2"
@@ -2973,14 +2974,14 @@ const PKSimulation = ({
                                   onClick={() => handleDosagePresetSelectV2(card.id, amount)}
                                   className={`${
                                     isSelected
-                                      ? "bg-black text-white hover:bg-gray-800"
+                                      ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
                                       : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
                                   } rounded-full px-4 py-2 text-sm font-semibold transition h-auto flex flex-col items-center justify-center gap-0.5`}
                                   title={`${amount}mg`}
                                   aria-pressed={isSelected}
                                 >
                                   <span>{Number(amount).toLocaleString()}</span>
-                                  <span className={`text-xs font-normal ${isSelected ? "text-gray-200" : "text-muted-foreground"}`}>
+                                  <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
                                     mg
                                   </span>
                                 </Button>
@@ -3018,14 +3019,14 @@ const PKSimulation = ({
                                 }
                                 className={`${
                                   isSelected
-                                    ? "bg-black text-white hover:bg-gray-800"
+                                    ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
                                     : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
                                 } rounded-full px-4 py-2 text-sm font-semibold transition h-auto flex flex-col items-center justify-center gap-0.5`}
                                 title={option.helper}
                                 aria-pressed={isSelected}
                               >
                                 <span>{option.label}</span>
-                                <span className={`text-xs font-normal ${isSelected ? "text-gray-200" : "text-muted-foreground"}`}>
+                                <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
                                   {option.helper}
                                 </span>
                               </Button>
@@ -3202,7 +3203,11 @@ const PKSimulation = ({
                             }
                             size="default"
                             onClick={() => handleDosageSelect(card.id, label)}
-                            className={`${selectedDosage[card.id] === label ? "bg-black text-white hover:bg-gray-800" : ""} text-base px-6 py-3 flex-shrink-0`}
+                            className={`${
+                              selectedDosage[card.id] === label
+                                ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
+                                : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
+                            } text-base px-6 py-3 flex-shrink-0`}
                           >
                             {label}
                           </Button>
@@ -3236,14 +3241,14 @@ const PKSimulation = ({
                               }
                               className={`${
                                 isSelected
-                                  ? "bg-black text-white hover:bg-gray-800"
-                                  : ""
+                                  ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
+                                  : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
                               } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
                               title={option.helper}
                               aria-pressed={isSelected}
                             >
                               <span>{option.label}</span>
-                              <span className="text-xs font-normal text-muted-foreground">
+                              <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
                                 {option.helper}
                               </span>
                             </Button>
@@ -3306,14 +3311,14 @@ const PKSimulation = ({
                                 onClick={() => handleDosagePresetSelectV2(card.id, amount)}
                                 className={`${
                                   isSelected
-                                    ? "bg-black text-white hover:bg-gray-800"
-                                    : ""
+                                    ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
+                                    : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
                                 } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
                                 title={`${amount}mg`}
                                 aria-pressed={isSelected}
                               >
                                 <span>{label}</span>
-                                <span className="text-xs font-normal text-muted-foreground">
+                                <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
                                   mg
                                 </span>
                               </Button>

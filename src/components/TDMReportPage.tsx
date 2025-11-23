@@ -4,45 +4,48 @@ import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/In
 import { FileText, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import Header from "./ui/Header";
-import Footer from "./ui/Footer";
 import TDMPatientDetails from "./TDMPatientDetails";
 import PKCharts from "./pk/PKCharts";
-import TDMSummary from "./pk/shared/TDMSummary";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
-import { buildTdmRequestBody } from "@/lib/tdm";
+import { useTdmReportData } from "@/hooks/useTdmReportData";
 
 const TDMReportPage = () => {
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [analysisDate, setAnalysisDate] = useState<string>("");
   const [selectedDrug, setSelectedDrug] = useState<string>("");
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [bloodTests, setBloodTests] = useState<BloodTest[]>([]);
   const [drugAdministrations, setDrugAdministrations] = useState<DrugAdministration[]>([]);
-  const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
   
-  // PKCharts에 필요한 상태들
-  const [tdmResults, setTdmResults] = useState<any>(null);
-  const [tdmExtraSeries, setTdmExtraSeries] = useState<any>(null);
+  // URL에서 환자 ID 가져오기
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const patientIdFromUrl = urlParams.get('patientId');
+  
+  // TDM 보고서 데이터 로드 (커스텀 훅 사용)
+  const {
+    patient: selectedPatient,
+    prescription: selectedPrescription,
+    tdmResult,
+    tdmExtraSeries,
+    prescriptionInfo,
+    inputTOXI,
+  } = useTdmReportData({
+    patientId: patientIdFromUrl,
+    drugName: selectedDrug,
+  });
 
   useEffect(() => {
-    // localStorage에서 모든 데이터 로드
+    // localStorage에서 기본 데이터 로드 (환자 목록, 혈중 농도, 투약 기록)
     const loadData = () => {
       try {
-        // 환자 데이터 로드
+        // 환자 데이터 로드 (환자 목록 확인용)
         const savedPatients = storage.getJSON<Patient[]>(STORAGE_KEYS.patients, [] as Patient[]);
-        const revivePatients = (savedPatients || []).map((p: any) => ({ ...p, createdAt: p.createdAt ? new Date(p.createdAt) : new Date() }));
-        setPatients(revivePatients);
-
-        // 처방전 데이터 로드
-        const savedPrescriptions = storage.getJSON<Prescription[]>(STORAGE_KEYS.prescriptions, [] as Prescription[]);
-        const revivePrescriptions = (savedPrescriptions || []).map((pr: any) => ({
-          ...pr,
-          startDate: pr.startDate ? new Date(pr.startDate) : new Date(),
+        const revivePatients = (savedPatients || []).map((p: any) => ({
+          ...p,
+          createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
         }));
-        setPrescriptions(revivePrescriptions);
+        setPatients(revivePatients);
 
         // 혈중 약물 농도 데이터 로드
         const savedBloodTests = storage.getJSON<BloodTest[]>(STORAGE_KEYS.bloodTests, [] as BloodTest[]);
@@ -53,80 +56,45 @@ const TDMReportPage = () => {
         setBloodTests(reviveBloodTests);
 
         // 투약 기록 데이터 로드
-        const savedDrugAdministrations = storage.getJSON<DrugAdministration[]>(STORAGE_KEYS.drugAdministrations, [] as DrugAdministration[]);
+        const savedDrugAdministrations = storage.getJSON<DrugAdministration[]>(
+          STORAGE_KEYS.drugAdministrations,
+          [] as DrugAdministration[]
+        );
         const reviveDrugAdministrations = (savedDrugAdministrations || []).map((da: any) => ({
           ...da,
           date: da.date ? new Date(da.date) : new Date(),
         }));
         setDrugAdministrations(reviveDrugAdministrations);
 
-        // URL에서 환자 ID 가져오기
-        const urlParams = new URLSearchParams(window.location.search);
-        const patientIdFromUrl = urlParams.get('patientId');
-        
-        if (patientIdFromUrl && revivePatients.length > 0) {
-          // 환자 정보 찾기
-          const patient = revivePatients.find(p => p.id === patientIdFromUrl);
-          if (patient) {
-            setSelectedPatient(patient);
-          }
-
-          // 선택된 약품 정보 가져오기
+        // 선택된 약품 정보 가져오기
+        if (patientIdFromUrl) {
           try {
             const savedDrug = window.localStorage.getItem(`tdmfriends:selectedDrug:${patientIdFromUrl}`);
             if (savedDrug) {
               setSelectedDrug(savedDrug);
-              
-              // 선택된 처방전 찾기
-              const prescription = revivePrescriptions.find(p => 
-                p.patientId === patientIdFromUrl && p.drugName === savedDrug
-              );
-              if (prescription) {
-                setSelectedPrescription(prescription);
-              }
-
-              // TDM 결과 데이터 로드
-              try {
-                const savedTdmResults = window.localStorage.getItem(`tdmfriends:tdmResults:${patientIdFromUrl}:${savedDrug}`);
-                if (savedTdmResults) {
-                  const parsedResults = JSON.parse(savedTdmResults);
-                  setTdmResults(parsedResults);
-                }
-              } catch (error) {
-                console.error('TDM 결과 로드 실패:', error);
-              }
-
-              // TDM 시리즈 데이터 로드
-              try {
-                const savedTdmExtraSeries = window.localStorage.getItem(`tdmfriends:tdmExtraSeries:${patientIdFromUrl}:${savedDrug}`);
-                if (savedTdmExtraSeries) {
-                  const parsedSeries = JSON.parse(savedTdmExtraSeries);
-                  setTdmExtraSeries(parsedSeries);
-                }
-              } catch (error) {
-                console.error('TDM 시리즈 로드 실패:', error);
-              }
             }
           } catch (error) {
-            console.error('약품 정보 로드 실패:', error);
+            console.error("약품 정보 로드 실패:", error);
           }
         }
       } catch (error) {
-        console.error('데이터 로드 실패:', error);
+        console.error("데이터 로드 실패:", error);
       }
     };
 
     loadData();
 
     // 분석 일시 설정 (현재 시간)
-    setAnalysisDate(new Date().toLocaleString('ko-KR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }));
-  }, []);
+    setAnalysisDate(
+      new Date().toLocaleString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+  }, [patientIdFromUrl]);
 
   // PDF 다운로드 함수
   const handleDownloadPDF = async () => {
@@ -243,31 +211,30 @@ const TDMReportPage = () => {
               <div className="text-center">
                 <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">환자 정보를 찾을 수 없습니다.</p>
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-gray-500 dark:text-muted-foreground mt-2">
                   URL: {window.location.href}
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-muted-foreground">
                   환자 수: {patients.length}
                 </p>
               </div>
             </CardContent>
           </Card>
         </div>
-        <Footer />
       </div>
     );
   }
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-background">
       <Header />
       
       <div className="container mx-auto px-4 py-8">
         {/* 안내문 */}
         <Card className="mb-6">
           <CardContent className="py-4">
-            <p className="text-sm text-gray-600 text-center">
+            <p className="text-sm text-gray-600 dark:text-muted-foreground text-center">
               Report를 조회한 후 이 탭을 닫고 이전 창으로 복귀하면 계속해서 서비스를 이용하실 수 있습니다.
             </p>
           </CardContent>
@@ -318,109 +285,89 @@ const TDMReportPage = () => {
               disableHover={true} // 마우스 오버 이벤트 비활성화
             />
           </CardContent>
-          {/* TDM Summary */}
-          <CardContent>
-            <TDMSummary
-              selectedDrug={selectedDrug}
-              tdmIndication={selectedPrescription?.indication}
-              tdmTarget={selectedPrescription?.tdmTarget}
-              tdmTargetValue={selectedPrescription?.tdmTargetValue}
-              latestAdministration={drugAdministrations
-                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                .slice(-1)[0] ? {
+
+          {/* 두 번째 카드: PKCharts */}
+          <CardContent className="pt-6 border-t">
+            {selectedPatient && selectedDrug ? (
+              tdmResult ? (
+                <PKCharts
+                showSimulation={true}
+                currentPatientName={selectedPatient.name}
+                selectedDrug={selectedDrug}
+                targetMin={selectedPrescription?.tdmTargetValue ? 
+                  parseFloat(selectedPrescription.tdmTargetValue.split('-')[0]?.trim() || '0') : null}
+                targetMax={selectedPrescription?.tdmTargetValue ? 
+                  parseFloat(selectedPrescription.tdmTargetValue.split('-')[1]?.trim() || '0') : null}
+                recentAUC={tdmResult?.AUC_24_before || tdmResult?.AUC_tau_before || tdmResult?.AUC24h_before || tdmResult?.AUCtau_before || null}
+                recentMax={tdmResult?.CMAX_before || tdmResult?.CMax_before || null}
+                recentTrough={tdmResult?.CTROUGH_before || tdmResult?.CTrough_before || null}
+                predictedAUC={tdmResult?.AUC_24_after || tdmResult?.AUC_tau_after || tdmResult?.AUC24h_after || tdmResult?.AUCtau_after || null}
+                predictedMax={tdmResult?.CMAX_after || tdmResult?.CMax_after || null}
+                predictedTrough={tdmResult?.CTROUGH_after || tdmResult?.CTrough_after || null}
+                ipredSeries={tdmExtraSeries?.ipredSeries}
+                predSeries={tdmExtraSeries?.predSeries}
+                observedSeries={tdmExtraSeries?.observedSeries}
+                tdmIndication={selectedPrescription?.indication}
+                tdmTarget={selectedPrescription?.tdmTarget}
+                tdmTargetValue={selectedPrescription?.tdmTargetValue}
+                latestAdministration={drugAdministrations
+                  .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
+                  .sort((a, b) => {
+                    const dateA = new Date(`${a.date}T${a.time}`);
+                    const dateB = new Date(`${b.date}T${b.time}`);
+                    return dateB.getTime() - dateA.getTime();
+                  })[0] ? {
                   dose: drugAdministrations
                     .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].dose,
+                    .sort((a, b) => {
+                      const dateA = new Date(`${a.date}T${a.time}`);
+                      const dateB = new Date(`${b.date}T${b.time}`);
+                      return dateB.getTime() - dateA.getTime();
+                    })[0].dose,
                   unit: drugAdministrations
                     .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].unit,
+                    .sort((a, b) => {
+                      const dateA = new Date(`${a.date}T${a.time}`);
+                      const dateB = new Date(`${b.date}T${b.time}`);
+                      return dateB.getTime() - dateA.getTime();
+                    })[0].unit,
                   intervalHours: drugAdministrations
                     .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].intervalHours
+                    .sort((a, b) => {
+                      const dateA = new Date(`${a.date}T${a.time}`);
+                      const dateB = new Date(`${b.date}T${b.time}`);
+                      return dateB.getTime() - dateA.getTime();
+                    })[0].intervalHours
                 } : null}
-              recentAUC={tdmResults?.recentAUC}
-              recentMax={tdmResults?.recentMax}
-              recentTrough={tdmResults?.recentTrough}
-              predictedAUC={tdmResults?.predictedAUC}
-              predictedMax={tdmResults?.predictedMax}
-              predictedTrough={tdmResults?.predictedTrough}
-              commentTitle="TDM friends Comments"
-              showSteadyStateComment={true}
-            />
-          </CardContent>
-          {/* 두 번째 카드: 현용법 결과과 */}
-          <CardContent>
-            <PKCharts
-              showSimulation={false} // 보고서에서는 시뮬레이션 영역 숨김
-              currentPatientName={selectedPatient?.name}
-              selectedDrug={selectedDrug}
-              targetMin={tdmResults?.targetMin}
-              targetMax={tdmResults?.targetMax}
-              recentAUC={tdmResults?.recentAUC}
-              recentMax={tdmResults?.recentMax}
-              recentTrough={tdmResults?.recentTrough}
-              predictedAUC={tdmResults?.predictedAUC}
-              predictedMax={tdmResults?.predictedMax}
-              predictedTrough={tdmResults?.predictedTrough}
-              ipredSeries={tdmExtraSeries?.ipredSeries}
-              predSeries={tdmExtraSeries?.predSeries}
-              observedSeries={tdmExtraSeries?.observedSeries}
-              tdmIndication={selectedPrescription?.indication}
-              tdmTarget={selectedPrescription?.tdmTarget}
-              tdmTargetValue={selectedPrescription?.tdmTargetValue}
-              latestAdministration={drugAdministrations
-                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                .slice(-1)[0] ? {
-                  dose: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].dose,
-                  unit: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].unit,
-                  intervalHours: drugAdministrations
-                    .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                    .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime())
-                    .slice(-1)[0].intervalHours
-                } : null}
-              drugAdministrations={drugAdministrations
-                .filter(da => da.patientId === selectedPatient.id && da.drugName === selectedDrug)
-                .map(da => ({
-                  id: da.id,
-                  patientId: da.patientId,
-                  drugName: da.drugName,
-                  date: da.date,
-                  time: da.time
-                }))}
-              tauBefore={selectedPatient && selectedDrug ? buildTdmRequestBody({
-                patients,
-                prescriptions,
-                bloodTests,
-                drugAdministrations,
-                selectedPatientId: selectedPatient.id,
-                selectedDrugName: selectedDrug
-              })?.input_tau_before : undefined}
-              amountBefore={selectedPatient && selectedDrug ? buildTdmRequestBody({
-                patients,
-                prescriptions,
-                bloodTests,
-                drugAdministrations,
-                selectedPatientId: selectedPatient.id,
-                selectedDrugName: selectedDrug
-              })?.input_amount_before : undefined}
-            />
+                drugAdministrations={drugAdministrations.filter(da => 
+                  da.patientId === selectedPatient.id && da.drugName === selectedDrug
+                )}
+                steadyState={tdmResult?.Steady_state}
+                input_TOXI={inputTOXI !== undefined ? inputTOXI : (tdmResult?.input_TOXI ?? 0)}
+                tauBefore={prescriptionInfo?.tau || (selectedPrescription?.frequency ? 
+                  (() => {
+                    const freq = selectedPrescription.frequency;
+                    const match = freq.match(/(\d+(?:\.\d+)?)/);
+                    if (match) {
+                      const value = parseFloat(match[1]);
+                      if (freq.includes("주")) return value * 24 * 7;
+                      return value;
+                    }
+                    return null;
+                  })() : null)}
+                amountBefore={prescriptionInfo?.amount || selectedPrescription?.dosage || null}
+              />
+              ) : (
+                <div className="text-center py-8 text-gray-500 dark:text-muted-foreground">
+                  <p>TDM 분석 결과 데이터가 없습니다.</p>
+                  <p className="text-sm mt-2">시뮬레이션을 먼저 실행해주세요.</p>
+                </div>
+              )
+            ) : null}
           </CardContent>
         </Card>
 
       </div>
-
-      <Footer />
     </div>
   );
 };

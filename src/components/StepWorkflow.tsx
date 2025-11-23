@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
 import { CheckCircle, Circle, User, Pill, FlaskConical, Activity, History } from "lucide-react";
+import { cn } from "@/lib/utils";
 import PatientStep from "./workflow/PatientStep";
 import PrescriptionStep from "./workflow/PrescriptionStep";
 import BloodTestStep from "./workflow/BloodTestStep";
 import SimulationStep from "./workflow/SimulationStep";
 import DrugAdministrationStep from "./workflow/DrugAdministrationStep";
+import { buildTdmRequestBody, runTdmApi } from "@/lib/tdm";
 
 interface StepWorkflowProps {
   patients: Patient[];
@@ -51,6 +53,7 @@ const StepWorkflow = ({
 }: StepWorkflowProps) => {
   const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
+  const [isLoadingTdm, setIsLoadingTdm] = useState(false);
 
   // Hydrate selectedPrescription from localStorage so steps 3/4/5 can work after refresh
   useEffect(() => {
@@ -199,12 +202,36 @@ const StepWorkflow = ({
                   <Button
                     key={step.id}
                     variant={isActive ? "default" : isCompleted ? "secondary" : "outline"}
-                    className={`flex flex-col items-center gap-1 h-auto py-3 ${
-                      !canAccess ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
-                    disabled={!canAccess}
-                    onClick={() => {
+                    className={cn(
+                      "flex flex-col items-center gap-1 h-auto py-3",
+                      !canAccess && "opacity-50 cursor-not-allowed"
+                    )}
+                    disabled={!canAccess || (step.id === 5 && isLoadingTdm)}
+                    onClick={async () => {
                       if (!canAccess) return;
+                      
+                      // Let's TDM (step 5) 버튼 클릭 시 API 호출
+                      if (step.id === 5 && selectedPatient && selectedPrescription) {
+                        setIsLoadingTdm(true);
+                        try {
+                          const body = buildTdmRequestBody({
+                            patients,
+                            prescriptions,
+                            bloodTests,
+                            drugAdministrations,
+                            selectedPatientId: selectedPatient.id,
+                            selectedDrugName: selectedPrescription.drugName,
+                          });
+                          if (body) {
+                            await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
+                          }
+                        } catch (e) {
+                          console.error("TDM API 호출 실패:", e);
+                        } finally {
+                          setIsLoadingTdm(false);
+                        }
+                      }
+                      
                       setCurrentStep(step.id);
                     }}
                   >
@@ -216,7 +243,7 @@ const StepWorkflow = ({
                       )}
                     </div>
                     <span className="text-xs text-center leading-tight">
-                      {step.title}
+                      {step.id === 5 && isLoadingTdm ? "처리 중..." : step.title}
                     </span>
                   </Button>
                 );

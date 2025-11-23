@@ -136,7 +136,7 @@ const TDMSummary = ({
     
     if (isVancomycinAUC) {
       if (diffFromMax <= 100 && diffFromMax >= 0) {
-        return "환자가 신독성 고위험군인 경우, 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
+        return "환자가 신독성 약물을 복용 중인 경우, 예측 결과가 목표 범위 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
       }
     }
     
@@ -184,42 +184,42 @@ const TDMSummary = ({
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* 최신 혈중 약물 농도 */}
-        <Card className="bg-white border-2">
+        <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">{currentResultTitle}</CardTitle>
+            <CardTitle className="text-lg text-gray-800 dark:text-gray-200">{currentResultTitle}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
             <div className="flex justify-between">
-              <span className="text-gray-600">AUC:</span>
+              <span className="text-gray-600 dark:text-gray-400">AUC:</span>
               <span className="font-semibold text-gray-900 dark:text-white">{formatInt(recentAUC ?? null, 'mg*h/L')}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">max 농도:</span>
+              <span className="text-gray-600 dark:text-gray-400">max 농도:</span>
               <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(recentMax ?? null, concentrationUnit)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">trough 농도:</span>
+              <span className="text-gray-600 dark:text-gray-400">trough 농도:</span>
               <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(recentTrough ?? null, concentrationUnit)}</span>
             </div>
           </CardContent>
         </Card>
 
         {/* 예측 약물 농도 */}
-        <Card className="bg-white border-2">
+        <Card className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-gray-800">{predictedResultTitle}</CardTitle>
+            <CardTitle className="text-lg text-gray-800 dark:text-gray-200">{predictedResultTitle}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
             <div className="flex justify-between">
-              <span className="text-gray-600">AUC:</span>
+              <span className="text-gray-600 dark:text-gray-400">AUC:</span>
               <span className="font-semibold text-gray-900 dark:text-white">{formatInt(predictedAUC ?? null, 'mg*h/L')}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">max 농도:</span>
+              <span className="text-gray-600 dark:text-gray-400">max 농도:</span>
               <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(predictedMax ?? null, concentrationUnit)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">trough 농도:</span>
+              <span className="text-gray-600 dark:text-gray-400">trough 농도:</span>
               <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(predictedTrough ?? null, concentrationUnit)}</span>
             </div>
           </CardContent>

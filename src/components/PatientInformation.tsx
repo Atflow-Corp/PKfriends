@@ -1,4 +1,4 @@
-import { useState, forwardRef, useImperativeHandle, useEffect } from "react";
+import { useState, forwardRef, useImperativeHandle, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import dayjs from "dayjs";
+import { getTdmTargetValue } from "@/components/pk/shared/TDMChartUtils";
 
 interface PatientInformationProps {
   onAddPatient: (patient: Patient) => void;
@@ -166,6 +167,201 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     
     // 모달 닫기
     setIsViewModalOpen(false);
+  };
+
+  // TDM 결과 로드 함수 (prescription의 분석일시를 기준으로 가장 가까운 결과 찾기)
+  const loadTdmResult = (patientId: string, drugName: string, prescriptionDate?: Date | string) => {
+    try {
+      // PKSimulation과 동일한 방식으로 로드 시도
+      // 1. 약물별 최신 결과: tdmfriends:tdmResult:${patientId}:${drugName}
+      const drugLatestKey = `tdmfriends:tdmResult:${patientId}:${drugName}`;
+      const drugLatestRaw = window.localStorage.getItem(drugLatestKey);
+      
+      // 2. 환자별 최신 결과: tdmfriends:tdmResult:${patientId} (PKSimulation에서 사용)
+      const patientLatestKey = `tdmfriends:tdmResult:${patientId}`;
+      const patientLatestRaw = window.localStorage.getItem(patientLatestKey);
+      
+      // 3. 히스토리 배열 확인 (여러 결과 중에서 선택)
+      const historyKey = `tdmfriends:tdmResults:${patientId}:${drugName}`;
+      const historyRaw = window.localStorage.getItem(historyKey);
+      
+      // 약물별 최신 결과가 있으면 우선 사용
+      if (drugLatestRaw) {
+        const result = JSON.parse(drugLatestRaw);
+        console.log('약물별 최신 TDM 결과 로드:', {
+          keys: Object.keys(result).slice(0, 20),
+          hasAUC_24: 'AUC_24_before' in result,
+          hasAUC_tau: 'AUC_tau_before' in result,
+          AUC_24_before: result.AUC_24_before,
+          CMAX_before: result.CMAX_before,
+          CTROUGH_before: result.CTROUGH_before
+        });
+        return result;
+      }
+      
+      // 히스토리 확인
+      if (historyRaw) {
+        const historyList = JSON.parse(historyRaw) as Array<{
+          id: string;
+          timestamp: string;
+          data?: any;
+          summary?: any;
+        }>;
+        
+        if (historyList && historyList.length > 0) {
+          // 날짜가 있으면 가장 가까운 항목 찾기, 없으면 최신 항목 사용
+          let targetEntry = historyList[historyList.length - 1]; // 기본적으로 최신 항목
+          
+          if (prescriptionDate) {
+            const prescriptionDateTime = new Date(prescriptionDate).getTime();
+            let closestEntry = historyList[0];
+            let minDiff = Math.abs(new Date(historyList[0].timestamp).getTime() - prescriptionDateTime);
+            
+            for (const entry of historyList) {
+              const entryTime = new Date(entry.timestamp).getTime();
+              const diff = Math.abs(entryTime - prescriptionDateTime);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closestEntry = entry;
+              }
+            }
+            targetEntry = closestEntry;
+          }
+          
+          // summary와 data 병합 (data에 summary가 포함되어 있을 수 있음)
+          let result = targetEntry.data || targetEntry.summary || null;
+          if (targetEntry.data && targetEntry.summary) {
+            result = { ...targetEntry.data, ...targetEntry.summary };
+          }
+          
+          console.log('히스토리에서 찾은 TDM 결과:', {
+            hasResult: !!result,
+            resultKeys: result ? Object.keys(result).slice(0, 20) : [],
+            hasSummary: !!targetEntry.summary,
+            hasData: !!targetEntry.data,
+            summaryKeys: targetEntry.summary ? Object.keys(targetEntry.summary).slice(0, 20) : [],
+            dataKeys: targetEntry.data ? Object.keys(targetEntry.data).slice(0, 20) : [],
+            AUC_24_before: result?.AUC_24_before,
+            CMAX_before: result?.CMAX_before,
+            CTROUGH_before: result?.CTROUGH_before
+          });
+          
+          return result;
+        }
+      }
+      
+      // 환자별 최신 결과 사용 (PKSimulation fallback)
+      if (patientLatestRaw) {
+        const result = JSON.parse(patientLatestRaw);
+        console.log('환자별 최신 TDM 결과 사용:', {
+          keys: Object.keys(result).slice(0, 20),
+          AUC_24_before: result.AUC_24_before,
+          CMAX_before: result.CMAX_before,
+          CTROUGH_before: result.CTROUGH_before
+        });
+        return result;
+      }
+      
+      console.warn('TDM 결과를 찾을 수 없음:', { 
+        patientId, 
+        drugName, 
+        prescriptionDate,
+        checkedKeys: [drugLatestKey, patientLatestKey, historyKey]
+      });
+    } catch (error) {
+      console.error('TDM 결과 로드 실패:', error);
+    }
+    return null;
+  };
+
+  // TDM 목표 포맷팅 함수
+  const formatTdmTarget = (prescription: Prescription, tdmResult: any) => {
+    const { tdmTarget, tdmTargetValue, drugName } = prescription;
+    
+    if (!tdmTarget || !tdmTargetValue) {
+      return '-';
+    }
+
+    // TDM 목표 유형 추출 (AUC, Max, Trough)
+    const targetTypeLabel = (() => {
+      const target = tdmTarget.toLowerCase();
+      if (target.includes('auc')) return 'AUC';
+      if (target.includes('max') || target.includes('peak')) return 'Max';
+      if (target.includes('trough')) return 'Trough';
+      return '';
+    })();
+
+    // TDM 결과에서 예측값 추출 (모든 가능한 필드명 확인)
+    // 실제 저장된 필드명: AUC_24_before, AUC_tau_before, CMAX_before, CTROUGH_before 등
+    const predictedAUC = tdmResult?.AUC_24_before || tdmResult?.AUC_tau_before || tdmResult?.AUC24h_before || tdmResult?.AUCtau_before || null;
+    const predictedMax = tdmResult?.CMAX_before || tdmResult?.CMax_before || null;
+    const predictedTrough = tdmResult?.CTROUGH_before || tdmResult?.CTrough_before || null;
+    
+    // 디버깅: TDM 결과가 없거나 예측값을 추출하지 못한 경우
+    if (!tdmResult || (!predictedAUC && !predictedMax && !predictedTrough)) {
+      console.warn('TDM 결과 예측값 추출 실패:', {
+        hasTdmResult: !!tdmResult,
+        tdmResultType: typeof tdmResult,
+        tdmResultKeys: tdmResult ? Object.keys(tdmResult).slice(0, 20) : [],
+        prescription: { drugName, tdmTarget, tdmTargetValue },
+        predictedValues: { predictedAUC, predictedMax, predictedTrough }
+      });
+    }
+
+    // targetHighlight 계산
+    const targetHighlight = getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, drugName);
+
+    // 목표 범위 상태 계산
+    const targetRangeStatus = (() => {
+      if (!tdmTargetValue || !targetHighlight.numericValue) {
+        if (targetHighlight.numericValue === null) {
+          console.warn('targetHighlight.numericValue가 null:', {
+            tdmTarget,
+            predictedAUC,
+            predictedMax,
+            predictedTrough,
+            targetHighlight
+          });
+        }
+        return null;
+      }
+      
+      const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+      if (!rangeMatch) {
+        console.warn('목표 범위 파싱 실패:', tdmTargetValue);
+        return null;
+      }
+      
+      const minValue = parseFloat(rangeMatch[1]);
+      const maxValue = parseFloat(rangeMatch[2]);
+      const currentValue = targetHighlight.numericValue;
+      
+      if (currentValue > maxValue) return '초과';
+      if (currentValue < minValue) return '미달';
+      return '도달';
+    })();
+
+    // 포맷팅된 텍스트 반환
+    if (targetHighlight.numericValue != null && targetRangeStatus) {
+      return `${targetTypeLabel} ${targetHighlight.value} 으로 목표범위 ${targetRangeStatus}`;
+    }
+    
+    // Fallback: TDM 결과가 없거나 예측값을 추출하지 못한 경우
+    return targetTypeLabel ? `${targetTypeLabel} ${tdmTargetValue}` : tdmTargetValue;
+  };
+
+  // 항정상태 포맷팅 함수
+  const formatSteadyState = (tdmResult: any) => {
+    if (!tdmResult || tdmResult.Steady_state === undefined) {
+      return '-';
+    }
+    
+    const steadyState = tdmResult.Steady_state;
+    const isSteadyState = typeof steadyState === 'boolean' 
+      ? steadyState 
+      : String(steadyState).toLowerCase() === 'true';
+    
+    return isSteadyState ? '도달' : '미도달';
   };
 
   // 환자 정보 조회 모달 열기
@@ -447,54 +643,60 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[120px]">등록일</TableHead>
+                        <TableHead className="w-[120px]">분석일</TableHead>
                         <TableHead className="w-[150px]">약물명</TableHead>
                         <TableHead className="w-[200px]">적응증</TableHead>
-                        <TableHead className="w-[200px]">추가정보</TableHead>
-                        <TableHead className="w-[200px]">TDM 목표치</TableHead>
-                        <TableHead className="w-[100px]">액션</TableHead>
+                        <TableHead className="w-[250px]">TDM 목표</TableHead>
+                        <TableHead className="w-[120px]">항정상태</TableHead>
+                        <TableHead className="w-[100px]">조회</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {tdmPrescriptions.map((prescription, index) => (
-                        <TableRow 
-                          key={prescription.id}
-                          className={`cursor-pointer hover:bg-blue-50/50 ${
-                            selectedTdmPrescription?.id === prescription.id ? "bg-blue-50" : ""
-                          }`}
-                          onClick={() => setSelectedTdmPrescription(prescription)}
-                        >
-                          <TableCell className="align-top">
-                            {dayjs(prescription.startDate || prescription.id).format('YYYY.M.D')}
-                          </TableCell>
-                          <TableCell className="font-medium align-top">
-                            {prescription.drugName}
-                          </TableCell>
-                          <TableCell className="align-top">
-                            {prescription.indication || '-'}
-                          </TableCell>
-                          <TableCell className="align-top">
-                            {prescription.additionalInfo || '-'}
-                          </TableCell>
-                          <TableCell className="align-top">
-                            {prescription.tdmTargetValue || '-'}
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleTdmSelection(prescription);
-                              }}
-                              className="flex items-center gap-1"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              조회
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {tdmPrescriptions.map((prescription, index) => {
+                        const tdmResult = viewingPatient ? loadTdmResult(viewingPatient.id, prescription.drugName, prescription.startDate) : null;
+                        const tdmTargetText = formatTdmTarget(prescription, tdmResult);
+                        const steadyStateText = formatSteadyState(tdmResult);
+                        
+                        return (
+                          <TableRow 
+                            key={prescription.id}
+                            className={`cursor-pointer hover:bg-accent/50 dark:hover:bg-accent/30 ${
+                              selectedTdmPrescription?.id === prescription.id ? "bg-accent dark:bg-accent/50" : ""
+                            }`}
+                            onClick={() => setSelectedTdmPrescription(prescription)}
+                          >
+                            <TableCell className="align-top">
+                              {dayjs(prescription.startDate || prescription.id).format('YYYY.M.D')}
+                            </TableCell>
+                            <TableCell className="font-medium align-top">
+                              {prescription.drugName}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {prescription.indication || '-'}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {tdmTargetText}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              {steadyStateText}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTdmSelection(prescription);
+                                }}
+                                className="flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                조회
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

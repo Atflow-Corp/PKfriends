@@ -690,7 +690,9 @@ const PrescriptionStep = ({
                       {patientPrescriptions.map((prescription) => (
                           <TableRow 
                             key={prescription.id} 
-                            className={`cursor-pointer hover:bg-blue-50/50 ${selectedTdmId === prescription.id ? "bg-blue-50" : ""}`}
+                            className={`cursor-pointer hover:bg-accent/50 dark:hover:bg-accent/30 ${
+                              selectedTdmId === prescription.id ? "bg-accent dark:bg-accent/50" : ""
+                            }`}
                             onClick={() => handleTdmSelect(prescription)}
                           >
                             <TableCell>
@@ -853,7 +855,7 @@ const PrescriptionStep = ({
               환자 등록 및 선택
             </Button>
             {isCompleted && (
-              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
+              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90">
                 Lab
                 <ArrowRight className="h-4 w-4" />
               </Button>
