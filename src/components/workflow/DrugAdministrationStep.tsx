@@ -318,11 +318,21 @@ const DrugAdministrationStep = ({
                       selectedPatientId: selectedPatient.id,
                       selectedDrugName: tdmDrug?.drugName,
                     });
-                    if (body) {
-                      await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
+                    if (!body) {
+                      console.error('Failed to build TDM request body');
+                      alert('TDM 요청 데이터를 생성할 수 없습니다. 환자 정보와 처방 정보를 확인해주세요.');
+                      return;
                     }
+                    console.log('TDM API Request Body:', JSON.stringify(body, null, 2));
+                    await runTdmApi({ 
+                      body, 
+                      persist: true, 
+                      patientId: selectedPatient.id,
+                      drugName: tdmDrug?.drugName 
+                    });
                   } catch (e) {
-                    console.error(e);
+                    console.error('TDM API Error:', e);
+                    alert(`TDM 분석 중 오류가 발생했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}`);
                   } finally {
                     setLoading(false);
                     onNext();
