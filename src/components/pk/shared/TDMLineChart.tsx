@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback, useEffect } from "react";
+import { useRef, useMemo, useCallback, useEffect, useState } from "react";
 import { Line } from "react-chartjs-2";
 import { 
   Chart as ChartJS, 
@@ -64,6 +64,29 @@ const TDMLineChart = ({
   lastDoseColor = '#ff6b6b' // 기본값: 빨간색
 }: TDMLineChartProps) => {
   const chartRef = useRef<ChartJS<'line'> | null>(null);
+  
+  // 다크모드 감지
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return document.documentElement.classList.contains('dark');
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const updateDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    
+    updateDarkMode();
+    const observer = new MutationObserver(updateDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
 
   // Y축 최대값 계산
   const yMax = useMemo(() => calculateYMax(data, targetMax), [data, targetMax]);
@@ -345,8 +368,12 @@ const TDMLineChart = ({
               display: true,
               content: 'last dose',
               position: 'end',
-              backgroundColor: lastDoseColor === '#3b82f6' ? 'rgba(59,130,246,0.3)' : 'rgba(254,202,202,0.3)',
-              color: lastDoseColor === '#3b82f6' ? '#1e40af' : '#b91c1c',
+              backgroundColor: lastDoseColor === '#3b82f6' 
+                ? (isDarkMode ? 'rgba(96,165,250,0.3)' : 'rgba(59,130,246,0.3)')
+                : (isDarkMode ? 'rgba(248,113,113,0.3)' : 'rgba(254,202,202,0.3)'),
+              color: lastDoseColor === '#3b82f6' 
+                ? (isDarkMode ? '#60a5fa' : '#1e40af')
+                : (isDarkMode ? '#f87171' : '#b91c1c'),
               font: {
                 size: 12,
                 weight: 'bold'
@@ -404,7 +431,7 @@ const TDMLineChart = ({
         ticks: { callback: (v) => `${Number(v).toFixed(2)}` }
       }
     }
-  }), [data, selectedDrug, targetMin, targetMax, dataTimeExtents, lastActualDoseTime, currentTime, drugAdministrations, yMax]);
+  }), [data, selectedDrug, targetMin, targetMax, dataTimeExtents, lastActualDoseTime, currentTime, drugAdministrations, yMax, isDarkMode, lastDoseColor]);
 
   return (
     <div className="mb-2">

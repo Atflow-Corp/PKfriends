@@ -103,7 +103,7 @@ const PatientStep = ({
           {/* Next Button */}
           {isCompleted && (
             <div className="flex justify-end">
-              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
+              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90">
                 TDM 선택
                 <ArrowRight className="h-4 w-4" />
               </Button>

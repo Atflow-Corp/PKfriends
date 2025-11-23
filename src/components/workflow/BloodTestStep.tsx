@@ -493,7 +493,7 @@ const BloodTestStep = ({
                       </TableCell>
                       <TableCell 
                         colSpan={4} 
-                        className={`text-center ${!useRenalData && renalInfoList.every(item => !item.isSelected) ? 'text-black' : 'text-muted-foreground'}`}
+                        className={`text-center ${!useRenalData && renalInfoList.every(item => !item.isSelected) ? 'text-foreground' : 'text-muted-foreground'}`}
                       >
                         {useRenalData 
                           ? "해당 TDM은 신기능 데이터를 필수 입력해야 합니다"
@@ -635,7 +635,7 @@ const BloodTestStep = ({
               TDM 선택
             </Button>
             {isCompleted && (
-              <Button onClick={handleNext} className="flex items-center gap-2 w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center">
+              <Button onClick={handleNext} className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90">
                 투약 기록
                 <ArrowRight className="h-4 w-4" />
               </Button>
