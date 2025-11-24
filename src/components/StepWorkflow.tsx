@@ -226,16 +226,58 @@ const StepWorkflow = ({
                           if (body) {
                             await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
                             apiCallSuccess = true;
+                          } else {
+                            // body가 null인 경우 (데이터 부족 등)
+                            alert('TDM 요청 데이터를 생성할 수 없습니다. 환자 정보와 처방 정보를 확인해주세요.');
                           }
                         } catch (e) {
                           console.error("TDM API 호출 실패:", e);
-                          alert(`TDM 분석 중 오류가 발생했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}\n\n이전에 저장된 결과가 있다면 그것을 표시합니다.`);
+                          const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
+                          const errorName = e instanceof Error ? e.name : 'Unknown';
+                          
+                          // 오류 상세 정보 로깅
+                          console.error("오류 상세 정보:", {
+                            name: errorName,
+                            message: errorMessage,
+                            error: e
+                          });
+                          
+                          const isCorsError = errorMessage.includes("CORS 오류") || errorMessage.includes("cors");
+                          const isNetworkError = errorMessage.includes("네트워크 오류") || errorMessage.includes("failed to fetch");
+                          const is503Error = errorMessage.includes("503") || errorMessage.includes("일시적");
+                          const isValidationError = errorMessage.includes("반코마이신은 현재 정맥 투약 모델만 지원됩니다") || 
+                                                    errorMessage.includes("투약 경로를 정맥으로 변경");
+                          
+                          let userMessage = `TDM 분석 중 오류가 발생했습니다.\n\n`;
+                          if (isValidationError) {
+                            // 검증 오류인 경우 (예: 반코마이신 경구 투약 선택)
+                            userMessage = errorMessage;
+                          } else if (isCorsError || isNetworkError) {
+                            userMessage += `서버 접근 오류가 발생했습니다.\n`;
+                            userMessage += `오류 유형: ${errorName}\n`;
+                            userMessage += `오류 메시지: ${errorMessage.split('\n')[0]}\n\n`;
+                            userMessage += `서버 관리자에게 문의하거나 잠시 후 다시 시도해주세요.\n\n`;
+                            userMessage += `이전에 저장된 결과가 있다면 그것을 표시합니다.`;
+                          } else if (is503Error) {
+                            userMessage += `서버 일시적 오류 (503): 서버가 일시적으로 사용 불가능한 상태입니다.\n`;
+                            userMessage += `잠시 후 다시 시도해주세요.\n\n`;
+                            userMessage += `이전에 저장된 결과가 있다면 그것을 표시합니다.`;
+                          } else {
+                            userMessage += `오류 유형: ${errorName}\n`;
+                            userMessage += `오류 메시지: ${errorMessage}\n\n`;
+                            userMessage += `이전에 저장된 결과가 있다면 그것을 표시합니다.`;
+                          }
+                          alert(userMessage);
                         } finally {
                           setIsLoadingTdm(false);
                         }
                         
-                        // API 호출 성공 여부와 관계없이 단계 이동 (이전 결과가 있으면 표시됨)
-                        setCurrentStep(step.id);
+                        // API 호출 성공한 경우에만 단계 이동
+                        // 검증 오류나 데이터 부족 등으로 실패한 경우에는 현재 단계 유지
+                        if (apiCallSuccess) {
+                          setCurrentStep(step.id);
+                        }
+                        // apiCallSuccess가 false인 경우 단계 이동하지 않음 (현재 단계 유지)
                       } else {
                         setCurrentStep(step.id);
                       }

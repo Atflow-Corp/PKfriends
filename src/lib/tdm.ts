@@ -709,35 +709,41 @@ export const runTdmApi = async (args: {
   const { body, persist, patientId, drugName, retries = 3 } = args;
 
   let lastError: Error | null = null;
+  const apiUrl = "https://b74ljng162.apigw.ntruss.com/tdm/prod/";
+  
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const response = await fetch(
-        "https://b74ljng162.apigw.ntruss.com/tdm/prod/",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
+      console.log(`[TDM API] 시도 ${attempt + 1}/${retries} - ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      
+      console.log(`[TDM API] 응답 상태: ${response.status} ${response.statusText}`);
 
       if (response.status === 503 && attempt < retries - 1) {
         // 503 에러인 경우 재시도 (지수 백오프)
         const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        console.warn(
+          `[TDM API] 서버 일시적 오류 (503) - ${attempt + 1}/${retries} 재시도 중... (${delay}ms 대기)`
+        );
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
 
       if (!response.ok) {
         // 서버 응답 본문 읽기 시도
-        let errorMessage = `TDM API error: ${response.status}`;
+        let errorMessage = `TDM API 오류: HTTP ${response.status}`;
         try {
           const errorText = await response.text();
           if (errorText) {
             try {
               const errorJson = JSON.parse(errorText);
-              errorMessage = `TDM API error: ${response.status} - ${JSON.stringify(errorJson)}`;
+              errorMessage = `TDM API 오류 (HTTP ${response.status}): ${JSON.stringify(errorJson)}`;
             } catch {
-              errorMessage = `TDM API error: ${response.status} - ${errorText.substring(0, 200)}`;
+              errorMessage = `TDM API 오류 (HTTP ${response.status}): ${errorText.substring(0, 200)}`;
             }
           }
         } catch (e) {
@@ -832,26 +838,94 @@ export const runTdmApi = async (args: {
       return data;
     } catch (error) {
       lastError = error as Error;
+      const errorMessage = lastError.message.toLowerCase();
+      const errorName = lastError.name || "";
+      
+      // 상세한 오류 정보 로깅
+      console.error(`[TDM API] 오류 발생 (시도 ${attempt + 1}/${retries}):`, {
+        name: errorName,
+        message: lastError.message,
+        stack: lastError.stack,
+        error: error
+      });
+      
+      // CORS 오류 감지
+      const isCorsError = errorMessage.includes("cors") || 
+                         errorMessage.includes("access-control-allow-origin") ||
+                         (error instanceof TypeError && (
+                           errorMessage.includes("failed to fetch") ||
+                           errorMessage.includes("networkerror") ||
+                           errorName === "TypeError"
+                         ));
+      
+      // 네트워크 오류 감지
+      const isNetworkError = errorMessage.includes("failed to fetch") ||
+                            errorMessage.includes("networkerror") ||
+                            errorMessage.includes("network error") ||
+                            errorName === "TypeError" ||
+                            errorName === "NetworkError";
+      
+      // 503 오류 감지 (응답을 받았지만 503인 경우는 이미 처리됨)
+      const is503Error = errorMessage.includes("503");
+      
+      // CORS 또는 네트워크 오류인 경우 명확한 메시지 제공
+      if (isCorsError || isNetworkError) {
+        const errorType = isCorsError ? "CORS 오류" : "네트워크 오류";
+        const detailedError = new Error(
+          `${errorType}: TDM 서버에 접근할 수 없습니다.\n\n` +
+          `오류 상세:\n` +
+          `- 오류 유형: ${errorName}\n` +
+          `- 오류 메시지: ${lastError.message}\n\n` +
+          `가능한 원인:\n` +
+          `- 서버의 CORS 설정 문제\n` +
+          `- 네트워크 연결 문제\n` +
+          `- 서버가 일시적으로 사용 불가능한 상태\n\n` +
+          `서버 관리자에게 문의하거나 잠시 후 다시 시도해주세요.`
+        );
+        lastError = detailedError;
+      }
+      
       // 503 에러 또는 CORS/네트워크 에러인 경우 재시도
       if (isRetryableError(lastError)) {
         if (attempt < retries - 1) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-          console.log(
-            `[TDM API] Retryable error (attempt ${attempt + 1}/${retries}):`,
-            lastError.message
+          const errorType = isCorsError ? "CORS" : 
+                          isNetworkError ? "네트워크" :
+                          is503Error ? "서버 일시적 오류 (503)" : 
+                          "일시적";
+          console.warn(
+            `[TDM API] ${errorType} 오류 감지 - ${attempt + 1}/${retries} 재시도 중... (${delay}ms 대기)`
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
       } else {
         // 재시도 불가능한 에러는 즉시 throw
+        console.error(`[TDM API] 재시도 불가능한 오류 - 즉시 실패 처리`);
         throw error;
       }
     }
   }
 
   // 모든 재시도 실패 시 마지막 에러 throw
-  throw lastError || new Error("TDM API failed after retries");
+  const finalError = lastError || new Error("TDM API 호출 실패: 모든 재시도 실패");
+  
+  // 최종 오류 상세 로깅
+  console.error(`[TDM API] 최종 실패 (${retries}회 재시도 후):`, {
+    message: finalError.message,
+    name: finalError.name,
+    stack: finalError.stack
+  });
+  
+  // CORS 오류인 경우 추가 안내
+  if (finalError.message.includes("CORS 오류") || finalError.message.includes("네트워크 오류")) {
+    console.error(
+      "[TDM API] 서버 접근 오류로 인한 API 호출 실패.\n" +
+      "서버 측에서 CORS 헤더 설정이 필요하거나 네트워크 연결을 확인해주세요."
+    );
+  }
+  
+  throw finalError;
 };
 
 export const setActiveTdm = (

@@ -85,8 +85,8 @@ const TDM_DRUGS: TdmDrug[] = [
     },
     targets: [
       { type: "Trough Concentration", value: "100-400 ng/mL" },
-      { type: "Peak Concentration", value: "800-1200 ng/mL" },
-      { type: "C2 Concentration", value: "1200-1700 ng/mL" }
+      { type: "Peak Concentration", value: "800-1200 ng/mL" }
+      // 모델링에서 사용하지 않는 데이터 삭제함: { type: "C2 Concentration", value: "1200-1700 ng/mL" }
     ],
     // 적응증별 default TDM 목표와 목표치
     defaultTargets: {

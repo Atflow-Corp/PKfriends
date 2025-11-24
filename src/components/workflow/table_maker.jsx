@@ -742,6 +742,21 @@ function TablePage(props) {
       return;
     }
 
+    // 정맥 투약 경로일 때 주입시간 필수 입력 검증
+    if (currentCondition.route === "정맥" || currentCondition.route === "IV") {
+      const injectionTime = currentCondition.injectionTime?.trim();
+      if (!injectionTime || injectionTime === "" || injectionTime === "-") {
+        alert("정맥 투약 경로를 선택하셨습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+        return;
+      }
+      // 숫자로 변환 가능한지 확인
+      const injectionTimeNum = parseFloat(injectionTime);
+      if (isNaN(injectionTimeNum) || injectionTimeNum < 0) {
+        alert("주입시간은 0 이상의 숫자로 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+        return;
+      }
+    }
+
     if (isEditMode) {
       // 수정 모드: 기존 조건 업데이트
       setConditions(prev => 
@@ -828,6 +843,21 @@ function TablePage(props) {
           !condition.firstDoseDate || !condition.firstDoseTime || !condition.dosage || !condition.route || !condition.unit) {
         alert("모든 필드를 입력해주세요!");
         return;
+      }
+      
+      // 정맥 투약 경로일 때 주입시간 필수 입력 검증
+      if (condition.route === "정맥" || condition.route === "IV") {
+        const injectionTime = condition.injectionTime?.trim();
+        if (!injectionTime || injectionTime === "" || injectionTime === "-") {
+          alert("정맥 투약 경로를 선택한 조건이 있습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+          return;
+        }
+        // 숫자로 변환 가능한지 확인
+        const injectionTimeNum = parseFloat(injectionTime);
+        if (isNaN(injectionTimeNum) || injectionTimeNum < 0) {
+          alert("주입시간은 0 이상의 숫자로 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+          return;
+        }
       }
     }
 
@@ -1037,9 +1067,12 @@ function TablePage(props) {
             
             // 투약용량 자동 설정 제거 - 사용자가 직접 입력하도록 함
             
-            // 정맥으로 변경 시 주입시간을 0으로 자동 설정
-            if (value === "정맥") {
-              updatedRow.injectionTime = "0";
+            // 정맥으로 변경 시 주입시간을 빈 값으로 설정 (사용자가 반드시 입력하도록)
+            if (value === "정맥" || value === "IV") {
+              // 주입시간이 없거나 "-"인 경우에만 빈 값으로 설정
+              if (!updatedRow.injectionTime || updatedRow.injectionTime === "-") {
+                updatedRow.injectionTime = "";
+              }
             } else {
               // 정맥이 아닌 경우 주입시간을 "-"로 설정
               updatedRow.injectionTime = "-";
