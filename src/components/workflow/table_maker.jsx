@@ -737,7 +737,7 @@ function TablePage(props) {
         // 반코마이신 경구 선택 시 경고 및 차단
         const isVancomycin = props.tdmDrug.drugName?.toLowerCase() === "vancomycin";
         if (isVancomycin && (value === "경구" || value === "oral")) {
-          alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+          alert("반코마이신은 현재 정맥 투약 모델만 지원합니다.\n정맥 투약 경로를 선택해주세요.");
           return prev; // 변경하지 않고 이전 값 유지
         }
         
@@ -758,45 +758,63 @@ function TablePage(props) {
     });
   };
 
+  const handleFirstDoseDateTimeChange = (value) => {
+    if (!value) {
+      setCurrentCondition(prev => ({
+        ...prev,
+        firstDoseDate: "",
+        firstDoseTime: ""
+      }));
+      return;
+    }
+
+    const [datePart, timePartWithSeconds = ""] = value.split("T");
+    const timePart = timePartWithSeconds.slice(0, 5);
+
+    setCurrentCondition(prev => ({
+      ...prev,
+      firstDoseDate: datePart || "",
+      firstDoseTime: timePart || ""
+    }));
+  };
+
   // 조건 추가 또는 수정
   const addOrUpdateCondition = () => {
-    // 필수 필드 검증
-    if (!currentCondition.firstDoseDate) {
-      alert("날짜와 시간을 입력해주세요! (예: 202507251400)");
+    const datePart = (currentCondition.firstDoseDate || "").trim();
+    const timePart = (currentCondition.firstDoseTime || "").trim();
+
+    if (!datePart || !timePart) {
+      alert("최초 투약 날짜와 시간을 모두 입력해주세요.");
       return;
     }
-    // 입력값 파싱 (YYYYMMDDHHmm 형식만 지원)
-    let datePart = "";
-    let timePart = "";
-    let input = currentCondition.firstDoseDate.trim();
-    if (/^\d{8}\d{4}$/.test(input.replace(/[-: ]/g, ""))) {
-      // 202507251400
-      datePart = input.slice(0, 8);
-      timePart = input.slice(8, 12);
-      datePart = datePart.slice(0,4) + '-' + datePart.slice(4,6) + '-' + datePart.slice(6,8);
-      timePart = timePart.slice(0,2) + ':' + timePart.slice(2,4);
-    } else {
-      alert("날짜와 시간 형식이 올바르지 않습니다. 예: 202507251400");
+
+    const combinedDateTime = `${datePart}T${timePart}`;
+    const selectedDate = new Date(combinedDateTime);
+
+    if (Number.isNaN(selectedDate.getTime())) {
+      alert("날짜와 시간 형식이 올바르지 않습니다.");
       return;
     }
-    // 오늘 이후 날짜 입력 방지
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (datePart > todayStr) {
-      alert("투약 날짜는 오늘 이후로 입력할 수 없습니다.");
+
+    if (selectedDate > new Date()) {
+      alert("투약 날짜/시간은 현재 시각 이후로 입력할 수 없습니다.");
       return;
     }
-    // 내부 상태에 파싱된 값 저장
-    currentCondition.firstDoseDate = datePart;
-    currentCondition.firstDoseTime = timePart;
+
+    const normalizedCondition = {
+      ...currentCondition,
+      firstDoseDate: datePart,
+      firstDoseTime: timePart
+    };
     
-    if (!currentCondition.unit) {
+    if (!normalizedCondition.unit) {
       alert("단위를 선택해주세요!");
       return;
     }
 
     // 정맥 투약 경로일 때 주입시간 필수 입력 검증
-    if (currentCondition.route === "정맥" || currentCondition.route === "IV") {
-      const injectionTime = currentCondition.injectionTime?.trim();
+    if (normalizedCondition.route === "정맥" || normalizedCondition.route === "IV") {
+      const injectionTime = normalizedCondition.injectionTime?.trim();
       if (!injectionTime || injectionTime === "" || injectionTime === "-") {
         alert("정맥 투약 경로를 선택하셨습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
         return;
@@ -814,7 +832,7 @@ function TablePage(props) {
       setConditions(prev => 
         prev.map(condition => 
           condition.id === editingConditionId 
-            ? { ...currentCondition, id: editingConditionId }
+            ? { ...normalizedCondition, id: editingConditionId }
             : condition
         )
       );
@@ -826,7 +844,7 @@ function TablePage(props) {
       // 추가 모드: 새 조건 추가
       const newCondition = {
         id: Date.now(), // 고유 ID 생성
-        ...currentCondition
+        ...normalizedCondition
       };
 
       setConditions(prev => [...prev, newCondition]);
@@ -897,11 +915,6 @@ function TablePage(props) {
   const startEditCondition = (conditionId) => {
     const conditionToEdit = conditions.find(c => c.id === conditionId);
     if (conditionToEdit) {
-      // 날짜와 시간을 합쳐서 표시 (YYYYMMDDHHmm 형식)
-      const dateStr = conditionToEdit.firstDoseDate.replace(/-/g, '');
-      const timeStr = conditionToEdit.firstDoseTime.replace(/:/g, '');
-      const combinedDateTime = dateStr + timeStr;
-      
       // 조건 입력창에 해당 조건 로드
       setCurrentCondition({
         route: conditionToEdit.route,
@@ -909,7 +922,7 @@ function TablePage(props) {
         unit: conditionToEdit.unit,
         intervalHours: conditionToEdit.intervalHours,
         injectionTime: conditionToEdit.injectionTime,
-        firstDoseDate: combinedDateTime,
+        firstDoseDate: conditionToEdit.firstDoseDate,
         firstDoseTime: conditionToEdit.firstDoseTime,
         totalDoses: conditionToEdit.totalDoses
       });
@@ -1184,7 +1197,7 @@ function TablePage(props) {
             // 반코마이신 경구 선택 시 경고 및 차단
             const isVancomycin = props.tdmDrug?.drugName?.toLowerCase() === "vancomycin";
             if (isVancomycin && (value === "경구" || value === "oral")) {
-              alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+              alert("반코마이신은 현재 정맥 투약 모델만 지원합니다.\n정맥 투약 경로를 선택해주세요.");
               return row; // 변경하지 않고 원래 행 유지
             }
             
@@ -1604,7 +1617,7 @@ function TablePage(props) {
                       color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   >
-                    <option value="">투약 경로를 선택해주세요</option>
+                    <option value="">투약 경로 선택</option>
                     {routeOptions.map(option => (
                       <option 
                         key={option.value} 
@@ -1770,15 +1783,18 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
+                <div style={{ flex: "1 1 180px", minWidth: "180px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
                   <input
-                    type="text"
-                    value={currentCondition.firstDoseDate}
-                    onChange={e => handleCurrentConditionChange("firstDoseDate", e.target.value)}
-                    placeholder="예: 202507251400"
+                    type="datetime-local"
+                    value={
+                      currentCondition.firstDoseDate && currentCondition.firstDoseTime
+                        ? `${currentCondition.firstDoseDate}T${currentCondition.firstDoseTime}`
+                        : ""
+                    }
+                    onChange={e => handleFirstDoseDateTimeChange(e.target.value)}
                     style={{
                       width: "100%",
                       padding: "8px 12px",
@@ -1790,7 +1806,7 @@ function TablePage(props) {
                       boxSizing: "border-box",
                       color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
-                    max={todayStr + ' 23:59'}
+                    max={`${todayStr}T23:59`}
                   />
                 </div>
                 <div style={{ flex: "0 0 60px", minWidth: "60px", marginLeft: "auto", display: "flex", justifyContent: "flex-end" }}>

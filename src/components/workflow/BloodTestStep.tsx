@@ -268,6 +268,22 @@ const BloodTestStep = ({
     }
   };
 
+  const handleBloodTestDateTimeChange = (value: string) => {
+    if (!value) {
+      setFormData(prev => ({ ...prev, testDate: "", testTime: "" }));
+      return;
+    }
+
+    const [datePart, timePartWithSeconds = ""] = value.split("T");
+    const timePart = timePartWithSeconds.slice(0, 5);
+
+    setFormData(prev => ({
+      ...prev,
+      testDate: datePart || "",
+      testTime: timePart || ""
+    }));
+  };
+
   // TDM 약물이 변경될 때마다 단위 업데이트
   useEffect(() => {
     const defaultUnit = tdmDrug?.drugName === "Vancomycin" ? "mg/L" : "ng/mL";
@@ -364,26 +380,27 @@ const BloodTestStep = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatient) return;
-    if (!formData.testDate || !formData.concentration) return;
-    // 날짜/시간 파싱: YYYY-MM-DD HH:mm 또는 12자리 숫자(YYYYMMDDHHmm) 모두 지원
-    const compact = formData.testDate.trim().replace(/[-: ]/g, "");
-    if (!/^\d{12}$/.test(compact)) {
-      alert("날짜와 시간 형식이 올바르지 않습니다. 예: 2025-09-01 14:00 또는 202509011400");
+    if (!formData.testDate || !formData.testTime || !formData.concentration) return;
+
+    const combinedDateTime = `${formData.testDate}T${formData.testTime}`;
+    const parsedDate = dayjs(combinedDateTime);
+
+    if (!parsedDate.isValid()) {
+      alert("날짜와 시간 형식이 올바르지 않습니다.");
       return;
     }
-    const y = compact.slice(0, 4);
-    const m = compact.slice(4, 6);
-    const d = compact.slice(6, 8);
-    const hh = compact.slice(8, 10);
-    const mm = compact.slice(10, 12);
-    const datePart = `${y}-${m}-${d}`;
-    const timePart = `${hh}:${mm}`;
-    // 오늘 이후 날짜 입력 방지
-    if (datePart > today) {
+
+    if (parsedDate.isAfter(dayjs())) {
+      alert("날짜는 현재 시각 이후로 입력할 수 없습니다.");
+      return;
+    }
+
+    if (formData.testDate > today) {
       alert("날짜는 오늘 이후로 입력할 수 없습니다.");
       return;
     }
-    const testDateTime = dayjs(`${datePart} ${timePart}`, "YYYY-MM-DD HH:mm").toDate();
+
+    const testDateTime = parsedDate.toDate();
     
     // 선택된 신기능 데이터 가져오기
     const selectedRenalInfo = renalInfoList.find(item => item.isSelected);
@@ -503,7 +520,7 @@ const BloodTestStep = ({
             </CardHeader>
             <CardContent className="space-y-6">
               {/* 신기능 데이터 테이블 */}
-              <div className={`rounded-md border ${renalInfoList.some(item => item.isSelected) ? 'border-[#8EC5FF]' : ''}`}>
+              <div className={`rounded-md border ${renalInfoList.some(item => item.isSelected) ? 'border-sky-300 dark:border-sky-700' : ''}`}>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -520,16 +537,16 @@ const BloodTestStep = ({
                       const isNoRenalDataSelected = !useRenalData && renalInfoList.every(item => !item.isSelected);
                       return (
                         <TableRow className={isNoRenalDataSelected 
-                          ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                          ? 'bg-sky-50 dark:bg-sky-900 border-l-4 border-l-sky-300 dark:border-l-sky-700' 
                           : ''}>
                           <TableCell>
                             {isNoRenalDataSelected && (
-                              <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                              <CheckCircle className="h-5 w-5 text-sky-500 dark:text-sky-400" />
                             )}
                           </TableCell>
                           <TableCell 
                             colSpan={3} 
-                            className={`text-center ${isNoRenalDataSelected ? 'font-bold text-[#333333]' : 'text-muted-foreground'}`}
+                            className={`text-center ${isNoRenalDataSelected ? 'font-bold text-[#333333] dark:text-white' : 'text-muted-foreground'}`}
                           >
                             {useRenalData 
                               ? "해당 TDM은 신기능 데이터를 필수 입력해야 합니다"
@@ -549,7 +566,7 @@ const BloodTestStep = ({
                         key={renalInfo.id}
                         className={`cursor-pointer hover:bg-muted/50 ${
                           isSelected 
-                            ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                            ? 'bg-sky-50 dark:bg-sky-900 border-l-4 border-l-sky-300 dark:border-l-sky-700' 
                             : ''
                         }`}
                         onClick={(e) => {
@@ -574,12 +591,12 @@ const BloodTestStep = ({
                           }}
                         >
                           {isSelected && (
-                            <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                            <CheckCircle className="h-5 w-5 text-sky-500 dark:text-sky-400" />
                           )}
                         </TableCell>
-                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{renalInfo.date}</TableCell>
-                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{renalInfo.creatinine} mg/dL</TableCell>
-                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{renalInfo.result || "-"}</TableCell>
+                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}`}>{renalInfo.date}</TableCell>
+                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}`}>{renalInfo.creatinine} mg/dL</TableCell>
+                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}`}>{renalInfo.result || "-"}</TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -609,15 +626,19 @@ const BloodTestStep = ({
             <CardContent>
               <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 items-end">
                 <div>
-                  <Label htmlFor="drugDateTime">날짜/시간</Label>
+                  <Label htmlFor="drugDateTime">날짜/시간 </Label>
                   <Input
                     id="drugDateTime"
-                    type="text"
-                    value={formData.testDate}
-                    placeholder="예: 2025-07-25 14:00 또는 202507251400"
-                    onChange={e => setFormData({ ...formData, testDate: e.target.value })}
+                    type="datetime-local"
+                    step="60"
+                    value={
+                      formData.testDate && formData.testTime
+                        ? `${formData.testDate}T${formData.testTime}`
+                        : ""
+                    }
+                    onChange={e => handleBloodTestDateTimeChange(e.target.value)}
                     onFocus={handleDateTimeFocus}
-                    max={today + ' 23:59'}
+                    max={`${today}T23:59`}
                   />
                 </div>
                 <div>
@@ -869,8 +890,8 @@ const BloodTestStep = ({
               <div className="border border-gray-200 rounded-lg p-4 bg-accent w-1/2">
                 <h2 className="font-semibold text-lg text-center mb-2">Check point</h2>
                 <ul className="list-disc list-inside text-sm space-y-1">
-                  <li className="text-gray-700">투석 여부: Y</li>
-                  <li className="text-gray-700">신 대체요법: CRRT</li>
+                  <li className="text-white">투석 여부: Y</li>
+                  <li className="text-white">신 대체요법: CRRT</li>
                 </ul>
               </div>
               <ArrowRight className="h-6 w-6 text-gray-500" />
@@ -878,7 +899,7 @@ const BloodTestStep = ({
               <div className="border border-gray-200 rounded-lg p-4 bg-accent w-1/2">
                 <h2 className="font-semibold text-lg text-center mb-2">Guide</h2>
                 <ul className="text-sm space-y-1 text-center">
-                  <li className="text-gray-700">투약 2시간 후 최고 흡수 농도 측정 권고(C2)</li>
+                  <li className="text-white">투약 2시간 후 최고 흡수 농도 측정 권고(C2)</li>
                 </ul>
               </div>
             </div>
