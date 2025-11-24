@@ -321,6 +321,7 @@ const DrugAdministrationStep = ({
                     if (!body) {
                       console.error('Failed to build TDM request body');
                       alert('TDM 요청 데이터를 생성할 수 없습니다. 환자 정보와 처방 정보를 확인해주세요.');
+                      setLoading(false);
                       return;
                     }
                     console.log('TDM API Request Body:', JSON.stringify(body, null, 2));
@@ -330,12 +331,14 @@ const DrugAdministrationStep = ({
                       patientId: selectedPatient.id,
                       drugName: tdmDrug?.drugName 
                     });
+                    // API 호출 성공 시에만 다음 단계로 이동
+                    setLoading(false);
+                    onNext();
                   } catch (e) {
                     console.error('TDM API Error:', e);
                     alert(`TDM 분석 중 오류가 발생했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}`);
-                  } finally {
                     setLoading(false);
-                    onNext();
+                    // API 호출 실패 시 다음 단계로 이동하지 않음
                   }
                 }}
                 disabled={loading}

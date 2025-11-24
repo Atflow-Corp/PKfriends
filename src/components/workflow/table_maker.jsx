@@ -637,10 +637,12 @@ function TablePage(props) {
   }, [props.initialConditions, props.initialTableData, props.initialIsTableGenerated]);
 
   // 투약 경로 옵션
+  // 반코마이신(Vancomycin)의 경우 경구 옵션 비활성화 (현재 사용 가능한 모델이 모두 정맥 투약 모델)
+  // 피하(SC)는 모델링에서 사용하지 않으므로 임시 비노출 처리
+  const isVancomycin = props.tdmDrug?.drugName?.toLowerCase() === "vancomycin";
   const routeOptions = [
-    { value: "경구", label: "경구 (oral)" },
-    { value: "정맥", label: "정맥 (IV)" },
-    { value: "피하", label: "피하 (SC)" }
+    { value: "경구", label: "경구 (oral)", disabled: isVancomycin },
+    { value: "정맥", label: "정맥 (IV)" }
   ];
 
 
@@ -680,6 +682,13 @@ function TablePage(props) {
       
       // 투약 경로가 변경되면 제형만 설정 (투약용량 자동 설정 제거)
       if (field === "route" && props.tdmDrug?.drugName) {
+        // 반코마이신 경구 선택 시 경고 및 차단
+        const isVancomycin = props.tdmDrug.drugName?.toLowerCase() === "vancomycin";
+        if (isVancomycin && (value === "경구" || value === "oral")) {
+          alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+          return prev; // 변경하지 않고 이전 값 유지
+        }
+        
         // Cyclosporin 경구일 때 제형 기본값 지정
         if ((props.tdmDrug.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName?.toLowerCase() === "cyclosporine") && (value === "경구" || value === "oral")) {
           if (!newCondition.dosageForm) newCondition.dosageForm = "capsule/tablet";
@@ -1019,6 +1028,13 @@ function TablePage(props) {
           
           // 투약 경로가 변경되면 단위와 주입시간 설정 (투약용량 자동 설정 제거)
           if (field === "route") {
+            // 반코마이신 경구 선택 시 경고 및 차단
+            const isVancomycin = props.tdmDrug?.drugName?.toLowerCase() === "vancomycin";
+            if (isVancomycin && (value === "경구" || value === "oral")) {
+              alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+              return row; // 변경하지 않고 원래 행 유지
+            }
+            
             // 투약용량 자동 설정 제거 - 사용자가 직접 입력하도록 함
             
             // 정맥으로 변경 시 주입시간을 0으로 자동 설정
@@ -1413,9 +1429,32 @@ function TablePage(props) {
                   >
                     <option value="">투약 경로를 선택해주세요</option>
                     {routeOptions.map(option => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option 
+                        key={option.value} 
+                        value={option.value}
+                        disabled={option.disabled}
+                        style={{
+                          backgroundColor: option.disabled 
+                            ? (isDarkMode ? "#374151" : "#e5e7eb") 
+                            : (isDarkMode ? "#1e293b" : "#fff"),
+                          color: option.disabled 
+                            ? (isDarkMode ? "#6b7280" : "#9ca3af") 
+                            : (isDarkMode ? "#e0e6f0" : "#495057")
+                        }}
+                      >
+                        {option.label}
+                      </option>
                     ))}
                   </select>
+                  {isVancomycin && (
+                    <div style={{ 
+                      marginTop: "4px", 
+                      fontSize: "12px", 
+                      color: isDarkMode ? "#fbbf24" : "#d97706" 
+                    }}>
+                      ⚠️ 반코마이신은 현재 정맥 투약 모델만 지원됩니다.
+                    </div>
+                  )}
                 </div>
 
             {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (

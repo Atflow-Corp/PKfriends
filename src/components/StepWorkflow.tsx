@@ -213,6 +213,7 @@ const StepWorkflow = ({
                       // Let's TDM (step 5) 버튼 클릭 시 API 호출
                       if (step.id === 5 && selectedPatient && selectedPrescription) {
                         setIsLoadingTdm(true);
+                        let apiCallSuccess = false;
                         try {
                           const body = buildTdmRequestBody({
                             patients,
@@ -224,15 +225,20 @@ const StepWorkflow = ({
                           });
                           if (body) {
                             await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
+                            apiCallSuccess = true;
                           }
                         } catch (e) {
                           console.error("TDM API 호출 실패:", e);
+                          alert(`TDM 분석 중 오류가 발생했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}\n\n이전에 저장된 결과가 있다면 그것을 표시합니다.`);
                         } finally {
                           setIsLoadingTdm(false);
                         }
+                        
+                        // API 호출 성공 여부와 관계없이 단계 이동 (이전 결과가 있으면 표시됨)
+                        setCurrentStep(step.id);
+                      } else {
+                        setCurrentStep(step.id);
                       }
-                      
-                      setCurrentStep(step.id);
                     }}
                   >
                     <div className="flex items-center gap-1">

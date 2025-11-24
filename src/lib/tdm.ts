@@ -407,17 +407,15 @@ export const buildTdmRequestBody = (args: {
   // Vancomycin의 경우 정맥 투약이 일반적이므로 기본값은 1
   let cmtBefore = savedPrescription?.cmt ?? 1;
   
-  // Vancomycin의 경우: 저장된 CMT가 2(경구)인데 route가 정맥이면 1로 수정
-  // API 서버가 모델과 CMT 값의 일관성을 검증하므로, 모델이 정맥 모델이면 CMT도 1이어야 함
+  // Vancomycin 경구 선택 검증: 현재 사용 가능한 모델이 모두 정맥 투약 모델
   if (tdmPrescription.drugName === "Vancomycin") {
     const savedRoute = savedPrescription?.route?.toLowerCase() || "";
     const isSavedOral = savedRoute.includes("po") || 
                         savedRoute.includes("oral") || 
                         savedRoute.includes("경구");
-    // 경구가 명시적으로 아니면 정맥(CMT=1)으로 강제
-    if (!isSavedOral && cmtBefore === 2) {
-      console.warn(`[TDM API] Vancomycin CMT correction: saved CMT was 2 but route is not oral, changing to 1`);
-      cmtBefore = 1;
+    // 경구 선택 시 에러 발생
+    if (isSavedOral) {
+      throw new Error("반코마이신은 현재 정맥 투약 모델만 지원됩니다. 처방 정보에서 투약 경로를 정맥으로 변경해주세요.");
     }
   }
   
@@ -508,11 +506,9 @@ export const buildTdmRequestBody = (args: {
                      routeLower.includes("경구");
       let cmt = isOral ? 2 : 1;
       
-      // Vancomycin의 경우: 현재 사용 가능한 모델이 모두 정맥 투약 모델이므로,
-      // route가 명시적으로 "경구"가 아니면 정맥(CMT=1)으로 강제
-      // API 서버가 모델과 CMT 값의 일관성을 검증하므로, 모델이 정맥 모델이면 CMT도 1이어야 함
-      if (tdmPrescription.drugName === "Vancomycin" && !isOral) {
-        cmt = 1;
+      // Vancomycin 경구 선택 검증: 현재 사용 가능한 모델이 모두 정맥 투약 모델
+      if (tdmPrescription.drugName === "Vancomycin" && isOral) {
+        throw new Error("반코마이신은 현재 정맥 투약 모델만 지원됩니다. 투약 경로를 정맥으로 변경해주세요.");
       }
       
       // 디버깅: route와 CMT 값 로깅
