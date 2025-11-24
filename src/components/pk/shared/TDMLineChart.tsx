@@ -333,6 +333,16 @@ const TDMLineChart = ({
             backgroundColor: 'rgba(59,130,246,0.08)', 
             borderWidth: 0
           } : undefined,
+          lastDoseBackground: (lastActualDoseTime != null) ? {
+            type: 'box',
+            xMin: lastActualDoseTime,
+            xMax: dataTimeExtents.max,
+            yMin: 0,
+            yMax: yMax || undefined,
+            backgroundColor: isDarkMode ? 'rgba(250, 204, 21, 0.12)' : 'rgba(254, 249, 195, 0.55)',
+            borderWidth: 0,
+            drawTime: 'beforeDatasetsDraw'
+          } : undefined,
           // 현재 시간 (빨간색 점선 "now")
           currentTime: (currentTime != null) ? {
             type: 'line',
