@@ -240,6 +240,8 @@ function TablePage(props) {
   useEffect(() => { onConditionsChangeRef.current = props.onConditionsChange; }, [props.onConditionsChange]);
   // 마지막 전송한 records 스냅샷 (불필요한 전파 방지)
   const lastRecordsJsonRef = useRef(null);
+  const lastGeneratedConditionsSignatureRef = useRef(null);
+  const lastAttemptedConditionsSignatureRef = useRef(null);
   useEffect(() => {
     const updateDark = () => setIsDarkMode(document.documentElement.classList.contains('dark'));
     updateDark();
@@ -672,7 +674,57 @@ function TablePage(props) {
       return "날짜와 시간을 입력해주세요";
     }
     const unitText = condition.unit ? condition.unit : "mg";
-    return `${condition.totalDoses}회 투약, ${condition.intervalHours}시간 간격, ${condition.firstDoseDate} ${condition.firstDoseTime}, ${condition.dosage} ${unitText}, ${condition.route}${condition.route === "정맥" && condition.injectionTime ? ` (${condition.injectionTime})` : ""}`;
+    const routeText = condition.route || "-";
+    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
+    const injectionText = condition.route === "정맥" && condition.injectionTime
+      ? ` (${condition.injectionTime})`
+      : "";
+    const intervalText = condition.intervalHours ? `${condition.intervalHours}시간 간격` : "간격 정보 없음";
+    const dosesText = condition.totalDoses ? `${condition.totalDoses}회` : "횟수 정보 없음";
+    const startDate = condition.firstDoseDate || "날짜 정보 없음";
+    const startTime = condition.firstDoseTime || "";
+
+    return `${routeText}, ${dosageText}${injectionText}, ${intervalText}, ${startDate} ${startTime}부터 ${dosesText} 투약`.trim();
+  };
+
+  const isConditionComplete = (condition) => {
+    if (
+      !condition.route ||
+      !condition.dosage ||
+      !condition.unit ||
+      !condition.intervalHours ||
+      !condition.firstDoseDate ||
+      !condition.firstDoseTime ||
+      !condition.totalDoses
+    ) {
+      return false;
+    }
+
+    if (condition.route === "정맥" || condition.route === "IV") {
+      const injectionTime = (condition.injectionTime ?? "").toString().trim();
+      if (!injectionTime || injectionTime === "-" ) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const buildConditionsSignature = (conditionList) => {
+    const normalized = conditionList.map(condition => ({
+      id: String(condition.id ?? ""),
+      route: condition.route ?? "",
+      dosage: condition.dosage ?? "",
+      unit: condition.unit ?? "",
+      intervalHours: condition.intervalHours ?? "",
+      injectionTime: (condition.route === "정맥" || condition.route === "IV") ? (condition.injectionTime ?? "") : "",
+      firstDoseDate: condition.firstDoseDate ?? "",
+      firstDoseTime: condition.firstDoseTime ?? "",
+      totalDoses: condition.totalDoses ?? ""
+    }));
+
+    normalized.sort((a, b) => a.id.localeCompare(b.id));
+    return JSON.stringify(normalized);
   };
 
   // 현재 조건 입력값 변경 처리
@@ -685,7 +737,7 @@ function TablePage(props) {
         // 반코마이신 경구 선택 시 경고 및 차단
         const isVancomycin = props.tdmDrug.drugName?.toLowerCase() === "vancomycin";
         if (isVancomycin && (value === "경구" || value === "oral")) {
-          alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+          alert("반코마이신은 현재 정맥 투약 모델만 지원합니다.\n정맥 투약 경로를 선택해주세요.");
           return prev; // 변경하지 않고 이전 값 유지
         }
         
@@ -706,45 +758,63 @@ function TablePage(props) {
     });
   };
 
+  const handleFirstDoseDateTimeChange = (value) => {
+    if (!value) {
+      setCurrentCondition(prev => ({
+        ...prev,
+        firstDoseDate: "",
+        firstDoseTime: ""
+      }));
+      return;
+    }
+
+    const [datePart, timePartWithSeconds = ""] = value.split("T");
+    const timePart = timePartWithSeconds.slice(0, 5);
+
+    setCurrentCondition(prev => ({
+      ...prev,
+      firstDoseDate: datePart || "",
+      firstDoseTime: timePart || ""
+    }));
+  };
+
   // 조건 추가 또는 수정
   const addOrUpdateCondition = () => {
-    // 필수 필드 검증
-    if (!currentCondition.firstDoseDate) {
-      alert("날짜와 시간을 입력해주세요! (예: 202507251400)");
+    const datePart = (currentCondition.firstDoseDate || "").trim();
+    const timePart = (currentCondition.firstDoseTime || "").trim();
+
+    if (!datePart || !timePart) {
+      alert("최초 투약 날짜와 시간을 모두 입력해주세요.");
       return;
     }
-    // 입력값 파싱 (YYYYMMDDHHmm 형식만 지원)
-    let datePart = "";
-    let timePart = "";
-    let input = currentCondition.firstDoseDate.trim();
-    if (/^\d{8}\d{4}$/.test(input.replace(/[-: ]/g, ""))) {
-      // 202507251400
-      datePart = input.slice(0, 8);
-      timePart = input.slice(8, 12);
-      datePart = datePart.slice(0,4) + '-' + datePart.slice(4,6) + '-' + datePart.slice(6,8);
-      timePart = timePart.slice(0,2) + ':' + timePart.slice(2,4);
-    } else {
-      alert("날짜와 시간 형식이 올바르지 않습니다. 예: 202507251400");
+
+    const combinedDateTime = `${datePart}T${timePart}`;
+    const selectedDate = new Date(combinedDateTime);
+
+    if (Number.isNaN(selectedDate.getTime())) {
+      alert("날짜와 시간 형식이 올바르지 않습니다.");
       return;
     }
-    // 오늘 이후 날짜 입력 방지
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (datePart > todayStr) {
-      alert("투약 날짜는 오늘 이후로 입력할 수 없습니다.");
+
+    if (selectedDate > new Date()) {
+      alert("투약 날짜/시간은 현재 시각 이후로 입력할 수 없습니다.");
       return;
     }
-    // 내부 상태에 파싱된 값 저장
-    currentCondition.firstDoseDate = datePart;
-    currentCondition.firstDoseTime = timePart;
+
+    const normalizedCondition = {
+      ...currentCondition,
+      firstDoseDate: datePart,
+      firstDoseTime: timePart
+    };
     
-    if (!currentCondition.unit) {
+    if (!normalizedCondition.unit) {
       alert("단위를 선택해주세요!");
       return;
     }
 
     // 정맥 투약 경로일 때 주입시간 필수 입력 검증
-    if (currentCondition.route === "정맥" || currentCondition.route === "IV") {
-      const injectionTime = currentCondition.injectionTime?.trim();
+    if (normalizedCondition.route === "정맥" || normalizedCondition.route === "IV") {
+      const injectionTime = normalizedCondition.injectionTime?.trim();
       if (!injectionTime || injectionTime === "" || injectionTime === "-") {
         alert("정맥 투약 경로를 선택하셨습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
         return;
@@ -762,7 +832,7 @@ function TablePage(props) {
       setConditions(prev => 
         prev.map(condition => 
           condition.id === editingConditionId 
-            ? { ...currentCondition, id: editingConditionId }
+            ? { ...normalizedCondition, id: editingConditionId }
             : condition
         )
       );
@@ -774,7 +844,7 @@ function TablePage(props) {
       // 추가 모드: 새 조건 추가
       const newCondition = {
         id: Date.now(), // 고유 ID 생성
-        ...currentCondition
+        ...normalizedCondition
       };
 
       setConditions(prev => [...prev, newCondition]);
@@ -800,17 +870,51 @@ function TablePage(props) {
   // 조건 삭제
   const removeCondition = (conditionId) => {
     setConditions(prev => prev.filter(c => c.id !== conditionId));
+
+    let removedRowIds = [];
+    let hasRemainingRows = false;
+
+    setTableData(prev => {
+      if (!prev || prev.length === 0) return prev;
+
+      const filtered = prev.filter(row => {
+        const shouldRemove = !row.isTitle && row.conditionId === conditionId;
+        if (shouldRemove) {
+          removedRowIds.push(row.id);
+        }
+        return row.isTitle || row.conditionId !== conditionId;
+      });
+
+      const titleRow = filtered.find(row => row.isTitle);
+      const doseRows = filtered
+        .filter(row => !row.isTitle)
+        .map((row, index) => ({
+          ...row,
+          round: `${index + 1} 회차`
+        }));
+
+      hasRemainingRows = doseRows.length > 0;
+
+      return titleRow ? [titleRow, ...doseRows] : doseRows;
+    });
+
+    if (!hasRemainingRows) {
+      setIsTableGenerated(false);
+    }
+
+    if (removedRowIds.length > 0) {
+      setSelectedRows(prev => {
+        const newSet = new Set(prev);
+        removedRowIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
+    }
   };
 
   // 조건 수정 모드 시작
   const startEditCondition = (conditionId) => {
     const conditionToEdit = conditions.find(c => c.id === conditionId);
     if (conditionToEdit) {
-      // 날짜와 시간을 합쳐서 표시 (YYYYMMDDHHmm 형식)
-      const dateStr = conditionToEdit.firstDoseDate.replace(/-/g, '');
-      const timeStr = conditionToEdit.firstDoseTime.replace(/:/g, '');
-      const combinedDateTime = dateStr + timeStr;
-      
       // 조건 입력창에 해당 조건 로드
       setCurrentCondition({
         route: conditionToEdit.route,
@@ -818,7 +922,7 @@ function TablePage(props) {
         unit: conditionToEdit.unit,
         intervalHours: conditionToEdit.intervalHours,
         injectionTime: conditionToEdit.injectionTime,
-        firstDoseDate: combinedDateTime,
+        firstDoseDate: conditionToEdit.firstDoseDate,
         firstDoseTime: conditionToEdit.firstDoseTime,
         totalDoses: conditionToEdit.totalDoses
       });
@@ -834,7 +938,7 @@ function TablePage(props) {
     // 조건이 있는지 확인
     if (conditions.length === 0) {
       alert("최소 1개의 조건을 추가해주세요!");
-      return;
+      return false;
     }
 
     // 모든 조건이 유효한지 확인
@@ -842,7 +946,7 @@ function TablePage(props) {
       if (!condition.totalDoses || !condition.intervalHours || 
           !condition.firstDoseDate || !condition.firstDoseTime || !condition.dosage || !condition.route || !condition.unit) {
         alert("모든 필드를 입력해주세요!");
-        return;
+        return false;
       }
       
       // 정맥 투약 경로일 때 주입시간 필수 입력 검증
@@ -850,13 +954,13 @@ function TablePage(props) {
         const injectionTime = condition.injectionTime?.trim();
         if (!injectionTime || injectionTime === "" || injectionTime === "-") {
           alert("정맥 투약 경로를 선택한 조건이 있습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
-          return;
+          return false;
         }
         // 숫자로 변환 가능한지 확인
         const injectionTimeNum = parseFloat(injectionTime);
         if (isNaN(injectionTimeNum) || injectionTimeNum < 0) {
           alert("주입시간은 0 이상의 숫자로 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
-          return;
+          return false;
         }
       }
     }
@@ -876,7 +980,7 @@ function TablePage(props) {
         // 겹치는지 검사: (A.start <= B.end && B.start <= A.end)
         if (periods[i].start <= periods[j].end && periods[j].start <= periods[i].end) {
           setErrorModal('중복된 투약일정이 있습니다. 투약일시를 다시 확인해주세요.');
-          return;
+          return false;
         }
       }
     }
@@ -925,7 +1029,7 @@ function TablePage(props) {
     for (const dose of allDoses) {
       if (timeSet.has(dose.timeStr)) {
         alert("중복된 투약일정이 있습니다. 투약일시를 다시 확인해주세요.");
-        return;
+        return false;
       }
       timeSet.add(dose.timeStr);
     }
@@ -984,7 +1088,39 @@ function TablePage(props) {
       });
       props.onSaveRecords(records);
     }
+
+    return true;
   };
+
+  useEffect(() => {
+    if (conditions.length === 0) {
+      lastGeneratedConditionsSignatureRef.current = null;
+      lastAttemptedConditionsSignatureRef.current = null;
+      return;
+    }
+
+    const hasIncomplete = conditions.some(condition => !isConditionComplete(condition));
+    if (hasIncomplete) return;
+
+    const signature = buildConditionsSignature(conditions);
+    if (signature === lastGeneratedConditionsSignatureRef.current) {
+      return;
+    }
+
+    if (
+      signature === lastAttemptedConditionsSignatureRef.current &&
+      signature !== lastGeneratedConditionsSignatureRef.current
+    ) {
+      return;
+    }
+
+    lastAttemptedConditionsSignatureRef.current = signature;
+    const success = generateTable();
+    if (success) {
+      lastGeneratedConditionsSignatureRef.current = signature;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conditions]);
 
   // 테이블 데이터 수정 함수
   const handleTableEdit = (id, field, value) => {
@@ -1061,7 +1197,7 @@ function TablePage(props) {
             // 반코마이신 경구 선택 시 경고 및 차단
             const isVancomycin = props.tdmDrug?.drugName?.toLowerCase() === "vancomycin";
             if (isVancomycin && (value === "경구" || value === "oral")) {
-              alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+              alert("반코마이신은 현재 정맥 투약 모델만 지원합니다.\n정맥 투약 경로를 선택해주세요.");
               return row; // 변경하지 않고 원래 행 유지
             }
             
@@ -1333,10 +1469,14 @@ function TablePage(props) {
     }
   };
 
-  // 테이블 데이터만 삭제 (투약 서머리 데이터는 유지)
   const resetTableData = () => {
-    if (window.confirm("투약 기록 테이블을 전체 삭제하시겠습니까? 처방 내역은 유지됩니다.")) {
+    if (
+      window.confirm(
+        "투약 기록 테이블과 처방 내역 summary를 모두 삭제하시겠습니까?"
+      )
+    ) {
       setTableData([]);
+      setConditions([]);
       setIsTableGenerated(false);
       setSelectedRows(new Set());
       setCurrentCondition({
@@ -1351,6 +1491,15 @@ function TablePage(props) {
       });
       setIsEditMode(false);
       setEditingConditionId(null);
+
+      const storageKey = getStorageKey();
+      if (storageKey) {
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (error) {
+          console.error("Failed to remove conditions from localStorage:", error);
+        }
+      }
     }
   };
 
@@ -1400,7 +1549,6 @@ function TablePage(props) {
       style={{
         padding: "0",
         fontFamily: "Arial, sans-serif",
-        background: isDarkMode ? "#181e29" : "#f4f6fa",
         color: isDarkMode ? "#e0e6f0" : "#333"
       }}
     >
@@ -1409,13 +1557,20 @@ function TablePage(props) {
           {/* 이하 기존 테이블 입력 UI 코드 유지 */}
           {/* 1단계: 개선된 조건 입력 UI */}
           <div style={{
-            background: isDarkMode ? "#23293a" : "#f8f9fa",
             padding: "20px",
             borderRadius: "8px",
             marginBottom: "30px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h1 style={{ marginBottom: 20, color: isDarkMode ? "#e0e6f0" : "#495057" }}>1단계: 처방 내역을 입력하세요</h1>
+            <h1 style={{ 
+              marginBottom: 20, 
+              color: isDarkMode ? "#e0e6f0" : "#111827",
+              fontSize: "24px",
+              fontWeight: 700,
+              letterSpacing: "-0.02em"
+            }}>
+              1단계: 처방 내역을 입력하세요
+            </h1>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 
@@ -1423,16 +1578,18 @@ function TablePage(props) {
               lineHeight: '1.5'
             }}>
               <div style={{ marginBottom: '8px' }}>
-                • 처방 내역을 입력한 후 [처방 내역 입력 완료] 버튼을 클릭하면 하단에 자동으로 ‘상세 투약 기록’ 테이블이 생성됩니다.
+                • 처방 내역을 입력하면 하단에 ‘상세 투약 기록’ 테이블이 자동으로 생성됩니다.
               </div>
-              <div>
+              <div style={{ marginBottom: '8px' }}>
                 • 처방 내역 변경이 있었다면 실제 처방에 일치하도록 새로운 처방 내역을 입력해야 합니다. (예: 1월 4일은 경구 투약, 1월 5일부터는 정맥 주입한 경우 처방 내역을 2개 등록)
+                </div>
+              <div>
+                • Vancomycin은 현재 정맥(IV) 투약 모델만 지원됩니다. 
                 </div>
             </div>
 
                        {/* 현재 조건 입력 박스 */}
             <div style={{
-              border: isDarkMode ? "2px solid #334155" : "2px solid #e0e7ff",
               padding: "20px",
               marginBottom: "20px",
               borderRadius: "8px",
@@ -1440,7 +1597,7 @@ function TablePage(props) {
             }}>
               
               {/* 1행: 모든 항목을 한 줄에 배치 (새로운 순서) */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", marginBottom: "15px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", marginBottom: "15px", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 경로
@@ -1460,7 +1617,7 @@ function TablePage(props) {
                       color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                   >
-                    <option value="">투약 경로를 선택해주세요</option>
+                    <option value="">투약 경로 선택</option>
                     {routeOptions.map(option => (
                       <option 
                         key={option.value} 
@@ -1479,15 +1636,6 @@ function TablePage(props) {
                       </option>
                     ))}
                   </select>
-                  {isVancomycin && (
-                    <div style={{ 
-                      marginTop: "4px", 
-                      fontSize: "12px", 
-                      color: isDarkMode ? "#fbbf24" : "#d97706" 
-                    }}>
-                      ⚠️ 반코마이신은 현재 정맥 투약 모델만 지원됩니다.
-                    </div>
-                  )}
                 </div>
 
             {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (
@@ -1635,15 +1783,18 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
+                <div style={{ flex: "1 1 180px", minWidth: "180px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
                   <input
-                    type="text"
-                    value={currentCondition.firstDoseDate}
-                    onChange={e => handleCurrentConditionChange("firstDoseDate", e.target.value)}
-                    placeholder="예: 202507251400"
+                    type="datetime-local"
+                    value={
+                      currentCondition.firstDoseDate && currentCondition.firstDoseTime
+                        ? `${currentCondition.firstDoseDate}T${currentCondition.firstDoseTime}`
+                        : ""
+                    }
+                    onChange={e => handleFirstDoseDateTimeChange(e.target.value)}
                     style={{
                       width: "100%",
                       padding: "8px 12px",
@@ -1655,54 +1806,49 @@ function TablePage(props) {
                       boxSizing: "border-box",
                       color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
-                    max={todayStr + ' 23:59'}
+                    max={`${todayStr}T23:59`}
                   />
                 </div>
-              </div>
-
-
-
-              {/* 조건 추가/수정 버튼 */}
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-                <button
-                  onClick={addOrUpdateCondition}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: isDarkMode ? "#1B44C8" : "#eaf0fd",
-                    border: "none",
-                    color: isDarkMode ? "#fff" : "#1B44C8",
-                    fontWeight: 600,
-                    fontSize: 16,
-                    cursor: "pointer",
-                    padding: "8px 32px",
-                    margin: 0,
-                    outline: "none",
-                    borderRadius: "12px",
-                    transition: "background 0.2s, color 0.2s"
-                  }}
-                  onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#274fcf" : "#dbeafe"; }}
-                  onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#1B44C8" : "#eaf0fd"; }}
-                >
-                  <span style={{ fontSize: 20, marginRight: 6, fontWeight: 600, background: "transparent" }}>
-                    {isEditMode ? "✓" : "+"}
-                  </span>
-                  {isEditMode ? "처방 내역 수정" : "처방 내역 추가"}
-                </button>
+                <div style={{ flex: "0 0 60px", minWidth: "60px", marginLeft: "auto", display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={addOrUpdateCondition}
+                    style={{
+                      width: "60px",
+                      height: "40px",
+                      backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "10px",
+                      fontWeight: 400,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      transition: "background-color 0.2s, opacity 0.2s"
+                    }}
+                    onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
+                    onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
+                  >
+                    확인
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* 투약 기록 summary */}
             <div style={{ marginTop: "20px" }}>
-              <h3 style={{ marginBottom: "10px", color: isDarkMode ? "#e0e6f0" : "#495057" }}>
+              <h3 style={{ 
+                marginBottom: "10px", 
+                color: isDarkMode ? "#e0e6f0" : "#1f2937",
+                fontSize: "18px",
+                fontWeight: 600,
+                letterSpacing: "-0.01em"
+              }}>
                 처방 내역 summary
               </h3>
               <div style={{
-                border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
+                border: isDarkMode ? "1px solid #334155" : "1px solid #8EC5FF",
                 borderRadius: "8px",
                 padding: "15px",
-                background: isDarkMode ? "#23293a" : "white",
+                background: isDarkMode ? "#1f2a37" : "#EFF6FF",
                 maxHeight: "200px",
                 overflowY: "auto"
               }}>
@@ -1712,104 +1858,109 @@ function TablePage(props) {
                   </div>
                 ) : (
                   conditions.map((condition, index) => (
-                  <div key={condition.id} style={{
-                    borderBottom: isDarkMode ? "1px dashed #334155" : "1px dashed #eee",
-                    paddingBottom: "10px",
-                    marginBottom: "10px",
-                    fontSize: "13px",
-                    color: isDarkMode ? "#9ca3af" : "#6c757d",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center"
-                  }}>
-                    <div>
-                      <span style={{ 
-                        fontWeight: "bold", 
-                        color: isDarkMode ? "#60a5fa" : "#007bff",
-                        marginRight: "10px"
-                      }}>
-                        기록 {index + 1}:
-                      </span>
-                      {getConditionSummary(condition)}
-                    </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        onClick={() => startEditCondition(condition.id)}
+                    <div
+                      key={condition.id}
+                      style={{
+                        borderBottom:
+                          conditions.length > 1 && index !== conditions.length - 1
+                            ? isDarkMode
+                              ? "1px dashed #1f2937"
+                              : "1px dashed #94a3b8"
+                            : "none",
+                        paddingBottom:
+                          conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
+                        marginBottom:
+                          conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
+                        fontSize: "13px",
+                        color: isDarkMode ? "#9ca3af" : "#6c757d"
+                      }}
+                    >
+                      <div
                         style={{
-                          padding: "4px 8px",
-                          backgroundColor: isDarkMode ? "#0ea5e9" : "#17a2b8",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontSize: "11px"
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          flexWrap: "wrap",
+                          width: "100%"
                         }}
-                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#0284c7" : "#138496"; }}
-                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0ea5e9" : "#17a2b8"; }}
                       >
-                        수정
-                      </button>
-                      <button
-                        onClick={() => removeCondition(condition.id)}
-                        style={{
-                          padding: "4px 8px",
-                          backgroundColor: isDarkMode ? "#ef4444" : "#dc3545",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontSize: "11px"
-                        }}
-                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#dc2626" : "#c82333"; }}
-                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#ef4444" : "#dc3545"; }}
-                      >
-                        삭제
-                      </button>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            flex: 1
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: "bold",
+                              color: isDarkMode ? "#60a5fa" : "#007bff"
+                            }}
+                          >
+                            기록 {index + 1}:
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "16px",
+                              fontWeight: 700,
+                              color: isDarkMode ? "#f3f4f6" : "#000000"
+                            }}
+                          >
+                            {getConditionSummary(condition)}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => startEditCondition(condition.id)}
+                            style={{
+                              padding: "4px 8px",
+                              backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                              color: "#fff",
+                              border: "1px solid",
+                              borderColor: isDarkMode ? "#1f2937" : "#000",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontSize: "11px"
+                            }}
+                            onMouseOver={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827";
+                            }}
+                            onMouseOut={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000";
+                            }}
+                          >
+                            수정
+                          </button>
+                          <button
+                            onClick={() => removeCondition(condition.id)}
+                            style={{
+                              padding: "4px 8px",
+                              backgroundColor: isDarkMode ? "#4b5563" : "#fff",
+                              color: isDarkMode ? "#fff" : "#111827",
+                              border: "1px solid",
+                              borderColor: isDarkMode ? "#6b7280" : "#000",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontSize: "11px"
+                            }}
+                            onMouseOver={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#6b7280" : "#f3f4f6";
+                            }}
+                            onMouseOut={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#4b5563" : "#fff";
+                            }}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
                   ))
                 )}
               </div>
             </div>
 
-            {/* 테이블 생성 버튼 */}
-            <button
-              onClick={generateTable}
-              disabled={conditions.length === 0}
-              style={{
-                width: "100%",
-                padding: "10px 0",
-                backgroundColor: isDarkMode ? (conditions.length === 0 ? "#334155" : "#1B44C8") : "#fff",
-                color: isDarkMode ? "#fff" : "#1B44C8",
-                border: isDarkMode ? "2px solid #1B44C8" : "2px solid #1B44C8",
-                borderRadius: "12px",
-                fontSize: 18,
-                fontWeight: 700,
-                cursor: conditions.length === 0 ? "not-allowed" : "pointer",
-                marginTop: "20px",
-                transition: "background 0.2s, color 0.2s"
-              }}
-              onMouseOver={e => {
-                if (conditions.length > 0) {
-                  if (isDarkMode) {
-                    e.target.style.backgroundColor = "#274fcf";
-                  } else {
-                    e.target.style.backgroundColor = "#eaf0fd";
-                  }
-                }
-              }}
-              onMouseOut={e => {
-                if (conditions.length > 0) {
-                  if (isDarkMode) {
-                    e.target.style.backgroundColor = "#1B44C8";
-                  } else {
-                    e.target.style.backgroundColor = "#fff";
-                  }
-                }
-              }}
-            >
-              처방 내역 입력 완료
-            </button>
           </div>
 
           {/*2 생성된 테이블 */}
@@ -1819,7 +1970,15 @@ function TablePage(props) {
             borderRadius: "8px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h2 style={{ marginBottom: 10, color: isDarkMode ? '#e0e6f0' : '#495057' }}>2단계: 투약 기록을 확인하세요</h2>
+            <h2 style={{ 
+              marginBottom: 10, 
+              color: isDarkMode ? '#e0e6f0' : '#111827',
+              fontSize: "20px",
+              fontWeight: 700,
+              letterSpacing: "-0.01em"
+            }}>
+              2단계: 투약 기록을 확인하세요
+            </h2>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 
@@ -2059,7 +2218,7 @@ function TablePage(props) {
                           color: isDarkMode ? "#6b7280" : "#6b7280",
                           fontStyle: "italic"
                         }}>
-                          처방 내역을 입력하고 "처방 내역 입력 완료" 버튼을 클릭하여 테이블을 생성하세요.
+                          처방 내역을 입력하면 ‘상세 투약 기록’ 테이블이 자동으로 생성됩니다.
                         </td>
                       </tr>
                     )}

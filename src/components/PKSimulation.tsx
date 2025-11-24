@@ -120,6 +120,7 @@ interface PKSimulationProps {
   selectedPrescription?: Prescription | null;
   drugAdministrations?: DrugAdministration[];
   onDownloadPDF?: () => void;
+  forceExpandPatientDetails?: boolean;
 }
 
 type ChartPoint = { time: number; predicted: number; observed: number | null };
@@ -161,6 +162,7 @@ const PKSimulation = ({
   selectedPrescription,
   drugAdministrations = [],
   onDownloadPDF,
+  forceExpandPatientDetails = false,
 }: PKSimulationProps) => {
   const [selectedPatientId, setSelectedPatientId] = useState(
     selectedPatient?.id || "",
@@ -1682,9 +1684,11 @@ const PKSimulation = ({
   // 카드 추가 시 현용법 데이터 로드
   const loadCurrentMethodForCard = useCallback(
     async (cardId: number) => {
-      try {
-        if (!selectedPatientId || !selectedDrug) return;
+      if (!selectedPatientId || !selectedDrug) return;
 
+      setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
+
+      try {
         // 현용법 데이터 로드 (overrides 없이)
         const body = buildTdmRequestBodyCore({
           patients,
@@ -1787,6 +1791,8 @@ const PKSimulation = ({
         setCardChartData((prev) => ({ ...prev, [cardId]: true }));
       } catch (e) {
         console.warn("Failed to load current method for card", e);
+      } finally {
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       }
     },
     [
@@ -2795,7 +2801,8 @@ const PKSimulation = ({
         selectedPrescription={selectedPrescription}
         latestBloodTest={latestBloodTest}
         drugAdministrations={drugAdministrations}
-        isExpanded={true}
+        isExpanded={forceExpandPatientDetails ? true : undefined}
+        disableHover={forceExpandPatientDetails}
       />
 
       {/* PK Simulation 그래프 (가로 전체) */}

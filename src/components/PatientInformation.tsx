@@ -61,6 +61,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     medicalHistory: "",
     allergies: ""
   });
+  const today = dayjs().format("YYYY-MM-DD");
 
   const [isEditing, setIsEditing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -445,13 +446,10 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
   // 생년월일 변경 시 나이 자동 계산
   const handleBirthChange = (value: string) => {
     setFormData((prev) => {
-      let age = "";
-      if (value) {
-        const today = dayjs();
-        const birth = dayjs(value);
-        age = today.diff(birth, 'year').toString();
-      }
-      return { ...prev, birth: value, age };
+      const birth = value;
+      const birthDayjs = birth ? dayjs(birth) : null;
+      const age = birthDayjs?.isValid() ? dayjs().diff(birthDayjs, "year").toString() : "";
+      return { ...prev, birth, age };
     });
   };
 
@@ -560,6 +558,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                       id="birth"
                       type="date"
                       value={formData.birth}
+                      max={today}
                       onChange={(e) => handleBirthChange(e.target.value)}
                       required
                     />
@@ -736,7 +735,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
         </CardHeader>
         <CardContent>
           {filteredPatients.length > 0 ? (
-            <div className={`rounded-md border ${selectedPatient ? 'border-[#8EC5FF]' : ''}`}>
+            <div className={`rounded-md border ${selectedPatient ? 'border-sky-300 dark:border-sky-700' : ''}`}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -758,22 +757,22 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                       key={patient.id}
                       className={`cursor-pointer hover:bg-muted/50 ${
                         isSelected 
-                          ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                          ? 'bg-sky-50 dark:bg-sky-900 border-l-4 border-l-sky-300 dark:border-l-sky-700' 
                           : ''
                       }`}
                       onClick={() => setSelectedPatient(patient)}
                     >
                       <TableCell>
                         {isSelected && (
-                          <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                          <CheckCircle className="h-5 w-5 text-sky-500 dark:text-sky-400" />
                         )}
                       </TableCell>
-                      <TableCell className={`${isSelected ? 'font-bold text-[#333333]' : 'font-medium'}`}>{patient.name}</TableCell>
-                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.age}</TableCell>
-                      <TableCell className={`capitalize ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{patient.gender}</TableCell>
-                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.weight} kg</TableCell>
-                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.height} cm</TableCell>
-                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.createdAt.toLocaleDateString()}</TableCell>
+                      <TableCell className={`${isSelected ? 'font-bold text-[#333333] dark:text-white' : 'font-medium'}`}>{patient.name}</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.age}</TableCell>
+                      <TableCell className={`capitalize ${isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}`}>{patient.gender}</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.weight} kg</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.height} cm</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.createdAt.toLocaleDateString()}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           <Button

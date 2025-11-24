@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -221,22 +221,77 @@ const PrescriptionStep = ({
   // 신규 TDM이 추가되면 자동으로 선택되도록 하는 useEffect
   useEffect(() => {
     if (!selectedPatient || !newlyAddedTdmId) return;
-    
-    // 신규 추가된 TDM이 현재 선택되지 않은 상태라면 자동으로 선택
-    if (selectedTdmId !== newlyAddedTdmId) {
-      // prescriptions 배열에서 해당 ID의 TDM을 찾아서 선택
-      const newTdm = prescriptions.find(p => p.id === newlyAddedTdmId && p.patientId === selectedPatient.id);
-      if (newTdm) {
+
+    const newTdm = prescriptions.find(
+      (p) => p.id === newlyAddedTdmId && p.patientId === selectedPatient.id
+    );
+
+    if (newTdm) {
+      if (selectedTdmId !== newlyAddedTdmId) {
         setSelectedTdmId(newlyAddedTdmId);
       }
+      setSelectedPrescription(newTdm);
     }
-  }, [prescriptions, newlyAddedTdmId, selectedPatient, selectedPatient?.id, selectedTdmId]);
+  }, [prescriptions, newlyAddedTdmId, selectedPatient, selectedPatient?.id, selectedTdmId, setSelectedPrescription]);
 
   const patientPrescriptions = selectedPatient 
     ? prescriptions.filter(p => p.patientId === selectedPatient.id)
     : [];
 
   const allPrescriptions = patientPrescriptions;
+
+  const applyPrescriptionToForm = useCallback((prescription: Prescription) => {
+    const newFormData = {
+      drugName: prescription.drugName || "",
+      indication: prescription.indication || "",
+      additionalInfo: prescription.additionalInfo || "",
+      tdmTarget: prescription.tdmTarget || "Trough Concentration",
+      tdmTargetValue: prescription.tdmTargetValue || ""
+    };
+
+    setFormData(newFormData);
+
+    if (newFormData.drugName === "Vancomycin" && newFormData.indication === "Neurosurgical patients/Korean") {
+      setNephrotoxicDrugAnswer(newFormData.additionalInfo === "복용 중인 약물 없음" ? "아니오" : newFormData.additionalInfo ? "네" : "");
+    } else {
+      setNephrotoxicDrugAnswer("");
+    }
+  }, []);
+
+  const previousPatientIdRef = useRef<string | null>(null);
+  const previousPrescriptionIdsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (!selectedPatient) {
+      previousPatientIdRef.current = null;
+      previousPrescriptionIdsRef.current = [];
+      return;
+    }
+
+    const currentPatientId = selectedPatient.id;
+    const currentIds = patientPrescriptions.map((p) => p.id);
+
+    if (previousPatientIdRef.current !== currentPatientId) {
+      previousPatientIdRef.current = currentPatientId;
+      previousPrescriptionIdsRef.current = currentIds;
+      return;
+    }
+
+    const prevIds = previousPrescriptionIdsRef.current;
+    const newlyAddedId = currentIds.find((id) => !prevIds.includes(id));
+
+    if (newlyAddedId) {
+      setSelectedTdmId(newlyAddedId);
+      setNewlyAddedTdmId(newlyAddedId);
+      const latestPrescription = patientPrescriptions.find((p) => p.id === newlyAddedId);
+      if (latestPrescription) {
+        setSelectedPrescription(latestPrescription);
+        applyPrescriptionToForm(latestPrescription);
+      }
+    }
+
+    previousPrescriptionIdsRef.current = currentIds;
+  }, [patientPrescriptions, selectedPatient, applyPrescriptionToForm, setSelectedPrescription]);
 
   // TDM 내역 선택 시 폼에 자동 기입
   const handleTdmSelect = (prescription: Prescription) => {
@@ -247,23 +302,7 @@ const PrescriptionStep = ({
       setNewlyAddedTdmId(null);
     }
     
-    // 폼 데이터 설정
-    const newFormData = {
-      drugName: prescription.drugName || "",
-      indication: prescription.indication || "",
-      additionalInfo: prescription.additionalInfo || "",
-      tdmTarget: prescription.tdmTarget || "Trough Concentration",
-      tdmTargetValue: prescription.tdmTargetValue || ""
-    };
-    
-    setFormData(newFormData);
-    
-    // Neurosurgical patients/Korean인 경우 라디오 버튼 상태 초기화
-    if (newFormData.drugName === "Vancomycin" && newFormData.indication === "Neurosurgical patients/Korean") {
-      setNephrotoxicDrugAnswer(newFormData.additionalInfo === "복용 중인 약물 없음" ? "아니오" : newFormData.additionalInfo ? "네" : "");
-    } else {
-      setNephrotoxicDrugAnswer("");
-    }
+    applyPrescriptionToForm(prescription);
   };
 
   const selectedDrug = TDM_DRUGS.find(d => d.name === formData.drugName);
@@ -497,6 +536,7 @@ const PrescriptionStep = ({
       // 신규 추가된 TDM ID 설정 및 즉시 선택
       setNewlyAddedTdmId(newPrescription.id);
       setSelectedTdmId(newPrescription.id);
+      setSelectedPrescription(newPrescription);
       
       // 폼 초기화
       setFormData({
@@ -554,6 +594,7 @@ const PrescriptionStep = ({
     // 신규 추가된 TDM ID 설정 및 즉시 선택
     setNewlyAddedTdmId(newPrescription.id);
     setSelectedTdmId(newPrescription.id);
+    setSelectedPrescription(newPrescription);
     
     // 폼 초기화
     setFormData({
@@ -690,7 +731,7 @@ const PrescriptionStep = ({
                 <CardDescription>기 수행된 TDM의 F/U TDM을 진행하신다면 아래 내역 중 선택해 주세요.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className={`rounded-md border ${selectedTdmId ? 'border-[#8EC5FF]' : ''}`}>
+                <div className={`rounded-md border ${selectedTdmId ? 'border-sky-300 dark:border-sky-700' : ''}`}>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -711,23 +752,32 @@ const PrescriptionStep = ({
                             key={prescription.id} 
                             className={`cursor-pointer hover:bg-muted/50 ${
                               isSelected 
-                                ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                                ? 'bg-sky-50 dark:bg-sky-900 border-l-4 border-l-sky-300 dark:border-l-sky-700' 
                                 : ''
                             }`}
                             onClick={() => handleTdmSelect(prescription)}
                           >
                             <TableCell>
                               {isSelected && (
-                                <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                                <CheckCircle className="h-5 w-5 text-sky-500 dark:text-sky-400" />
                               )}
                             </TableCell>
-                            <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>
+                            <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>
                               {isNewlyAddedTdm(prescription.id) ? "진행 중" : (prescription.startDate ? new Date(prescription.startDate).toLocaleDateString('ko-KR') : "-")}
                             </TableCell>
-                            <TableCell className={`${isSelected ? 'font-bold text-[#333333]' : 'font-medium'}`}>{prescription.drugName}</TableCell>
-                            <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{prescription.indication || "-"}</TableCell>
-                            <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{prescription.additionalInfo || "-"}</TableCell>
-                            <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{prescription.tdmTarget && prescription.tdmTargetValue ? `${prescription.tdmTarget}: ${prescription.tdmTargetValue}` : (prescription.tdmTargetValue || "-")}</TableCell>
+                            <TableCell className={`${isSelected ? 'font-bold text-[#333333] dark:text-white' : 'font-medium'}`}>{prescription.drugName}</TableCell>
+                            <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{prescription.indication || "-"}</TableCell>
+                            <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>
+                              {prescription.additionalInfo
+                                ? prescription.drugName === "Vancomycin" &&
+                                  prescription.indication === "Neurosurgical patients/Korean"
+                                  ? (prescription.additionalInfo === "복용 중인 약물 없음"
+                                      ? "신독성 약물 복용 안 함"
+                                      : "신독성 약물 복용 중")
+                                  : prescription.additionalInfo
+                                : "-"}
+                            </TableCell>
+                            <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{prescription.tdmTarget && prescription.tdmTargetValue ? `${prescription.tdmTarget}: ${prescription.tdmTargetValue}` : (prescription.tdmTargetValue || "-")}</TableCell>
                             <TableCell>
                               {/* 신규로 추가한 TDM만 삭제 가능 */}
                               {isNewlyAddedTdm(prescription.id) && (
@@ -942,7 +992,16 @@ const PrescriptionStep = ({
               환자 등록 및 선택
             </Button>
             {isCompleted && (
-              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90">
+              <Button
+                onClick={() => {
+                  if (!selectedTdmId) {
+                    alert("현재 진행 중인 TDM이 선택되어 있지 않습니다. TDM 내역을 선택한 후 다음 단계로 이동해주세요.");
+                    return;
+                  }
+                  onNext();
+                }}
+                className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90"
+              >
                 Lab
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -953,19 +1012,31 @@ const PrescriptionStep = ({
 
       {/* 신독성 약물 목록 모달 */}
       <Dialog open={showDrugListModal} onOpenChange={setShowDrugListModal}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-3xl max-h-[80vh] overflow-y-auto"
+          onInteractOutside={() => setShowDrugListModal(false)}
+        >
           <DialogHeader>
-            <DialogTitle>신독성 약물 목록</DialogTitle>
+            <DialogTitle>
+              신독성 약물 목록 ({NEPHROTOXIC_DRUGS.filter(drug => drug !== "복용 중인 약물 없음" && drug !== "기타").length})
+            </DialogTitle>
             <DialogDescription>
-              아래 약물 목록을 확인하세요.
+              해당하는 약물이 있다면 "네"를 선택해주세요.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            {NEPHROTOXIC_DRUGS.filter(drug => drug !== "복용 중인 약물 없음" && drug !== "기타").map((drug, index) => (
-              <div key={index} className="p-2 border rounded">
-                <p className="text-sm">{drug}</p>
-              </div>
-            ))}
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            {NEPHROTOXIC_DRUGS
+              .filter(drug => drug !== "복용 중인 약물 없음" && drug !== "기타")
+              .map((drug, index) => (
+                <li key={index} className="text-base text-foreground">
+                  {drug}
+                </li>
+              ))}
+          </ul>
+          <div className="flex justify-end pt-4">
+            <Button type="button" onClick={() => setShowDrugListModal(false)}>
+              확인
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

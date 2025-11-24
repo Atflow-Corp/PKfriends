@@ -53,45 +53,45 @@ const PatientStep = ({
 
           {/* Selected Patient Info */}
           {selectedPatient && (
-            <Card className="border-[#8EC5FF] bg-[#EFF6FF]">
+            <Card className="border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900">
               <CardHeader>
-                <CardTitle className="text-[#1C398E]">환자 상세정보</CardTitle>
+                <CardTitle className="text-sky-900 dark:text-sky-50">환자 상세정보</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">이름</p>
-                    <p className="text-sm text-foreground">{selectedPatient.name}</p>
+                    <p className="text-sm text-black dark:text-white">{selectedPatient.name}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">생년월일</p>
-                    <p className="text-sm text-foreground">{selectedPatient.birthDate}</p>
+                    <p className="text-sm text-black dark:text-white">{selectedPatient.birthDate}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">나이</p>
-                    <p className="text-sm text-foreground">{selectedPatient.age}세</p>
+                    <p className="text-sm text-black dark:text-white">{selectedPatient.age}세</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">성별</p>
-                    <p className="text-sm text-foreground">{selectedPatient.gender === "male" ? "남성" : selectedPatient.gender === "female" ? "여성" : "기타"}</p>
+                    <p className="text-sm text-black dark:text-white">{selectedPatient.gender === "male" ? "남성" : selectedPatient.gender === "female" ? "여성" : "기타"}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">체중</p>
-                    <p className="text-sm text-foreground">{selectedPatient.weight} kg</p>
+                    <p className="text-sm text-black dark:text-white">{selectedPatient.weight} kg</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">신장</p>
-                    <p className="text-sm text-foreground">{selectedPatient.height} cm</p>
+                    <p className="text-sm text-black dark:text-white">{selectedPatient.height} cm</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">BMI</p>
-                    <p className="text-sm text-foreground">
+                    <p className="text-sm text-black dark:text-white">
                       {(selectedPatient.weight && selectedPatient.height ? (selectedPatient.weight / Math.pow(selectedPatient.height / 100, 2)).toFixed(1) : "-")}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">BSA</p>
-                    <p className="text-sm text-foreground">
+                    <p className="text-sm text-black dark:text-white">
                       {(selectedPatient.weight && selectedPatient.height ? Math.sqrt((selectedPatient.weight * selectedPatient.height) / 3600).toFixed(2) : "-")} m²
                     </p>
                   </div>
