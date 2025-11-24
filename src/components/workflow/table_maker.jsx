@@ -1440,8 +1440,8 @@ function TablePage(props) {
             }}>
               
               {/* 1행: 모든 항목을 한 줄에 배치 (새로운 순서) */}
-              <div style={{ display: "flex", gap: "15px", marginBottom: "15px" }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", marginBottom: "15px" }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 경로
                   </label>
@@ -1491,7 +1491,7 @@ function TablePage(props) {
                 </div>
 
             {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                 <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                   제형
                 </label>
@@ -1517,7 +1517,7 @@ function TablePage(props) {
               </div>
             )}
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 용량
                   </label>
@@ -1540,7 +1540,7 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ width: "5%" }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     단위
                   </label>
@@ -1565,7 +1565,7 @@ function TablePage(props) {
                   </select>
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 간격(시간)
                   </label>
@@ -1588,7 +1588,7 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     주입시간 (분)
                   </label>
@@ -1612,7 +1612,30 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
+                    총 투약 횟수
+                  </label>
+                  <input
+                    type="number"
+                    value={currentCondition.totalDoses}
+                    onChange={(e) => handleCurrentConditionChange("totalDoses", e.target.value)}
+                    placeholder="예: 10"
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
+                      height: "40px",
+                      boxSizing: "border-box",
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
+                    }}
+                  />
+                </div>
+
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
@@ -1633,29 +1656,6 @@ function TablePage(props) {
                       color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                     max={todayStr + ' 23:59'}
-                  />
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
-                    총 투약 횟수
-                  </label>
-                  <input
-                    type="number"
-                    value={currentCondition.totalDoses}
-                    onChange={(e) => handleCurrentConditionChange("totalDoses", e.target.value)}
-                    placeholder="예: 10"
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
-                      height: "40px",
-                      boxSizing: "border-box",
-                      color: isDarkMode ? "#e0e6f0" : "#495057"
-                    }}
                   />
                 </div>
               </div>

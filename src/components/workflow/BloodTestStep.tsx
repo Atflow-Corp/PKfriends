@@ -244,6 +244,7 @@ const BloodTestStep = ({
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [showRenalModal, setShowRenalModal] = useState(false);
   const [alertModalShown, setAlertModalShown] = useState(false); // 모달이 이미 표시되었는지 추적
+  const [editingRenalId, setEditingRenalId] = useState<string | null>(null); // 수정 중인 신기능 데이터 ID
 
   const patientBloodTests = selectedPatient && tdmDrug
     ? bloodTests.filter(b => b.patientId === selectedPatient.id && b.drugName === tdmDrug.drugName)
@@ -278,6 +279,21 @@ const BloodTestStep = ({
     setAlertModalShown(false);
   }, [selectedPrescription?.id]);
 
+  // 신기능 데이터 편집 모달 열기
+  const handleEditRenal = (renalInfo: RenalInfo) => {
+    setEditingRenalId(renalInfo.id);
+    setRenalForm({
+      creatinine: renalInfo.creatinine,
+      date: renalInfo.date,
+      formula: renalInfo.formula,
+      result: renalInfo.result,
+      dialysis: renalInfo.dialysis,
+      renalReplacement: renalInfo.renalReplacement,
+      isBlack: renalInfo.isBlack
+    });
+    setShowRenalModal(true);
+  };
+
   const handleAddRenal = () => {
     // 필수 데이터 입력 체크
     if (!renalForm.creatinine || !renalForm.date || !renalForm.formula) {
@@ -285,17 +301,28 @@ const BloodTestStep = ({
       return;
     }
 
-    const newRenalInfo: RenalInfo = {
-      id: Date.now().toString(),
-      ...renalForm,
-      isSelected: true  // 새로 추가된 데이터는 자동으로 선택
-    };
+    if (editingRenalId) {
+      // 수정 모드: 기존 항목 업데이트
+      const updatedList = renalInfoList.map(item => 
+        item.id === editingRenalId 
+          ? { ...item, ...renalForm }
+          : item
+      );
+      setRenalInfoList(updatedList);
+    } else {
+      // 추가 모드: 새 항목 추가
+      const newRenalInfo: RenalInfo = {
+        id: Date.now().toString(),
+        ...renalForm,
+        isSelected: true  // 새로 추가된 데이터는 자동으로 선택
+      };
+      
+      // 기존 데이터들의 선택을 해제하고 새 데이터만 선택
+      const updatedRenalInfoList = renalInfoList.map(item => ({ ...item, isSelected: false }));
+      setRenalInfoList([...updatedRenalInfoList, newRenalInfo]);
+    }
     
-    // 기존 데이터들의 선택을 해제하고 새 데이터만 선택
-    const updatedRenalInfoList = renalInfoList.map(item => ({ ...item, isSelected: false }));
-    setRenalInfoList([...updatedRenalInfoList, newRenalInfo]);
-    
-    // 신기능 데이터 추가 후 폼 자동 초기화
+    // 신기능 데이터 추가/수정 후 폼 자동 초기화
     setRenalForm({
       creatinine: "",
       date: "",
@@ -306,14 +333,25 @@ const BloodTestStep = ({
       isBlack: false
     });
     
-    // 모달 닫기
+    // 모달 닫기 및 편집 상태 초기화
     setShowRenalModal(false);
+    setEditingRenalId(null);
   };
 
   const handleDeleteRenal = (id: string) => {
     setRenalInfoList(renalInfoList.filter(item => item.id !== id));
   };
 
+  // 혈청 크레아티닌 값으로 신기능 계산 함수
+  const handleCalculateRenalResult = () => {
+    if (renalForm.creatinine && selectedPatient) {
+      const creatinine = parseFloat(renalForm.creatinine);
+      if (!isNaN(creatinine) && creatinine > 0) {
+        const result = calculateRenalFunction(creatinine, renalForm.formula, selectedPatient, renalForm.isBlack);
+        setRenalForm(prev => ({ ...prev, result }));
+      }
+    }
+  };
 
   const handleRenalSelectionChange = (id: string, checked: boolean) => {
     setRenalInfoList(renalInfoList.map(item => ({
@@ -470,10 +508,9 @@ const BloodTestStep = ({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"></TableHead>
-                      <TableHead>혈청 크레아티닌</TableHead>
-                      <TableHead>검사일</TableHead>
-                      <TableHead>계산식</TableHead>
-                      <TableHead>결과</TableHead>
+                      <TableHead className="text-center">검사일</TableHead>
+                      <TableHead className="text-center">혈청 크레아티닌</TableHead>
+                      <TableHead className="text-center">결과</TableHead>
                       <TableHead className="w-16">삭제</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -491,7 +528,7 @@ const BloodTestStep = ({
                             )}
                           </TableCell>
                           <TableCell 
-                            colSpan={4} 
+                            colSpan={3} 
                             className={`text-center ${isNoRenalDataSelected ? 'font-bold text-[#333333]' : 'text-muted-foreground'}`}
                           >
                             {useRenalData 
@@ -515,17 +552,34 @@ const BloodTestStep = ({
                             ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
                             : ''
                         }`}
-                        onClick={() => handleRenalSelectionChange(renalInfo.id, !isSelected)}
+                        onClick={(e) => {
+                          // 삭제 버튼이나 체크 아이콘 영역이 아닌 경우에만 수정 모달 열기
+                          const target = e.target as HTMLElement;
+                          if (!target.closest('button') && !target.closest('svg') && !target.closest('circle')) {
+                            handleEditRenal(renalInfo);
+                          }
+                        }}
+                        onDoubleClick={(e) => {
+                          // 더블클릭으로도 수정 모달 열기 가능
+                          const target = e.target as HTMLElement;
+                          if (!target.closest('button')) {
+                            handleEditRenal(renalInfo);
+                          }
+                        }}
                       >
-                        <TableCell>
+                        <TableCell 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRenalSelectionChange(renalInfo.id, !isSelected);
+                          }}
+                        >
                           {isSelected && (
                             <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
                           )}
                         </TableCell>
-                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.creatinine} mg/dL</TableCell>
-                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.date}</TableCell>
-                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.formula}</TableCell>
-                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.result || "-"}</TableCell>
+                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{renalInfo.date}</TableCell>
+                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{renalInfo.creatinine} mg/dL</TableCell>
+                        <TableCell className={`text-center ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{renalInfo.result || "-"}</TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -658,13 +712,28 @@ const BloodTestStep = ({
         </CardContent>
       </Card>
 
-      {/* 신기능 데이터 추가 모달 */}
-      <Dialog open={showRenalModal} onOpenChange={setShowRenalModal}>
+      {/* 신기능 데이터 추가/수정 모달 */}
+      <Dialog open={showRenalModal} onOpenChange={(open) => {
+        setShowRenalModal(open);
+        if (!open) {
+          // 모달이 닫힐 때 편집 상태 초기화
+          setEditingRenalId(null);
+          setRenalForm({
+            creatinine: "",
+            date: "",
+            formula: "cockcroft-gault",
+            result: "",
+            dialysis: "N",
+            renalReplacement: "",
+            isBlack: false
+          });
+        }
+      }}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>신기능 데이터 추가</DialogTitle>
+            <DialogTitle>{editingRenalId ? '신기능 데이터 수정' : '신기능 데이터 추가'}</DialogTitle>
             <DialogDescription>
-              신기능 데이터를 입력하세요.
+              {editingRenalId ? '신기능 데이터를 수정하세요.' : '신기능 데이터를 입력하세요.'}
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleAddRenal(); }}>
@@ -688,12 +757,17 @@ const BloodTestStep = ({
                   step="0.01"
                   value={renalForm.creatinine}
                   onChange={e => setRenalForm({ ...renalForm, creatinine: e.target.value })}
-                  onBlur={() => {
-                    if (renalForm.creatinine && selectedPatient) {
-                      const creatinine = parseFloat(renalForm.creatinine);
-                      if (!isNaN(creatinine)) {
-                        const result = calculateRenalFunction(creatinine, renalForm.formula, selectedPatient, renalForm.isBlack);
-                        setRenalForm(prev => ({ ...prev, result }));
+                  onBlur={handleCalculateRenalResult}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCalculateRenalResult();
+                      // 계산 결과 필드로 포커스 이동
+                      const resultInput = document.getElementById('modal-result');
+                      if (resultInput) {
+                        setTimeout(() => {
+                          (resultInput as HTMLElement).focus();
+                        }, 100);
                       }
                     }
                   }}
@@ -750,11 +824,23 @@ const BloodTestStep = ({
             </div>
             
             <DialogFooter className="justify-center sm:justify-center">
-              <Button type="button" variant="outline" onClick={() => setShowRenalModal(false)}>
+              <Button type="button" variant="outline" onClick={() => {
+                setShowRenalModal(false);
+                setEditingRenalId(null);
+                setRenalForm({
+                  creatinine: "",
+                  date: "",
+                  formula: "cockcroft-gault",
+                  result: "",
+                  dialysis: "N",
+                  renalReplacement: "",
+                  isBlack: false
+                });
+              }}>
                 취소
               </Button>
               <Button type="submit">
-                추가
+                {editingRenalId ? '수정' : '추가'}
               </Button>
             </DialogFooter>
           </form>
