@@ -1684,9 +1684,11 @@ const PKSimulation = ({
   // 카드 추가 시 현용법 데이터 로드
   const loadCurrentMethodForCard = useCallback(
     async (cardId: number) => {
-      try {
-        if (!selectedPatientId || !selectedDrug) return;
+      if (!selectedPatientId || !selectedDrug) return;
 
+      setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
+
+      try {
         // 현용법 데이터 로드 (overrides 없이)
         const body = buildTdmRequestBodyCore({
           patients,
@@ -1789,6 +1791,8 @@ const PKSimulation = ({
         setCardChartData((prev) => ({ ...prev, [cardId]: true }));
       } catch (e) {
         console.warn("Failed to load current method for card", e);
+      } finally {
+        setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       }
     },
     [
