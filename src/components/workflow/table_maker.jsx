@@ -637,10 +637,12 @@ function TablePage(props) {
   }, [props.initialConditions, props.initialTableData, props.initialIsTableGenerated]);
 
   // 투약 경로 옵션
+  // 반코마이신(Vancomycin)의 경우 경구 옵션 비활성화 (현재 사용 가능한 모델이 모두 정맥 투약 모델)
+  // 피하(SC)는 모델링에서 사용하지 않으므로 임시 비노출 처리
+  const isVancomycin = props.tdmDrug?.drugName?.toLowerCase() === "vancomycin";
   const routeOptions = [
-    { value: "경구", label: "경구 (oral)" },
-    { value: "정맥", label: "정맥 (IV)" },
-    { value: "피하", label: "피하 (SC)" }
+    { value: "경구", label: "경구 (oral)", disabled: isVancomycin },
+    { value: "정맥", label: "정맥 (IV)" }
   ];
 
 
@@ -680,6 +682,13 @@ function TablePage(props) {
       
       // 투약 경로가 변경되면 제형만 설정 (투약용량 자동 설정 제거)
       if (field === "route" && props.tdmDrug?.drugName) {
+        // 반코마이신 경구 선택 시 경고 및 차단
+        const isVancomycin = props.tdmDrug.drugName?.toLowerCase() === "vancomycin";
+        if (isVancomycin && (value === "경구" || value === "oral")) {
+          alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+          return prev; // 변경하지 않고 이전 값 유지
+        }
+        
         // Cyclosporin 경구일 때 제형 기본값 지정
         if ((props.tdmDrug.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName?.toLowerCase() === "cyclosporine") && (value === "경구" || value === "oral")) {
           if (!newCondition.dosageForm) newCondition.dosageForm = "capsule/tablet";
@@ -731,6 +740,21 @@ function TablePage(props) {
     if (!currentCondition.unit) {
       alert("단위를 선택해주세요!");
       return;
+    }
+
+    // 정맥 투약 경로일 때 주입시간 필수 입력 검증
+    if (currentCondition.route === "정맥" || currentCondition.route === "IV") {
+      const injectionTime = currentCondition.injectionTime?.trim();
+      if (!injectionTime || injectionTime === "" || injectionTime === "-") {
+        alert("정맥 투약 경로를 선택하셨습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+        return;
+      }
+      // 숫자로 변환 가능한지 확인
+      const injectionTimeNum = parseFloat(injectionTime);
+      if (isNaN(injectionTimeNum) || injectionTimeNum < 0) {
+        alert("주입시간은 0 이상의 숫자로 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+        return;
+      }
     }
 
     if (isEditMode) {
@@ -819,6 +843,21 @@ function TablePage(props) {
           !condition.firstDoseDate || !condition.firstDoseTime || !condition.dosage || !condition.route || !condition.unit) {
         alert("모든 필드를 입력해주세요!");
         return;
+      }
+      
+      // 정맥 투약 경로일 때 주입시간 필수 입력 검증
+      if (condition.route === "정맥" || condition.route === "IV") {
+        const injectionTime = condition.injectionTime?.trim();
+        if (!injectionTime || injectionTime === "" || injectionTime === "-") {
+          alert("정맥 투약 경로를 선택한 조건이 있습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+          return;
+        }
+        // 숫자로 변환 가능한지 확인
+        const injectionTimeNum = parseFloat(injectionTime);
+        if (isNaN(injectionTimeNum) || injectionTimeNum < 0) {
+          alert("주입시간은 0 이상의 숫자로 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
+          return;
+        }
       }
     }
 
@@ -1019,11 +1058,21 @@ function TablePage(props) {
           
           // 투약 경로가 변경되면 단위와 주입시간 설정 (투약용량 자동 설정 제거)
           if (field === "route") {
+            // 반코마이신 경구 선택 시 경고 및 차단
+            const isVancomycin = props.tdmDrug?.drugName?.toLowerCase() === "vancomycin";
+            if (isVancomycin && (value === "경구" || value === "oral")) {
+              alert("반코마이신은 현재 정맥 투약 모델만 지원됩니다.\n정맥 투약 경로를 선택해주세요.");
+              return row; // 변경하지 않고 원래 행 유지
+            }
+            
             // 투약용량 자동 설정 제거 - 사용자가 직접 입력하도록 함
             
-            // 정맥으로 변경 시 주입시간을 0으로 자동 설정
-            if (value === "정맥") {
-              updatedRow.injectionTime = "0";
+            // 정맥으로 변경 시 주입시간을 빈 값으로 설정 (사용자가 반드시 입력하도록)
+            if (value === "정맥" || value === "IV") {
+              // 주입시간이 없거나 "-"인 경우에만 빈 값으로 설정
+              if (!updatedRow.injectionTime || updatedRow.injectionTime === "-") {
+                updatedRow.injectionTime = "";
+              }
             } else {
               // 정맥이 아닌 경우 주입시간을 "-"로 설정
               updatedRow.injectionTime = "-";
@@ -1391,8 +1440,8 @@ function TablePage(props) {
             }}>
               
               {/* 1행: 모든 항목을 한 줄에 배치 (새로운 순서) */}
-              <div style={{ display: "flex", gap: "15px", marginBottom: "15px" }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", marginBottom: "15px" }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 경로
                   </label>
@@ -1413,13 +1462,36 @@ function TablePage(props) {
                   >
                     <option value="">투약 경로를 선택해주세요</option>
                     {routeOptions.map(option => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option 
+                        key={option.value} 
+                        value={option.value}
+                        disabled={option.disabled}
+                        style={{
+                          backgroundColor: option.disabled 
+                            ? (isDarkMode ? "#374151" : "#e5e7eb") 
+                            : (isDarkMode ? "#1e293b" : "#fff"),
+                          color: option.disabled 
+                            ? (isDarkMode ? "#6b7280" : "#9ca3af") 
+                            : (isDarkMode ? "#e0e6f0" : "#495057")
+                        }}
+                      >
+                        {option.label}
+                      </option>
                     ))}
                   </select>
+                  {isVancomycin && (
+                    <div style={{ 
+                      marginTop: "4px", 
+                      fontSize: "12px", 
+                      color: isDarkMode ? "#fbbf24" : "#d97706" 
+                    }}>
+                      ⚠️ 반코마이신은 현재 정맥 투약 모델만 지원됩니다.
+                    </div>
+                  )}
                 </div>
 
             {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                 <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                   제형
                 </label>
@@ -1445,7 +1517,7 @@ function TablePage(props) {
               </div>
             )}
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 용량
                   </label>
@@ -1468,7 +1540,7 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ width: "5%" }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     단위
                   </label>
@@ -1493,7 +1565,7 @@ function TablePage(props) {
                   </select>
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 간격(시간)
                   </label>
@@ -1516,7 +1588,7 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     주입시간 (분)
                   </label>
@@ -1540,7 +1612,30 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
+                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
+                    총 투약 횟수
+                  </label>
+                  <input
+                    type="number"
+                    value={currentCondition.totalDoses}
+                    onChange={(e) => handleCurrentConditionChange("totalDoses", e.target.value)}
+                    placeholder="예: 10"
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
+                      height: "40px",
+                      boxSizing: "border-box",
+                      color: isDarkMode ? "#e0e6f0" : "#495057"
+                    }}
+                  />
+                </div>
+
+                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
@@ -1561,29 +1656,6 @@ function TablePage(props) {
                       color: isDarkMode ? "#e0e6f0" : "#495057"
                     }}
                     max={todayStr + ' 23:59'}
-                  />
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
-                    총 투약 횟수
-                  </label>
-                  <input
-                    type="number"
-                    value={currentCondition.totalDoses}
-                    onChange={(e) => handleCurrentConditionChange("totalDoses", e.target.value)}
-                    placeholder="예: 10"
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
-                      height: "40px",
-                      boxSizing: "border-box",
-                      color: isDarkMode ? "#e0e6f0" : "#495057"
-                    }}
                   />
                 </div>
               </div>

@@ -53,9 +53,9 @@ const PatientStep = ({
 
           {/* Selected Patient Info */}
           {selectedPatient && (
-            <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950">
+            <Card className="border-[#8EC5FF] bg-[#EFF6FF]">
               <CardHeader>
-                <CardTitle className="text-green-800 dark:text-green-200">Selected Patient</CardTitle>
+                <CardTitle className="text-[#1C398E]">환자 상세정보</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

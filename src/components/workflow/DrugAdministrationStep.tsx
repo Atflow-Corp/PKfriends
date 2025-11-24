@@ -321,6 +321,7 @@ const DrugAdministrationStep = ({
                     if (!body) {
                       console.error('Failed to build TDM request body');
                       alert('TDM 요청 데이터를 생성할 수 없습니다. 환자 정보와 처방 정보를 확인해주세요.');
+                      setLoading(false);
                       return;
                     }
                     console.log('TDM API Request Body:', JSON.stringify(body, null, 2));
@@ -330,12 +331,41 @@ const DrugAdministrationStep = ({
                       patientId: selectedPatient.id,
                       drugName: tdmDrug?.drugName 
                     });
-                  } catch (e) {
-                    console.error('TDM API Error:', e);
-                    alert(`TDM 분석 중 오류가 발생했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}`);
-                  } finally {
+                    // API 호출 성공 시에만 다음 단계로 이동
                     setLoading(false);
                     onNext();
+                  } catch (e) {
+                    console.error('TDM API Error:', e);
+                    const errorMessage = e instanceof Error ? e.message : '알 수 없는 오류';
+                    const errorName = e instanceof Error ? e.name : 'Unknown';
+                    
+                    // 오류 상세 정보 로깅
+                    console.error("오류 상세 정보:", {
+                      name: errorName,
+                      message: errorMessage,
+                      error: e
+                    });
+                    
+                    const isCorsError = errorMessage.includes("CORS 오류") || errorMessage.includes("cors");
+                    const isNetworkError = errorMessage.includes("네트워크 오류") || errorMessage.includes("failed to fetch");
+                    const is503Error = errorMessage.includes("503") || errorMessage.includes("일시적");
+                    
+                    let userMessage = `TDM 분석 중 오류가 발생했습니다.\n\n`;
+                    if (isCorsError || isNetworkError) {
+                      userMessage += `서버 접근 오류가 발생했습니다.\n`;
+                      userMessage += `오류 유형: ${errorName}\n`;
+                      userMessage += `오류 메시지: ${errorMessage.split('\n')[0]}\n\n`;
+                      userMessage += `서버 관리자에게 문의하거나 잠시 후 다시 시도해주세요.`;
+                    } else if (is503Error) {
+                      userMessage += `서버 일시적 오류 (503): 서버가 일시적으로 사용 불가능한 상태입니다.\n`;
+                      userMessage += `잠시 후 다시 시도해주세요.`;
+                    } else {
+                      userMessage += `오류 유형: ${errorName}\n`;
+                      userMessage += `오류 메시지: ${errorMessage}`;
+                    }
+                    alert(userMessage);
+                    setLoading(false);
+                    // API 호출 실패 시 다음 단계로 이동하지 않음
                   }
                 }}
                 disabled={loading}

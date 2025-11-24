@@ -258,10 +258,22 @@ const SimulationStep = ({
   if (!selectedPatient) {
     return (
       <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            TDM Simulation
+          </CardTitle>
+          <CardDescription>
+            시뮬레이션을 진행하려면 환자를 먼저 선택해주세요.
+          </CardDescription>
+        </CardHeader>
         <CardContent className="py-12">
           <div className="text-center">
             <Activity className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">Please select a patient first</p>
+            <p className="text-lg font-semibold mb-2">환자를 선택해주세요</p>
+            <p className="text-muted-foreground">
+              환자 등록 및 선택 단계에서 환자를 선택한 후 시뮬레이션을 진행할 수 있습니다.
+            </p>
           </div>
         </CardContent>
       </Card>
