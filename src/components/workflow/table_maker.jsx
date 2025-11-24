@@ -674,7 +674,17 @@ function TablePage(props) {
       return "날짜와 시간을 입력해주세요";
     }
     const unitText = condition.unit ? condition.unit : "mg";
-    return `${condition.totalDoses}회 투약, ${condition.intervalHours}시간 간격, ${condition.firstDoseDate} ${condition.firstDoseTime}, ${condition.dosage} ${unitText}, ${condition.route}${condition.route === "정맥" && condition.injectionTime ? ` (${condition.injectionTime})` : ""}`;
+    const routeText = condition.route || "-";
+    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
+    const injectionText = condition.route === "정맥" && condition.injectionTime
+      ? ` (${condition.injectionTime})`
+      : "";
+    const intervalText = condition.intervalHours ? `${condition.intervalHours}시간 간격` : "간격 정보 없음";
+    const dosesText = condition.totalDoses ? `${condition.totalDoses}회` : "횟수 정보 없음";
+    const startDate = condition.firstDoseDate || "날짜 정보 없음";
+    const startTime = condition.firstDoseTime || "";
+
+    return `${routeText}, ${dosageText}${injectionText}, ${intervalText}, ${startDate} ${startTime}부터 ${dosesText} 투약`.trim();
   };
 
   const isConditionComplete = (condition) => {
@@ -1482,13 +1492,20 @@ function TablePage(props) {
           {/* 이하 기존 테이블 입력 UI 코드 유지 */}
           {/* 1단계: 개선된 조건 입력 UI */}
           <div style={{
-            background: isDarkMode ? "#23293a" : "#f8f9fa",
             padding: "20px",
             borderRadius: "8px",
             marginBottom: "30px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h1 style={{ marginBottom: 20, color: isDarkMode ? "#e0e6f0" : "#495057" }}>1단계: 처방 내역을 입력하세요</h1>
+            <h1 style={{ 
+              marginBottom: 20, 
+              color: isDarkMode ? "#e0e6f0" : "#111827",
+              fontSize: "24px",
+              fontWeight: 700,
+              letterSpacing: "-0.02em"
+            }}>
+              1단계: 처방 내역을 입력하세요
+            </h1>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 
@@ -1505,7 +1522,6 @@ function TablePage(props) {
 
                        {/* 현재 조건 입력 박스 */}
             <div style={{
-              border: isDarkMode ? "2px solid #334155" : "2px solid #e0e7ff",
               padding: "20px",
               marginBottom: "20px",
               borderRadius: "8px",
@@ -1513,7 +1529,7 @@ function TablePage(props) {
             }}>
               
               {/* 1행: 모든 항목을 한 줄에 배치 (새로운 순서) */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", marginBottom: "15px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", marginBottom: "15px", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     투약 경로
@@ -1731,51 +1747,46 @@ function TablePage(props) {
                     max={todayStr + ' 23:59'}
                   />
                 </div>
-              </div>
-
-
-
-              {/* 조건 추가/수정 버튼 */}
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-                <button
-                  onClick={addOrUpdateCondition}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: isDarkMode ? "#1B44C8" : "#eaf0fd",
-                    border: "none",
-                    color: isDarkMode ? "#fff" : "#1B44C8",
-                    fontWeight: 600,
-                    fontSize: 16,
-                    cursor: "pointer",
-                    padding: "8px 32px",
-                    margin: 0,
-                    outline: "none",
-                    borderRadius: "12px",
-                    transition: "background 0.2s, color 0.2s"
-                  }}
-                  onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#274fcf" : "#dbeafe"; }}
-                  onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#1B44C8" : "#eaf0fd"; }}
-                >
-                  <span style={{ fontSize: 20, marginRight: 6, fontWeight: 600, background: "transparent" }}>
-                    {isEditMode ? "✓" : "+"}
-                  </span>
-                  {isEditMode ? "처방 내역 수정" : "처방 내역 추가"}
-                </button>
+                <div style={{ flex: "0 0 60px", minWidth: "60px", marginLeft: "auto", display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={addOrUpdateCondition}
+                    style={{
+                      width: "60px",
+                      height: "40px",
+                      backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "10px",
+                      fontWeight: 400,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      transition: "background-color 0.2s, opacity 0.2s"
+                    }}
+                    onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
+                    onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
+                  >
+                    추가
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* 투약 기록 summary */}
             <div style={{ marginTop: "20px" }}>
-              <h3 style={{ marginBottom: "10px", color: isDarkMode ? "#e0e6f0" : "#495057" }}>
+              <h3 style={{ 
+                marginBottom: "10px", 
+                color: isDarkMode ? "#e0e6f0" : "#1f2937",
+                fontSize: "18px",
+                fontWeight: 600,
+                letterSpacing: "-0.01em"
+              }}>
                 처방 내역 summary
               </h3>
               <div style={{
-                border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
+                border: isDarkMode ? "1px solid #334155" : "1px solid #8EC5FF",
                 borderRadius: "8px",
                 padding: "15px",
-                background: isDarkMode ? "#23293a" : "white",
+                background: isDarkMode ? "#1f2a37" : "#EFF6FF",
                 maxHeight: "200px",
                 overflowY: "auto"
               }}>
@@ -1786,39 +1797,48 @@ function TablePage(props) {
                 ) : (
                   conditions.map((condition, index) => (
                   <div key={condition.id} style={{
-                    borderBottom: isDarkMode ? "1px dashed #334155" : "1px dashed #eee",
-                    paddingBottom: "10px",
-                    marginBottom: "10px",
+                    borderBottom: conditions.length > 1 && index !== conditions.length - 1 ? (isDarkMode ? "1px dashed #1f2937" : "1px dashed #94a3b8") : "none",
+                    paddingBottom: conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
+                    marginBottom: conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
                     fontSize: "13px",
                     color: isDarkMode ? "#9ca3af" : "#6c757d",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center"
                   }}>
-                    <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", width: "100%" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
                       <span style={{ 
                         fontWeight: "bold", 
-                        color: isDarkMode ? "#60a5fa" : "#007bff",
-                        marginRight: "10px"
+                        color: isDarkMode ? "#60a5fa" : "#007bff"
                       }}>
                         기록 {index + 1}:
                       </span>
-                      {getConditionSummary(condition)}
+                      <span
+                        style={{
+                          fontSize: "16px",
+                          fontWeight: 700,
+                          color: isDarkMode ? "#f3f4f6" : "#000000"
+                        }}
+                      >
+                        {getConditionSummary(condition)}
+                      </span>
                     </div>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
                         onClick={() => startEditCondition(condition.id)}
                         style={{
                           padding: "4px 8px",
-                          backgroundColor: isDarkMode ? "#0ea5e9" : "#17a2b8",
-                          color: "white",
-                          border: "none",
+                          backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                          color: "#fff",
+                          border: "1px solid",
+                          borderColor: isDarkMode ? "#1f2937" : "#000",
                           borderRadius: "4px",
                           cursor: "pointer",
                           fontSize: "11px"
                         }}
-                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#0284c7" : "#138496"; }}
-                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0ea5e9" : "#17a2b8"; }}
+                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
+                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
                       >
                         수정
                       </button>
@@ -1826,21 +1846,23 @@ function TablePage(props) {
                         onClick={() => removeCondition(condition.id)}
                         style={{
                           padding: "4px 8px",
-                          backgroundColor: isDarkMode ? "#ef4444" : "#dc3545",
-                          color: "white",
-                          border: "none",
+                          backgroundColor: isDarkMode ? "#4b5563" : "#fff",
+                          color: isDarkMode ? "#fff" : "#111827",
+                          border: "1px solid",
+                          borderColor: isDarkMode ? "#6b7280" : "#000",
                           borderRadius: "4px",
                           cursor: "pointer",
                           fontSize: "11px"
                         }}
-                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#dc2626" : "#c82333"; }}
-                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#ef4444" : "#dc3545"; }}
+                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#6b7280" : "#f3f4f6"; }}
+                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#4b5563" : "#fff"; }}
                       >
                         삭제
                       </button>
                     </div>
                   </div>
-                  ))
+                </div>
+            ))
                 )}
               </div>
             </div>
@@ -1854,7 +1876,15 @@ function TablePage(props) {
             borderRadius: "8px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h2 style={{ marginBottom: 10, color: isDarkMode ? '#e0e6f0' : '#495057' }}>2단계: 투약 기록을 확인하세요</h2>
+            <h2 style={{ 
+              marginBottom: 10, 
+              color: isDarkMode ? '#e0e6f0' : '#111827',
+              fontSize: "20px",
+              fontWeight: 700,
+              letterSpacing: "-0.01em"
+            }}>
+              2단계: 투약 기록을 확인하세요
+            </h2>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 

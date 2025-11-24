@@ -7,7 +7,6 @@ import { Patient, Prescription, DrugAdministration, BloodTest } from "@/pages/In
 import dayjs from "dayjs";
 import { ArrowLeft, ArrowRight, History, CheckCircle } from "lucide-react";
 import TablePage from "./table_maker.jsx";
-import "./table_maker.css";
 import { buildTdmRequestBody, runTdmApi } from "@/lib/tdm";
 
 interface DrugAdministrationStepProps {
@@ -144,7 +143,7 @@ const DrugAdministrationStep = ({
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="bg-white dark:bg-slate-900 border dark:border-slate-700 text-slate-900 dark:text-slate-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <History className="h-5 w-5" />
@@ -195,14 +194,6 @@ const DrugAdministrationStep = ({
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card className="bg-white dark:bg-slate-900 border dark:border-slate-700 text-slate-900 dark:text-slate-200">
-        <CardHeader>
-          <CardTitle>투약 기록 입력</CardTitle>
-        </CardHeader>
-        <CardContent>
           {/* table_maker 테이블/입력 UI */}
           <TablePage
             selectedPatient={selectedPatient}
@@ -376,7 +367,6 @@ const DrugAdministrationStep = ({
               </Button>
             )}
           </div>
-          
         </CardContent>
       </Card>
     </div>
