@@ -465,11 +465,11 @@ const BloodTestStep = ({
             </CardHeader>
             <CardContent className="space-y-6">
               {/* 신기능 데이터 테이블 */}
-              <div className="rounded-md border">
+              <div className={`rounded-md border ${renalInfoList.some(item => item.isSelected) ? 'border-[#8EC5FF]' : ''}`}>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-16">분석사용</TableHead>
+                      <TableHead className="w-12"></TableHead>
                       <TableHead>혈청 크레아티닌</TableHead>
                       <TableHead>검사일</TableHead>
                       <TableHead>계산식</TableHead>
@@ -479,54 +479,68 @@ const BloodTestStep = ({
                   </TableHeader>
                   <TableBody>
                     {/* 기본 행 - 신기능 데이터 없음/필수 */}
-                    <TableRow>
-                      <TableCell>
-                        <Checkbox 
-                          checked={!useRenalData && renalInfoList.every(item => !item.isSelected)}
-                          onCheckedChange={(checked) => {
-                            if (checked && !useRenalData) {
-                              setRenalInfoList(renalInfoList.map(item => ({ ...item, isSelected: false })));
+                    {(() => {
+                      const isNoRenalDataSelected = !useRenalData && renalInfoList.every(item => !item.isSelected);
+                      return (
+                        <TableRow className={isNoRenalDataSelected 
+                          ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                          : ''}>
+                          <TableCell>
+                            {isNoRenalDataSelected && (
+                              <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                            )}
+                          </TableCell>
+                          <TableCell 
+                            colSpan={4} 
+                            className={`text-center ${isNoRenalDataSelected ? 'font-bold text-[#333333]' : 'text-muted-foreground'}`}
+                          >
+                            {useRenalData 
+                              ? "해당 TDM은 신기능 데이터를 필수 입력해야 합니다"
+                              : "해당 TDM은 신기능 데이터를 사용하지 않습니다"
                             }
-                          }}
-                          disabled={useRenalData} // 신기능 데이터 필수 입력인 경우 체크 해제 불가
-                        />
-                      </TableCell>
-                      <TableCell 
-                        colSpan={4} 
-                        className={`text-center ${!useRenalData && renalInfoList.every(item => !item.isSelected) ? 'text-foreground' : 'text-muted-foreground'}`}
-                      >
-                        {useRenalData 
-                          ? "해당 TDM은 신기능 데이터를 필수 입력해야 합니다"
-                          : "해당 TDM은 신기능 데이터를 사용하지 않습니다"
-                        }
-                      </TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
+                          </TableCell>
+                          <TableCell></TableCell>
+                        </TableRow>
+                      );
+                    })()}
                     
                     {/* 신기능 데이터 행들 */}
-                    {renalInfoList.map((renalInfo) => (
-                      <TableRow key={renalInfo.id}>
+                    {renalInfoList.map((renalInfo) => {
+                      const isSelected = renalInfo.isSelected;
+                      return (
+                      <TableRow 
+                        key={renalInfo.id}
+                        className={`cursor-pointer hover:bg-muted/50 ${
+                          isSelected 
+                            ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                            : ''
+                        }`}
+                        onClick={() => handleRenalSelectionChange(renalInfo.id, !isSelected)}
+                      >
                         <TableCell>
-                          <Checkbox 
-                            checked={renalInfo.isSelected}
-                            onCheckedChange={(checked) => handleRenalSelectionChange(renalInfo.id, checked as boolean)}
-                          />
+                          {isSelected && (
+                            <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                          )}
                         </TableCell>
-                        <TableCell>{renalInfo.creatinine} mg/dL</TableCell>
-                        <TableCell>{renalInfo.date}</TableCell>
-                        <TableCell>{renalInfo.formula}</TableCell>
-                        <TableCell>{renalInfo.result || "-"}</TableCell>
+                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.creatinine} mg/dL</TableCell>
+                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.date}</TableCell>
+                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.formula}</TableCell>
+                        <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{renalInfo.result || "-"}</TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDeleteRenal(renalInfo.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteRenal(renalInfo.id);
+                            }}
                           >
                             <X className="h-4 w-4" />
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

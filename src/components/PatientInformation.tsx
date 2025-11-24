@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/Index";
-import { UserPlus, Edit, Eye, X, Search, Trash2, FileChartColumnIncreasing, ExternalLink } from "lucide-react";
+import { UserPlus, Edit, Eye, X, Search, Trash2, FileChartColumnIncreasing, ExternalLink, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
@@ -736,10 +736,11 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
         </CardHeader>
         <CardContent>
           {filteredPatients.length > 0 ? (
-            <div className="rounded-md border">
+            <div className={`rounded-md border ${selectedPatient ? 'border-[#8EC5FF]' : ''}`}>
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12"></TableHead>
                     <TableHead>이름</TableHead>
                     <TableHead>나이</TableHead>
                     <TableHead>성별</TableHead>
@@ -750,20 +751,29 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPatients.map((patient) => (
+                  {filteredPatients.map((patient) => {
+                    const isSelected = selectedPatient?.id === patient.id;
+                    return (
                     <TableRow 
                       key={patient.id}
                       className={`cursor-pointer hover:bg-muted/50 ${
-                        selectedPatient?.id === patient.id ? 'bg-muted' : ''
+                        isSelected 
+                          ? 'bg-[#EFF6FF] border-l-4 border-l-[#8EC5FF]' 
+                          : ''
                       }`}
                       onClick={() => setSelectedPatient(patient)}
                     >
-                      <TableCell className="font-medium">{patient.name}</TableCell>
-                      <TableCell>{patient.age}</TableCell>
-                      <TableCell className="capitalize">{patient.gender}</TableCell>
-                      <TableCell>{patient.weight} kg</TableCell>
-                      <TableCell>{patient.height} cm</TableCell>
-                      <TableCell>{patient.createdAt.toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {isSelected && (
+                          <CheckCircle className="h-5 w-5 text-[#8EC5FF]" />
+                        )}
+                      </TableCell>
+                      <TableCell className={`${isSelected ? 'font-bold text-[#333333]' : 'font-medium'}`}>{patient.name}</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.age}</TableCell>
+                      <TableCell className={`capitalize ${isSelected ? 'font-bold text-[#333333]' : ''}`}>{patient.gender}</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.weight} kg</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.height} cm</TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{patient.createdAt.toLocaleDateString()}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           <Button
@@ -789,7 +799,8 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

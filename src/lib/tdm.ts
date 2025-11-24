@@ -116,6 +116,11 @@ const inferModelName = (args: {
 
   // Vancomycin branches
   if (drugName === "Vancomycin") {
+    // Not specified/Korean에서 기타 선택 시 에러
+    if (indication === "Not specified/Korean" && additionalInfo === "기타") {
+      throw new Error("CRRT 분석 모델만 지원됩니다.");
+    }
+    
     if (isCRRT && entry.CRRt) {
       // keep for robustness if case differs
       return normalizeModelCode(entry.CRRt);
@@ -126,6 +131,7 @@ const inferModelName = (args: {
     if (within72h && entry.within72h) {
       return normalizeModelCode(entry.within72h);
     }
+    // 투석 안 함 또는 CRRT가 아닌 경우 default (Vancomycin1-1) 사용
     return normalizeModelCode(entry.default);
   }
 
