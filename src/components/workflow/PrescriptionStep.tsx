@@ -221,16 +221,18 @@ const PrescriptionStep = ({
   // 신규 TDM이 추가되면 자동으로 선택되도록 하는 useEffect
   useEffect(() => {
     if (!selectedPatient || !newlyAddedTdmId) return;
-    
-    // 신규 추가된 TDM이 현재 선택되지 않은 상태라면 자동으로 선택
-    if (selectedTdmId !== newlyAddedTdmId) {
-      // prescriptions 배열에서 해당 ID의 TDM을 찾아서 선택
-      const newTdm = prescriptions.find(p => p.id === newlyAddedTdmId && p.patientId === selectedPatient.id);
-      if (newTdm) {
+
+    const newTdm = prescriptions.find(
+      (p) => p.id === newlyAddedTdmId && p.patientId === selectedPatient.id
+    );
+
+    if (newTdm) {
+      if (selectedTdmId !== newlyAddedTdmId) {
         setSelectedTdmId(newlyAddedTdmId);
       }
+      setSelectedPrescription(newTdm);
     }
-  }, [prescriptions, newlyAddedTdmId, selectedPatient, selectedPatient?.id, selectedTdmId]);
+  }, [prescriptions, newlyAddedTdmId, selectedPatient, selectedPatient?.id, selectedTdmId, setSelectedPrescription]);
 
   const patientPrescriptions = selectedPatient 
     ? prescriptions.filter(p => p.patientId === selectedPatient.id)
@@ -728,7 +730,16 @@ const PrescriptionStep = ({
                             </TableCell>
                             <TableCell className={`${isSelected ? 'font-bold text-[#333333]' : 'font-medium'}`}>{prescription.drugName}</TableCell>
                             <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{prescription.indication || "-"}</TableCell>
-                            <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{prescription.additionalInfo || "-"}</TableCell>
+                            <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>
+                              {prescription.additionalInfo
+                                ? prescription.drugName === "Vancomycin" &&
+                                  prescription.indication === "Neurosurgical patients/Korean"
+                                  ? (prescription.additionalInfo === "복용 중인 약물 없음"
+                                      ? "신독성 약물 복용 안 함"
+                                      : "신독성 약물 복용 중")
+                                  : prescription.additionalInfo
+                                : "-"}
+                            </TableCell>
                             <TableCell className={isSelected ? 'font-bold text-[#333333]' : ''}>{prescription.tdmTarget && prescription.tdmTargetValue ? `${prescription.tdmTarget}: ${prescription.tdmTargetValue}` : (prescription.tdmTargetValue || "-")}</TableCell>
                             <TableCell>
                               {/* 신규로 추가한 TDM만 삭제 가능 */}
@@ -944,7 +955,16 @@ const PrescriptionStep = ({
               환자 등록 및 선택
             </Button>
             {isCompleted && (
-              <Button onClick={onNext} className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90">
+              <Button
+                onClick={() => {
+                  if (!selectedTdmId) {
+                    alert("현재 진행 중인 TDM이 선택되어 있지 않습니다. TDM 내역을 선택한 후 다음 단계로 이동해주세요.");
+                    return;
+                  }
+                  onNext();
+                }}
+                className="flex items-center gap-2 w-[300px] bg-black dark:bg-primary text-white dark:text-primary-foreground font-bold text-lg py-3 px-6 justify-center hover:bg-gray-800 dark:hover:bg-primary/90"
+              >
                 Lab
                 <ArrowRight className="h-4 w-4" />
               </Button>

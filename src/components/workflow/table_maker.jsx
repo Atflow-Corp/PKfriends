@@ -1515,8 +1515,11 @@ function TablePage(props) {
               <div style={{ marginBottom: '8px' }}>
                 • 처방 내역을 입력하면 하단에 ‘상세 투약 기록’ 테이블이 자동으로 생성됩니다.
               </div>
-              <div>
+              <div style={{ marginBottom: '8px' }}>
                 • 처방 내역 변경이 있었다면 실제 처방에 일치하도록 새로운 처방 내역을 입력해야 합니다. (예: 1월 4일은 경구 투약, 1월 5일부터는 정맥 주입한 경우 처방 내역을 2개 등록)
+                </div>
+              <div>
+                • Vancomycin은 현재 정맥(IV) 투약 모델만 지원됩니다. 
                 </div>
             </div>
 
@@ -1568,15 +1571,6 @@ function TablePage(props) {
                       </option>
                     ))}
                   </select>
-                  {isVancomycin && (
-                    <div style={{ 
-                      marginTop: "4px", 
-                      fontSize: "12px", 
-                      color: isDarkMode ? "#fbbf24" : "#d97706" 
-                    }}>
-                      ⚠️ 반코마이신은 현재 정맥 투약 모델만 지원됩니다.
-                    </div>
-                  )}
                 </div>
 
             {props.tdmDrug?.drugName && (props.tdmDrug.drugName.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName.toLowerCase() === "cyclosporine") && (currentCondition.route === "경구" || currentCondition.route === "oral") && (
@@ -1796,73 +1790,105 @@ function TablePage(props) {
                   </div>
                 ) : (
                   conditions.map((condition, index) => (
-                  <div key={condition.id} style={{
-                    borderBottom: conditions.length > 1 && index !== conditions.length - 1 ? (isDarkMode ? "1px dashed #1f2937" : "1px dashed #94a3b8") : "none",
-                    paddingBottom: conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
-                    marginBottom: conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
-                    fontSize: "13px",
-                    color: isDarkMode ? "#9ca3af" : "#6c757d",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center"
-                  }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", width: "100%" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
-                      <span style={{ 
-                        fontWeight: "bold", 
-                        color: isDarkMode ? "#60a5fa" : "#007bff"
-                      }}>
-                        기록 {index + 1}:
-                      </span>
-                      <span
+                    <div
+                      key={condition.id}
+                      style={{
+                        borderBottom:
+                          conditions.length > 1 && index !== conditions.length - 1
+                            ? isDarkMode
+                              ? "1px dashed #1f2937"
+                              : "1px dashed #94a3b8"
+                            : "none",
+                        paddingBottom:
+                          conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
+                        marginBottom:
+                          conditions.length > 1 && index !== conditions.length - 1 ? "10px" : "0",
+                        fontSize: "13px",
+                        color: isDarkMode ? "#9ca3af" : "#6c757d"
+                      }}
+                    >
+                      <div
                         style={{
-                          fontSize: "16px",
-                          fontWeight: 700,
-                          color: isDarkMode ? "#f3f4f6" : "#000000"
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          flexWrap: "wrap",
+                          width: "100%"
                         }}
                       >
-                        {getConditionSummary(condition)}
-                      </span>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            flex: 1
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: "bold",
+                              color: isDarkMode ? "#60a5fa" : "#007bff"
+                            }}
+                          >
+                            기록 {index + 1}:
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "16px",
+                              fontWeight: 700,
+                              color: isDarkMode ? "#f3f4f6" : "#000000"
+                            }}
+                          >
+                            {getConditionSummary(condition)}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => startEditCondition(condition.id)}
+                            style={{
+                              padding: "4px 8px",
+                              backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                              color: "#fff",
+                              border: "1px solid",
+                              borderColor: isDarkMode ? "#1f2937" : "#000",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontSize: "11px"
+                            }}
+                            onMouseOver={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827";
+                            }}
+                            onMouseOut={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000";
+                            }}
+                          >
+                            수정
+                          </button>
+                          <button
+                            onClick={() => removeCondition(condition.id)}
+                            style={{
+                              padding: "4px 8px",
+                              backgroundColor: isDarkMode ? "#4b5563" : "#fff",
+                              color: isDarkMode ? "#fff" : "#111827",
+                              border: "1px solid",
+                              borderColor: isDarkMode ? "#6b7280" : "#000",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontSize: "11px"
+                            }}
+                            onMouseOver={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#6b7280" : "#f3f4f6";
+                            }}
+                            onMouseOut={e => {
+                              e.target.style.backgroundColor = isDarkMode ? "#4b5563" : "#fff";
+                            }}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        onClick={() => startEditCondition(condition.id)}
-                        style={{
-                          padding: "4px 8px",
-                          backgroundColor: isDarkMode ? "#0f172a" : "#000",
-                          color: "#fff",
-                          border: "1px solid",
-                          borderColor: isDarkMode ? "#1f2937" : "#000",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontSize: "11px"
-                        }}
-                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
-                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
-                      >
-                        수정
-                      </button>
-                      <button
-                        onClick={() => removeCondition(condition.id)}
-                        style={{
-                          padding: "4px 8px",
-                          backgroundColor: isDarkMode ? "#4b5563" : "#fff",
-                          color: isDarkMode ? "#fff" : "#111827",
-                          border: "1px solid",
-                          borderColor: isDarkMode ? "#6b7280" : "#000",
-                          borderRadius: "4px",
-                          cursor: "pointer",
-                          fontSize: "11px"
-                        }}
-                        onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#6b7280" : "#f3f4f6"; }}
-                        onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#4b5563" : "#fff"; }}
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  </div>
-                </div>
-            ))
+                  ))
                 )}
               </div>
             </div>
