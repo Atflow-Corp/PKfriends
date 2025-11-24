@@ -852,6 +852,45 @@ function TablePage(props) {
   // 조건 삭제
   const removeCondition = (conditionId) => {
     setConditions(prev => prev.filter(c => c.id !== conditionId));
+
+    let removedRowIds = [];
+    let hasRemainingRows = false;
+
+    setTableData(prev => {
+      if (!prev || prev.length === 0) return prev;
+
+      const filtered = prev.filter(row => {
+        const shouldRemove = !row.isTitle && row.conditionId === conditionId;
+        if (shouldRemove) {
+          removedRowIds.push(row.id);
+        }
+        return row.isTitle || row.conditionId !== conditionId;
+      });
+
+      const titleRow = filtered.find(row => row.isTitle);
+      const doseRows = filtered
+        .filter(row => !row.isTitle)
+        .map((row, index) => ({
+          ...row,
+          round: `${index + 1} 회차`
+        }));
+
+      hasRemainingRows = doseRows.length > 0;
+
+      return titleRow ? [titleRow, ...doseRows] : doseRows;
+    });
+
+    if (!hasRemainingRows) {
+      setIsTableGenerated(false);
+    }
+
+    if (removedRowIds.length > 0) {
+      setSelectedRows(prev => {
+        const newSet = new Set(prev);
+        removedRowIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
+    }
   };
 
   // 조건 수정 모드 시작
@@ -1417,10 +1456,14 @@ function TablePage(props) {
     }
   };
 
-  // 테이블 데이터만 삭제 (투약 서머리 데이터는 유지)
   const resetTableData = () => {
-    if (window.confirm("투약 기록 테이블을 전체 삭제하시겠습니까? 처방 내역은 유지됩니다.")) {
+    if (
+      window.confirm(
+        "투약 기록 테이블과 처방 내역 summary를 모두 삭제하시겠습니까?"
+      )
+    ) {
       setTableData([]);
+      setConditions([]);
       setIsTableGenerated(false);
       setSelectedRows(new Set());
       setCurrentCondition({
@@ -1435,6 +1478,15 @@ function TablePage(props) {
       });
       setIsEditMode(false);
       setEditingConditionId(null);
+
+      const storageKey = getStorageKey();
+      if (storageKey) {
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (error) {
+          console.error("Failed to remove conditions from localStorage:", error);
+        }
+      }
     }
   };
 
@@ -1759,7 +1811,7 @@ function TablePage(props) {
                     onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
                     onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
                   >
-                    추가
+                    확인
                   </button>
                 </div>
               </div>
