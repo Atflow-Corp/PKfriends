@@ -497,6 +497,7 @@ const PrescriptionStep = ({
       // 신규 추가된 TDM ID 설정 및 즉시 선택
       setNewlyAddedTdmId(newPrescription.id);
       setSelectedTdmId(newPrescription.id);
+      setSelectedPrescription(newPrescription);
       
       // 폼 초기화
       setFormData({
@@ -554,6 +555,7 @@ const PrescriptionStep = ({
     // 신규 추가된 TDM ID 설정 및 즉시 선택
     setNewlyAddedTdmId(newPrescription.id);
     setSelectedTdmId(newPrescription.id);
+    setSelectedPrescription(newPrescription);
     
     // 폼 초기화
     setFormData({
@@ -953,19 +955,31 @@ const PrescriptionStep = ({
 
       {/* 신독성 약물 목록 모달 */}
       <Dialog open={showDrugListModal} onOpenChange={setShowDrugListModal}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-3xl max-h-[80vh] overflow-y-auto"
+          onInteractOutside={() => setShowDrugListModal(false)}
+        >
           <DialogHeader>
-            <DialogTitle>신독성 약물 목록</DialogTitle>
+            <DialogTitle>
+              신독성 약물 목록 ({NEPHROTOXIC_DRUGS.filter(drug => drug !== "복용 중인 약물 없음" && drug !== "기타").length})
+            </DialogTitle>
             <DialogDescription>
-              아래 약물 목록을 확인하세요.
+              해당하는 약물이 있다면 "네"를 선택해주세요.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            {NEPHROTOXIC_DRUGS.filter(drug => drug !== "복용 중인 약물 없음" && drug !== "기타").map((drug, index) => (
-              <div key={index} className="p-2 border rounded">
-                <p className="text-sm">{drug}</p>
-              </div>
-            ))}
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            {NEPHROTOXIC_DRUGS
+              .filter(drug => drug !== "복용 중인 약물 없음" && drug !== "기타")
+              .map((drug, index) => (
+                <li key={index} className="text-base text-foreground">
+                  {drug}
+                </li>
+              ))}
+          </ul>
+          <div className="flex justify-end pt-4">
+            <Button type="button" onClick={() => setShowDrugListModal(false)}>
+              확인
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

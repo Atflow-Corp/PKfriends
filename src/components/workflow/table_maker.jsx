@@ -240,6 +240,8 @@ function TablePage(props) {
   useEffect(() => { onConditionsChangeRef.current = props.onConditionsChange; }, [props.onConditionsChange]);
   // 마지막 전송한 records 스냅샷 (불필요한 전파 방지)
   const lastRecordsJsonRef = useRef(null);
+  const lastGeneratedConditionsSignatureRef = useRef(null);
+  const lastAttemptedConditionsSignatureRef = useRef(null);
   useEffect(() => {
     const updateDark = () => setIsDarkMode(document.documentElement.classList.contains('dark'));
     updateDark();
@@ -675,6 +677,46 @@ function TablePage(props) {
     return `${condition.totalDoses}회 투약, ${condition.intervalHours}시간 간격, ${condition.firstDoseDate} ${condition.firstDoseTime}, ${condition.dosage} ${unitText}, ${condition.route}${condition.route === "정맥" && condition.injectionTime ? ` (${condition.injectionTime})` : ""}`;
   };
 
+  const isConditionComplete = (condition) => {
+    if (
+      !condition.route ||
+      !condition.dosage ||
+      !condition.unit ||
+      !condition.intervalHours ||
+      !condition.firstDoseDate ||
+      !condition.firstDoseTime ||
+      !condition.totalDoses
+    ) {
+      return false;
+    }
+
+    if (condition.route === "정맥" || condition.route === "IV") {
+      const injectionTime = (condition.injectionTime ?? "").toString().trim();
+      if (!injectionTime || injectionTime === "-" ) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const buildConditionsSignature = (conditionList) => {
+    const normalized = conditionList.map(condition => ({
+      id: String(condition.id ?? ""),
+      route: condition.route ?? "",
+      dosage: condition.dosage ?? "",
+      unit: condition.unit ?? "",
+      intervalHours: condition.intervalHours ?? "",
+      injectionTime: (condition.route === "정맥" || condition.route === "IV") ? (condition.injectionTime ?? "") : "",
+      firstDoseDate: condition.firstDoseDate ?? "",
+      firstDoseTime: condition.firstDoseTime ?? "",
+      totalDoses: condition.totalDoses ?? ""
+    }));
+
+    normalized.sort((a, b) => a.id.localeCompare(b.id));
+    return JSON.stringify(normalized);
+  };
+
   // 현재 조건 입력값 변경 처리
   const handleCurrentConditionChange = (field, value) => {
     setCurrentCondition(prev => {
@@ -834,7 +876,7 @@ function TablePage(props) {
     // 조건이 있는지 확인
     if (conditions.length === 0) {
       alert("최소 1개의 조건을 추가해주세요!");
-      return;
+      return false;
     }
 
     // 모든 조건이 유효한지 확인
@@ -842,7 +884,7 @@ function TablePage(props) {
       if (!condition.totalDoses || !condition.intervalHours || 
           !condition.firstDoseDate || !condition.firstDoseTime || !condition.dosage || !condition.route || !condition.unit) {
         alert("모든 필드를 입력해주세요!");
-        return;
+        return false;
       }
       
       // 정맥 투약 경로일 때 주입시간 필수 입력 검증
@@ -850,13 +892,13 @@ function TablePage(props) {
         const injectionTime = condition.injectionTime?.trim();
         if (!injectionTime || injectionTime === "" || injectionTime === "-") {
           alert("정맥 투약 경로를 선택한 조건이 있습니다. 주입시간(분)을 반드시 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
-          return;
+          return false;
         }
         // 숫자로 변환 가능한지 확인
         const injectionTimeNum = parseFloat(injectionTime);
         if (isNaN(injectionTimeNum) || injectionTimeNum < 0) {
           alert("주입시간은 0 이상의 숫자로 입력해주세요.\n\nbolus 투여 시에는 0을 입력해주세요.");
-          return;
+          return false;
         }
       }
     }
@@ -876,7 +918,7 @@ function TablePage(props) {
         // 겹치는지 검사: (A.start <= B.end && B.start <= A.end)
         if (periods[i].start <= periods[j].end && periods[j].start <= periods[i].end) {
           setErrorModal('중복된 투약일정이 있습니다. 투약일시를 다시 확인해주세요.');
-          return;
+          return false;
         }
       }
     }
@@ -925,7 +967,7 @@ function TablePage(props) {
     for (const dose of allDoses) {
       if (timeSet.has(dose.timeStr)) {
         alert("중복된 투약일정이 있습니다. 투약일시를 다시 확인해주세요.");
-        return;
+        return false;
       }
       timeSet.add(dose.timeStr);
     }
@@ -984,7 +1026,39 @@ function TablePage(props) {
       });
       props.onSaveRecords(records);
     }
+
+    return true;
   };
+
+  useEffect(() => {
+    if (conditions.length === 0) {
+      lastGeneratedConditionsSignatureRef.current = null;
+      lastAttemptedConditionsSignatureRef.current = null;
+      return;
+    }
+
+    const hasIncomplete = conditions.some(condition => !isConditionComplete(condition));
+    if (hasIncomplete) return;
+
+    const signature = buildConditionsSignature(conditions);
+    if (signature === lastGeneratedConditionsSignatureRef.current) {
+      return;
+    }
+
+    if (
+      signature === lastAttemptedConditionsSignatureRef.current &&
+      signature !== lastGeneratedConditionsSignatureRef.current
+    ) {
+      return;
+    }
+
+    lastAttemptedConditionsSignatureRef.current = signature;
+    const success = generateTable();
+    if (success) {
+      lastGeneratedConditionsSignatureRef.current = signature;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conditions]);
 
   // 테이블 데이터 수정 함수
   const handleTableEdit = (id, field, value) => {
@@ -1400,7 +1474,6 @@ function TablePage(props) {
       style={{
         padding: "0",
         fontFamily: "Arial, sans-serif",
-        background: isDarkMode ? "#181e29" : "#f4f6fa",
         color: isDarkMode ? "#e0e6f0" : "#333"
       }}
     >
@@ -1423,7 +1496,7 @@ function TablePage(props) {
               lineHeight: '1.5'
             }}>
               <div style={{ marginBottom: '8px' }}>
-                • 처방 내역을 입력한 후 [처방 내역 입력 완료] 버튼을 클릭하면 하단에 자동으로 ‘상세 투약 기록’ 테이블이 생성됩니다.
+                • 처방 내역을 입력하면 하단에 ‘상세 투약 기록’ 테이블이 자동으로 생성됩니다.
               </div>
               <div>
                 • 처방 내역 변경이 있었다면 실제 처방에 일치하도록 새로운 처방 내역을 입력해야 합니다. (예: 1월 4일은 경구 투약, 1월 5일부터는 정맥 주입한 경우 처방 내역을 2개 등록)
@@ -1772,44 +1845,6 @@ function TablePage(props) {
               </div>
             </div>
 
-            {/* 테이블 생성 버튼 */}
-            <button
-              onClick={generateTable}
-              disabled={conditions.length === 0}
-              style={{
-                width: "100%",
-                padding: "10px 0",
-                backgroundColor: isDarkMode ? (conditions.length === 0 ? "#334155" : "#1B44C8") : "#fff",
-                color: isDarkMode ? "#fff" : "#1B44C8",
-                border: isDarkMode ? "2px solid #1B44C8" : "2px solid #1B44C8",
-                borderRadius: "12px",
-                fontSize: 18,
-                fontWeight: 700,
-                cursor: conditions.length === 0 ? "not-allowed" : "pointer",
-                marginTop: "20px",
-                transition: "background 0.2s, color 0.2s"
-              }}
-              onMouseOver={e => {
-                if (conditions.length > 0) {
-                  if (isDarkMode) {
-                    e.target.style.backgroundColor = "#274fcf";
-                  } else {
-                    e.target.style.backgroundColor = "#eaf0fd";
-                  }
-                }
-              }}
-              onMouseOut={e => {
-                if (conditions.length > 0) {
-                  if (isDarkMode) {
-                    e.target.style.backgroundColor = "#1B44C8";
-                  } else {
-                    e.target.style.backgroundColor = "#fff";
-                  }
-                }
-              }}
-            >
-              처방 내역 입력 완료
-            </button>
           </div>
 
           {/*2 생성된 테이블 */}
@@ -2059,7 +2094,7 @@ function TablePage(props) {
                           color: isDarkMode ? "#6b7280" : "#6b7280",
                           fontStyle: "italic"
                         }}>
-                          처방 내역을 입력하고 "처방 내역 입력 완료" 버튼을 클릭하여 테이블을 생성하세요.
+                          처방 내역을 입력하면 ‘상세 투약 기록’ 테이블이 자동으로 생성됩니다.
                         </td>
                       </tr>
                     )}

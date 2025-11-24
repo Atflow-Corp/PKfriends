@@ -29,6 +29,7 @@ const SimulationStep = ({
 }: SimulationStepProps) => {
   const [tdmResult, setTdmResult] = useState<unknown | null>(null);
   const [showReportAlert, setShowReportAlert] = useState(false);
+  const [forceExpandPatientDetails, setForceExpandPatientDetails] = useState(false);
   
   useEffect(() => {
     if (!selectedPatient) { setTdmResult(null); return; }
@@ -40,8 +41,12 @@ const SimulationStep = ({
 
   // PDF 저장 함수
   const handleDownloadPDF = async () => {
+    setForceExpandPatientDetails(true);
+    // allow UI to re-render with expanded patient card before capture
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const element = document.getElementById('pk-simulation-content');
     if (!element) {
+      setForceExpandPatientDetails(false);
       alert('보고서 내용을 찾을 수 없습니다.');
       return;
     }
@@ -236,6 +241,8 @@ const SimulationStep = ({
       if (wasDarkMode) {
         document.documentElement.classList.add('dark');
       }
+    } finally {
+      setForceExpandPatientDetails(false);
     }
   };
 
@@ -312,6 +319,7 @@ const SimulationStep = ({
               selectedPrescription={selectedPrescription}
               drugAdministrations={patientDrugAdministrations}
               onDownloadPDF={handleDownloadPDF}
+              forceExpandPatientDetails={forceExpandPatientDetails}
             />
           </div>
 

@@ -61,6 +61,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     medicalHistory: "",
     allergies: ""
   });
+  const today = dayjs().format("YYYY-MM-DD");
 
   const [isEditing, setIsEditing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -445,13 +446,10 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
   // 생년월일 변경 시 나이 자동 계산
   const handleBirthChange = (value: string) => {
     setFormData((prev) => {
-      let age = "";
-      if (value) {
-        const today = dayjs();
-        const birth = dayjs(value);
-        age = today.diff(birth, 'year').toString();
-      }
-      return { ...prev, birth: value, age };
+      const birth = value;
+      const birthDayjs = birth ? dayjs(birth) : null;
+      const age = birthDayjs?.isValid() ? dayjs().diff(birthDayjs, "year").toString() : "";
+      return { ...prev, birth, age };
     });
   };
 
@@ -560,6 +558,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                       id="birth"
                       type="date"
                       value={formData.birth}
+                      max={today}
                       onChange={(e) => handleBirthChange(e.target.value)}
                       required
                     />
