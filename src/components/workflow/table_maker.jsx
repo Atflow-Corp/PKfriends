@@ -338,28 +338,32 @@ function TablePage(props) {
       return sum + totalDoses;
     }, 0);
     
-    // 이전 값과 동일하면 스킵 (무한 루프 방지)
-    if (lastSyncCheckRef.current.tableRowCount === tableRowCount && 
-        lastSyncCheckRef.current.conditionsTotalDoses === conditionsTotalDoses) {
+    const countsAreSame = 
+      lastSyncCheckRef.current.tableRowCount === tableRowCount &&
+      lastSyncCheckRef.current.conditionsTotalDoses === conditionsTotalDoses;
+    
+    if (countsAreSame) {
+      if (needsUpdate && tableRowCount === conditionsTotalDoses) {
+        setNeedsUpdate(false);
+      }
       return;
     }
     
-    // row 개수가 다르면 업데이트 필요 (즉시 업데이트하지 않고 플래그만 설정)
+    lastSyncCheckRef.current = {
+      tableRowCount,
+      conditionsTotalDoses
+    };
+    
     if (tableRowCount !== conditionsTotalDoses && tableRowCount > 0) {
       setNeedsUpdate(true);
       updateInfoRef.current = {
-        tableRowCount: tableRowCount,
-        conditionsTotalDoses: conditionsTotalDoses
+        tableRowCount,
+        conditionsTotalDoses
       };
     } else {
-      // 동일하면 이전 값 업데이트 및 업데이트 필요 플래그 해제
-      lastSyncCheckRef.current = {
-        tableRowCount: tableRowCount,
-        conditionsTotalDoses: conditionsTotalDoses
-      };
       setNeedsUpdate(false);
     }
-  }, [tableData, conditions, isTableGenerated]);
+  }, [tableData, conditions, isTableGenerated, needsUpdate]);
 
   // 처방 내역 Summary 업데이트 함수 (외부에서 호출)
   const performUpdate = useCallback(() => {
@@ -677,7 +681,7 @@ function TablePage(props) {
     const routeText = condition.route || "-";
     const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
     const injectionText = condition.route === "정맥" && condition.injectionTime
-      ? ` (${condition.injectionTime})`
+      ? ` (${condition.injectionTime}분)`
       : "";
     const intervalText = condition.intervalHours ? `${condition.intervalHours}시간 간격` : "간격 정보 없음";
     const dosesText = condition.totalDoses ? `${condition.totalDoses}회` : "횟수 정보 없음";
@@ -1569,7 +1573,7 @@ function TablePage(props) {
               fontWeight: 700,
               letterSpacing: "-0.02em"
             }}>
-              1단계: 처방 내역을 입력하세요
+              STEP 1: 처방 내역을 입력하세요
             </h1>
             <div style={{ 
               marginBottom: 20, 
@@ -1970,15 +1974,15 @@ function TablePage(props) {
             borderRadius: "8px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h2 style={{ 
-              marginBottom: 10, 
-              color: isDarkMode ? '#e0e6f0' : '#111827',
-              fontSize: "20px",
+            <h1 style={{ 
+              marginBottom: 20, 
+              color: isDarkMode ? "#e0e6f0" : "#111827",
+              fontSize: "24px",
               fontWeight: 700,
-              letterSpacing: "-0.01em"
+              letterSpacing: "-0.02em"
             }}>
-              2단계: 투약 기록을 확인하세요
-            </h2>
+              STEP 2: 투약 기록을 확인하세요
+            </h1>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 
