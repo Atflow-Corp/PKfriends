@@ -1573,7 +1573,7 @@ function TablePage(props) {
               fontWeight: 700,
               letterSpacing: "-0.02em"
             }}>
-              1단계: 처방 내역을 입력하세요
+              STEP 1: 처방 내역을 입력하세요
             </h1>
             <div style={{ 
               marginBottom: 20, 
@@ -1974,15 +1974,15 @@ function TablePage(props) {
             borderRadius: "8px",
             border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6"
           }}>
-            <h2 style={{ 
-              marginBottom: 10, 
-              color: isDarkMode ? '#e0e6f0' : '#111827',
-              fontSize: "20px",
+            <h1 style={{ 
+              marginBottom: 20, 
+              color: isDarkMode ? "#e0e6f0" : "#111827",
+              fontSize: "24px",
               fontWeight: 700,
-              letterSpacing: "-0.01em"
+              letterSpacing: "-0.02em"
             }}>
-              2단계: 투약 기록을 확인하세요
-            </h2>
+              STEP 2: 투약 기록을 확인하세요
+            </h1>
             <div style={{ 
               marginBottom: 20, 
               color: isDarkMode ? '#9ca3af' : '#6b7280', 
