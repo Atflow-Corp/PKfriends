@@ -78,7 +78,18 @@ const TDMPatientDetails = ({
       return "날짜와 시간을 입력해주세요";
     }
     const unitText = condition.unit ? condition.unit : "mg";
-    return `${condition.totalDoses}회 투약, ${condition.intervalHours}시간 간격, ${condition.firstDoseDate} ${condition.firstDoseTime}, ${condition.dosage} ${unitText}, ${condition.route}${condition.route === "정맥" && condition.injectionTime ? ` (${condition.injectionTime})` : ""}`;
+    const routeText = condition.route || "경로 미입력";
+    const infusionText =
+      condition.route === "정맥" && condition.injectionTime
+        ? ` (${condition.injectionTime}분)`
+        : "";
+    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
+    const intervalText = condition.intervalHours
+      ? `${condition.intervalHours}시간 간격`
+      : "간격 미입력";
+    const totalDoseText = condition.totalDoses ? `${condition.totalDoses}회 투약` : "투약 횟수 미입력";
+
+    return `${routeText}, ${dosageText}${infusionText}, ${intervalText}, ${condition.firstDoseDate} ${condition.firstDoseTime}부터 ${totalDoseText}`;
   };
 
   // localStorage에서 저장된 신기능 데이터 가져오기
@@ -300,56 +311,8 @@ const TDMPatientDetails = ({
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-5 gap-4">
-                <div className="space-y-1">
-                  <div className="text-sm text-muted-foreground">투약 용량</div>
-                  <div className="font-medium">
-                    {latestAdministration ? 
-                      `${latestAdministration.dose}${latestAdministration.unit}` : 
-                      (selectedPrescription ? 
-                        `${selectedPrescription.dosage}${selectedPrescription.unit}` : 
-                        'N/A')
-                    }
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-sm text-muted-foreground">투약 간격</div>
-                  <div className="font-medium">
-                    {latestAdministration?.intervalHours ? 
-                      `${latestAdministration.intervalHours}시간` : 
-                      (selectedPrescription?.frequency ? 
-                        `${selectedPrescription.frequency}` : 
-                        'N/A')
-                    }
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-sm text-muted-foreground">투약 경로</div>
-                  <div className="font-medium">
-                    {latestAdministration ? 
-                      `${latestAdministration.route}${latestAdministration.infusionTime ? ` (${latestAdministration.infusionTime}분)` : ''}` : 
-                      'N/A'
-                    }
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-sm text-muted-foreground">투약횟수</div>
-                  <div className="font-medium">
-                    {patientDrugAdministrations.length > 0 ? 
-                      `${patientDrugAdministrations.length}회` : 
-                      'N/A'
-                    }
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-sm text-muted-foreground">투약 시작 일시</div>
-                  <div className="font-medium">
-                    {firstAdministration ? 
-                      `${firstAdministration.date} ${firstAdministration.time}` : 
-                      'N/A'
-                    }
-                  </div>
-                </div>
+              <div className="text-sm text-muted-foreground">
+                처방내역을 찾을 수 없습니다. 투약 기록 단계로 돌아가 다시 작성해주세요.
               </div>
             )}
           </div>

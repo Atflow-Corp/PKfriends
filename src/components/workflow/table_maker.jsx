@@ -681,7 +681,7 @@ function TablePage(props) {
     const routeText = condition.route || "-";
     const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
     const injectionText = condition.route === "정맥" && condition.injectionTime
-      ? ` (${condition.injectionTime})`
+      ? ` (${condition.injectionTime}분)`
       : "";
     const intervalText = condition.intervalHours ? `${condition.intervalHours}시간 간격` : "간격 정보 없음";
     const dosesText = condition.totalDoses ? `${condition.totalDoses}회` : "횟수 정보 없음";
