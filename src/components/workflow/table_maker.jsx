@@ -338,28 +338,32 @@ function TablePage(props) {
       return sum + totalDoses;
     }, 0);
     
-    // 이전 값과 동일하면 스킵 (무한 루프 방지)
-    if (lastSyncCheckRef.current.tableRowCount === tableRowCount && 
-        lastSyncCheckRef.current.conditionsTotalDoses === conditionsTotalDoses) {
+    const countsAreSame = 
+      lastSyncCheckRef.current.tableRowCount === tableRowCount &&
+      lastSyncCheckRef.current.conditionsTotalDoses === conditionsTotalDoses;
+    
+    if (countsAreSame) {
+      if (needsUpdate && tableRowCount === conditionsTotalDoses) {
+        setNeedsUpdate(false);
+      }
       return;
     }
     
-    // row 개수가 다르면 업데이트 필요 (즉시 업데이트하지 않고 플래그만 설정)
+    lastSyncCheckRef.current = {
+      tableRowCount,
+      conditionsTotalDoses
+    };
+    
     if (tableRowCount !== conditionsTotalDoses && tableRowCount > 0) {
       setNeedsUpdate(true);
       updateInfoRef.current = {
-        tableRowCount: tableRowCount,
-        conditionsTotalDoses: conditionsTotalDoses
+        tableRowCount,
+        conditionsTotalDoses
       };
     } else {
-      // 동일하면 이전 값 업데이트 및 업데이트 필요 플래그 해제
-      lastSyncCheckRef.current = {
-        tableRowCount: tableRowCount,
-        conditionsTotalDoses: conditionsTotalDoses
-      };
       setNeedsUpdate(false);
     }
-  }, [tableData, conditions, isTableGenerated]);
+  }, [tableData, conditions, isTableGenerated, needsUpdate]);
 
   // 처방 내역 Summary 업데이트 함수 (외부에서 호출)
   const performUpdate = useCallback(() => {
