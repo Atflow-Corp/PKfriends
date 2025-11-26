@@ -60,8 +60,11 @@ const PatientStep = ({
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">이름</p>
-                    <p className="text-sm text-black dark:text-white">{selectedPatient.name}</p>
+                    <p className="text-sm font-medium text-muted-foreground">이름 / 환자번호</p>
+                    <p className="text-sm text-black dark:text-white">
+                      {selectedPatient.name}
+                      {selectedPatient.id ? ` (${selectedPatient.id})` : ""}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">생년월일</p>
@@ -73,7 +76,13 @@ const PatientStep = ({
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">성별</p>
-                    <p className="text-sm text-black dark:text-white">{selectedPatient.gender === "male" ? "남성" : selectedPatient.gender === "female" ? "여성" : "기타"}</p>
+                    <p className="text-sm text-black dark:text-white">
+                      {selectedPatient.gender === "male"
+                        ? "남성"
+                        : selectedPatient.gender === "female"
+                          ? "여성"
+                          : "-"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">체중</p>

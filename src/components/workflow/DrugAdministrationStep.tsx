@@ -164,7 +164,12 @@ const DrugAdministrationStep = ({
                   <span className="font-medium">나이:</span> {selectedPatient.age}
                 </div>
                 <div className="text-sm">
-                  <span className="font-medium">성별:</span> {selectedPatient.gender}
+                  <span className="font-medium">성별:</span>{" "}
+                  {selectedPatient.gender === "male"
+                    ? "남성"
+                    : selectedPatient.gender === "female"
+                      ? "여성"
+                      : "-"}
                 </div>
                 <div className="text-sm">
                   <span className="font-medium">몸무게:</span> {selectedPatient.weight}kg
