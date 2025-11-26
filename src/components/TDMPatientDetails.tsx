@@ -181,7 +181,15 @@ const TDMPatientDetails = ({
             </div>
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground">성별</div>
-              <div className="font-medium">{currentPatient?.gender || 'N/A'}</div>
+              <div className="font-medium">
+                {currentPatient?.gender
+                  ? currentPatient.gender === "male"
+                    ? "남성"
+                    : currentPatient.gender === "female"
+                      ? "여성"
+                      : "-"
+                  : "N/A"}
+              </div>
             </div>
             <div className="space-y-1">
               <div className="text-sm text-muted-foreground">체중</div>

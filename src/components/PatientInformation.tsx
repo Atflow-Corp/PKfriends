@@ -548,7 +548,6 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                       <SelectContent>
                         <SelectItem value="male">남성</SelectItem>
                         <SelectItem value="female">여성</SelectItem>
-                        <SelectItem value="other">기타</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -717,7 +716,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
             <div>
               <CardTitle>등록된 환자 ({patients.length})</CardTitle>
               <CardDescription>
-                환자를 클릭하면 상세 정보 확인 및 수정이 가능합니다
+                상세 정보 확인 및 수정이 가능합니다
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -740,8 +739,8 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12"></TableHead>
-                    <TableHead>이름</TableHead>
-                    <TableHead>나이</TableHead>
+                    <TableHead>이름 / 환자번호</TableHead>
+                    <TableHead>나이 / 생년월일</TableHead>
                     <TableHead>성별</TableHead>
                     <TableHead>체중</TableHead>
                     <TableHead>신장</TableHead>
@@ -767,9 +766,17 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                           <CheckCircle className="h-5 w-5 text-sky-500 dark:text-sky-400" />
                         )}
                       </TableCell>
-                      <TableCell className={`${isSelected ? 'font-bold text-[#333333] dark:text-white' : 'font-medium'}`}>{patient.name}</TableCell>
-                      <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.age}</TableCell>
-                      <TableCell className={`capitalize ${isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}`}>{patient.gender}</TableCell>
+                      <TableCell className={`${isSelected ? 'font-bold text-[#333333] dark:text-white' : 'font-medium'}`}>
+                        {patient.name}
+                        {patient.id ? ` (${patient.id})` : ""}
+                      </TableCell>
+                      <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>
+                        {typeof patient.age === "number" ? `${patient.age}세` : "-"}
+                        {patient.birthDate ? ` (${dayjs(patient.birthDate).format("YYYY-MM-DD")})` : ""}
+                      </TableCell>
+                      <TableCell className={`capitalize ${isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}`}>
+                        {patient.gender === "male" ? "남성" : patient.gender === "female" ? "여성" : "-"}
+                      </TableCell>
                       <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.weight} kg</TableCell>
                       <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.height} cm</TableCell>
                       <TableCell className={isSelected ? 'font-bold text-[#333333] dark:text-white' : ''}>{patient.createdAt.toLocaleDateString()}</TableCell>

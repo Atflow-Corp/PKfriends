@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { savePrescriptionInfo } from '../../lib/tdm';
+import DateTimePicker from 'react-datetime-picker';
+import 'react-datetime-picker/dist/DateTimePicker.css';
+import 'react-calendar/dist/Calendar.css';
+import 'react-clock/dist/Clock.css';
 
 // 주입시간 입력 컴포넌트 (포커스 유지를 위한 독립적인 컴포넌트)
 const InjectionTimeInput = ({ row, onUpdate, isDarkMode, readOnly = false }) => {
@@ -212,6 +216,8 @@ function TablePage(props) {
   }, [getStorageKey]);
 
   // 초기 conditions: localStorage에서 복원하거나 props.initialConditions 사용
+  const firstDosePickerRef = useRef(null);
+
   const [conditions, setConditions] = useState(() => {
     const restored = restoreConditionsFromStorage();
     return restored || props.initialConditions || [];
@@ -732,6 +738,14 @@ function TablePage(props) {
   };
 
   // 현재 조건 입력값 변경 처리
+  const focusDateTimePickerInput = (ref) => {
+    if (!ref?.current) return;
+    const input = ref.current.querySelector("input");
+    if (input) {
+      input.focus();
+    }
+  };
+
   const handleCurrentConditionChange = (field, value) => {
     setCurrentCondition(prev => {
       const newCondition = { ...prev, [field]: value };
@@ -772,18 +786,76 @@ function TablePage(props) {
       return;
     }
 
-    const [datePart, timePartWithSeconds = ""] = value.split("T");
-    const timePart = timePartWithSeconds.slice(0, 5);
+    // DateTimePicker는 Date 객체를 반환
+    const dateObj = value instanceof Date ? value : new Date(value);
+    if (isNaN(dateObj.getTime())) {
+      return;
+    }
+
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+
+    const datePart = `${year}-${month}-${day}`;
+    const timePart = `${hours}:${minutes}`;
 
     setCurrentCondition(prev => ({
       ...prev,
-      firstDoseDate: datePart || "",
-      firstDoseTime: timePart || ""
+      firstDoseDate: datePart,
+      firstDoseTime: timePart
     }));
   };
 
   // 조건 추가 또는 수정
   const addOrUpdateCondition = () => {
+    // 1. 투약 경로 검증
+    if (!currentCondition.route || currentCondition.route.trim() === "") {
+      alert("투약 경로를 선택해주세요.");
+      return;
+    }
+
+    // 2. 투약 용량 검증
+    if (!currentCondition.dosage || currentCondition.dosage.trim() === "") {
+      alert("투약 용량을 입력해주세요.");
+      return;
+    }
+    const dosageNum = parseFloat(currentCondition.dosage);
+    if (isNaN(dosageNum) || dosageNum <= 0) {
+      alert("투약 용량은 0보다 큰 숫자로 입력해주세요.");
+      return;
+    }
+
+    // 3. 단위 검증
+    if (!currentCondition.unit || currentCondition.unit.trim() === "") {
+      alert("단위를 선택해주세요.");
+      return;
+    }
+
+    // 4. 투약 간격 검증
+    if (!currentCondition.intervalHours || currentCondition.intervalHours.trim() === "") {
+      alert("투약 간격(시간)을 입력해주세요.");
+      return;
+    }
+    const intervalNum = parseFloat(currentCondition.intervalHours);
+    if (isNaN(intervalNum) || intervalNum <= 0) {
+      alert("투약 간격은 0보다 큰 숫자로 입력해주세요.");
+      return;
+    }
+
+    // 5. 총 투약 횟수 검증
+    if (!currentCondition.totalDoses || currentCondition.totalDoses.trim() === "") {
+      alert("총 투약 횟수를 입력해주세요.");
+      return;
+    }
+    const totalDosesNum = parseInt(currentCondition.totalDoses);
+    if (isNaN(totalDosesNum) || totalDosesNum <= 0) {
+      alert("총 투약 횟수는 1 이상의 정수로 입력해주세요.");
+      return;
+    }
+
+    // 6. 최초 투약 날짜/시간 검증
     const datePart = (currentCondition.firstDoseDate || "").trim();
     const timePart = (currentCondition.firstDoseTime || "").trim();
 
@@ -810,13 +882,8 @@ function TablePage(props) {
       firstDoseDate: datePart,
       firstDoseTime: timePart
     };
-    
-    if (!normalizedCondition.unit) {
-      alert("단위를 선택해주세요!");
-      return;
-    }
 
-    // 정맥 투약 경로일 때 주입시간 필수 입력 검증
+    // 7. 정맥 투약 경로일 때 주입시간 필수 입력 검증
     if (normalizedCondition.route === "정맥" || normalizedCondition.route === "IV") {
       const injectionTime = normalizedCondition.injectionTime?.trim();
       if (!injectionTime || injectionTime === "" || injectionTime === "-") {
@@ -1791,27 +1858,98 @@ function TablePage(props) {
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
-                  <input
-                    type="datetime-local"
-                    value={
-                      currentCondition.firstDoseDate && currentCondition.firstDoseTime
-                        ? `${currentCondition.firstDoseDate}T${currentCondition.firstDoseTime}`
-                        : ""
-                    }
-                    onChange={e => handleFirstDoseDateTimeChange(e.target.value)}
-                    style={{
+                  <div 
+                    ref={firstDosePickerRef}
+                    style={{ 
                       width: "100%",
-                      padding: "8px 12px",
-                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      backgroundColor: isDarkMode ? "#1e293b" : "#fff",
-                      height: "40px",
-                      boxSizing: "border-box",
-                      color: isDarkMode ? "#e0e6f0" : "#495057"
+                      height: "40px"
                     }}
-                    max={`${todayStr}T23:59`}
-                  />
+                    onClick={() => focusDateTimePickerInput(firstDosePickerRef)}
+                  >
+                    <DateTimePicker
+                      onChange={handleFirstDoseDateTimeChange}
+                      value={
+                        currentCondition.firstDoseDate && currentCondition.firstDoseTime
+                          ? new Date(`${currentCondition.firstDoseDate}T${currentCondition.firstDoseTime}`)
+                          : null
+                      }
+                      format="y-MM-dd HH:mm"
+                      maxDate={new Date()}
+                      disableClock={false}
+                      clearIcon={null}
+                      calendarIcon={null}
+                      className={isDarkMode ? "dark-datetime-picker" : ""}
+                      style={{
+                        width: "100%",
+                        height: "40px"
+                      }}
+                      yearPlaceholder="연도"
+                      monthPlaceholder="월"
+                      dayPlaceholder="일"
+                      hourPlaceholder="시"
+                      minutePlaceholder="분"
+                    />
+                  </div>
+                  <style>{`
+                    .react-datetime-picker {
+                      width: 100%;
+                      height: 40px;
+                    }
+                    .react-datetime-picker__wrapper {
+                      width: 100%;
+                      height: 40px;
+                      padding: 8px 12px;
+                      border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                      border-radius: 6px;
+                      background-color: ${isDarkMode ? "#1e293b" : "#fff"};
+                      color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      font-size: 14px;
+                    }
+                    .react-datetime-picker__inputGroup {
+                      color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                    .react-datetime-picker__inputGroup__input {
+                      color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                    .react-datetime-picker__inputGroup__input::placeholder {
+                      color: ${isDarkMode ? "#6b7280" : "#9ca3af"};
+                      opacity: 0.7;
+                    }
+                    .react-datetime-picker__button {
+                      color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                    .react-datetime-picker__button:hover {
+                      background-color: ${isDarkMode ? "#334155" : "#f8f9fa"};
+                    }
+                    .react-calendar {
+                      background-color: ${isDarkMode ? "#1e293b" : "#fff"};
+                      color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                    }
+                    .react-calendar__tile {
+                      color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                    .react-calendar__tile:enabled:hover {
+                      background-color: ${isDarkMode ? "#334155" : "#f0f0f0"};
+                    }
+                    .react-calendar__tile--active {
+                      background-color: ${isDarkMode ? "#0f172a" : "#000"};
+                      color: #fff;
+                    }
+                    .react-clock {
+                      background-color: ${isDarkMode ? "#1e293b" : "#fff"};
+                      border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                    }
+                    .react-clock__face {
+                      stroke: ${isDarkMode ? "#334155" : "#ced4da"};
+                    }
+                    .react-clock__hand {
+                      stroke: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                    .react-clock__mark {
+                      stroke: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                  `}</style>
                 </div>
                 <div style={{ flex: "0 0 60px", minWidth: "60px", marginLeft: "auto", display: "flex", justifyContent: "flex-end" }}>
                   <button

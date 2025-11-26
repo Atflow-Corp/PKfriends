@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Patient, BloodTest, Prescription } from "@/pages/Index";
 import { FlaskConical, ArrowRight, ArrowLeft, CheckCircle, Plus, X } from "lucide-react";
 import dayjs from "dayjs";
+import DateTimePicker from 'react-datetime-picker';
+import 'react-datetime-picker/dist/DateTimePicker.css';
+import 'react-calendar/dist/Calendar.css';
+import 'react-clock/dist/Clock.css';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,6 +71,15 @@ const BloodTestStep = ({
   isCompleted,
   prescriptions
 }: BloodTestStepProps) => {
+  const bloodDateTimeRef = useRef<HTMLDivElement | null>(null);
+  const focusPickerInput = (ref: React.RefObject<HTMLDivElement>) => {
+    if (!ref?.current) return;
+    const input = ref.current.querySelector("input");
+    if (input) {
+      input.focus();
+    }
+  };
+
   // 신기능 입력 상태
   const [renalForm, setRenalForm] = useState<Omit<RenalInfo, 'id' | 'isSelected'>>({
     creatinine: "",
@@ -79,6 +92,16 @@ const BloodTestStep = ({
   });
   const [renalInfoList, setRenalInfoList] = useState<RenalInfo[]>([]);
   const [renalHydrated, setRenalHydrated] = useState(false);
+  
+  // 다크모드 감지
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  useEffect(() => {
+    const updateDark = () => setIsDarkMode(document.documentElement.classList.contains('dark'));
+    updateDark();
+    const observer = new MutationObserver(updateDark);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   // 신기능 계산 함수들
   const calculateRenalFunction = (creatinine: number, formula: string, patient: Patient, isBlack: boolean = false): string => {
@@ -268,19 +291,31 @@ const BloodTestStep = ({
     }
   };
 
-  const handleBloodTestDateTimeChange = (value: string) => {
+  const handleBloodTestDateTimeChange = (value: Date | null) => {
     if (!value) {
       setFormData(prev => ({ ...prev, testDate: "", testTime: "" }));
       return;
     }
 
-    const [datePart, timePartWithSeconds = ""] = value.split("T");
-    const timePart = timePartWithSeconds.slice(0, 5);
+    // DateTimePicker는 Date 객체를 반환
+    const dateObj = value instanceof Date ? value : new Date(value);
+    if (isNaN(dateObj.getTime())) {
+      return;
+    }
+
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+
+    const datePart = `${year}-${month}-${day}`;
+    const timePart = `${hours}:${minutes}`;
 
     setFormData(prev => ({
       ...prev,
-      testDate: datePart || "",
-      testTime: timePart || ""
+      testDate: datePart,
+      testTime: timePart
     }));
   };
 
@@ -472,7 +507,12 @@ const BloodTestStep = ({
                   <span className="font-medium">나이:</span> {selectedPatient.age}
                 </div>
                 <div className="text-sm">
-                  <span className="font-medium">성별:</span> {selectedPatient.gender}
+                  <span className="font-medium">성별:</span>{" "}
+                  {selectedPatient.gender === "male"
+                    ? "남성"
+                    : selectedPatient.gender === "female"
+                      ? "여성"
+                      : "-"}
                 </div>
                 <div className="text-sm">
                   <span className="font-medium">몸무게:</span> {selectedPatient.weight}kg
@@ -626,20 +666,94 @@ const BloodTestStep = ({
             <CardContent>
               <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4 items-end">
                 <div>
-                  <Label htmlFor="drugDateTime">날짜/시간 </Label>
-                  <Input
-                    id="drugDateTime"
-                    type="datetime-local"
-                    step="60"
-                    value={
-                      formData.testDate && formData.testTime
-                        ? `${formData.testDate}T${formData.testTime}`
-                        : ""
-                    }
-                    onChange={e => handleBloodTestDateTimeChange(e.target.value)}
+                  <Label htmlFor="drugDateTime">채혈한 날짜/시간 </Label>
+                  <div 
+                    style={{ width: "100%" }}
                     onFocus={handleDateTimeFocus}
-                    max={`${today}T23:59`}
-                  />
+                    ref={bloodDateTimeRef}
+                    onClick={() => {
+                      focusPickerInput(bloodDateTimeRef);
+                    }}
+                  >
+                    <DateTimePicker
+                      onChange={handleBloodTestDateTimeChange}
+                      value={
+                        formData.testDate && formData.testTime
+                          ? new Date(`${formData.testDate}T${formData.testTime}`)
+                          : null
+                      }
+                      format="y-MM-dd HH:mm"
+                      maxDate={new Date()}
+                      disableClock={false}
+                      clearIcon={null}
+                      calendarIcon={null}
+                      yearPlaceholder="연도"
+                      monthPlaceholder="월"
+                      dayPlaceholder="일"
+                      hourPlaceholder="시"
+                      minutePlaceholder="분"
+                    />
+                    <style>{`
+                      .react-datetime-picker {
+                        width: 100%;
+                        height: 40px;
+                      }
+                      .react-datetime-picker__wrapper {
+                        width: 100%;
+                        height: 40px;
+                        padding: 8px 12px;
+                        border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                        border-radius: 6px;
+                        background-color: ${isDarkMode ? "#1e293b" : "#fff"};
+                        color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                        font-size: 14px;
+                      }
+                      .react-datetime-picker__inputGroup {
+                        color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      }
+                      .react-datetime-picker__inputGroup__input {
+                        color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      }
+                      .react-datetime-picker__inputGroup__input::placeholder {
+                        color: ${isDarkMode ? "#6b7280" : "#9ca3af"};
+                        opacity: 0.7;
+                      }
+                      .react-datetime-picker__button {
+                        color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      }
+                      .react-datetime-picker__button:hover {
+                        background-color: ${isDarkMode ? "#334155" : "#f8f9fa"};
+                      }
+                      .react-calendar {
+                        background-color: ${isDarkMode ? "#1e293b" : "#fff"};
+                        color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                        border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                      }
+                      .react-calendar__tile {
+                        color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      }
+                      .react-calendar__tile:enabled:hover {
+                        background-color: ${isDarkMode ? "#334155" : "#f0f0f0"};
+                      }
+                      .react-calendar__tile--active {
+                        background-color: ${isDarkMode ? "#0f172a" : "#000"};
+                        color: #fff;
+                      }
+                      .react-clock {
+                        background-color: ${isDarkMode ? "#1e293b" : "#fff"};
+                        border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                      }
+                      .react-clock__face {
+                        stroke: ${isDarkMode ? "#334155" : "#ced4da"};
+                      }
+                      .react-clock__hand {
+                        stroke: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      }
+                      .react-clock__mark {
+                        stroke: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                      }
+                    `}</style>
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="concentration">농도</Label>
@@ -687,8 +801,8 @@ const BloodTestStep = ({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>날짜</TableHead>
-                        <TableHead>시간</TableHead>
+                        <TableHead>채혈 날짜</TableHead>
+                        <TableHead>채혈 시간</TableHead>
                         <TableHead>농도</TableHead>
                         <TableHead className="w-16">삭제</TableHead>
                       </TableRow>
@@ -890,8 +1004,8 @@ const BloodTestStep = ({
               <div className="border border-gray-200 rounded-lg p-4 bg-accent w-1/2">
                 <h2 className="font-semibold text-lg text-center mb-2">Check point</h2>
                 <ul className="list-disc list-inside text-sm space-y-1">
-                  <li className="text-white">투석 여부: Y</li>
-                  <li className="text-white">신 대체요법: CRRT</li>
+                  <li>투석 여부: Y</li>
+                  <li>신 대체요법: CRRT</li>
                 </ul>
               </div>
               <ArrowRight className="h-6 w-6 text-gray-500" />
@@ -899,7 +1013,7 @@ const BloodTestStep = ({
               <div className="border border-gray-200 rounded-lg p-4 bg-accent w-1/2">
                 <h2 className="font-semibold text-lg text-center mb-2">Guide</h2>
                 <ul className="text-sm space-y-1 text-center">
-                  <li className="text-white">투약 2시간 후 최고 흡수 농도 측정 권고(C2)</li>
+                  <li>투약 2시간 후 최고 흡수 농도 측정 권고(C2)</li>
                 </ul>
               </div>
             </div>
