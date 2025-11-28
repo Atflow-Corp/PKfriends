@@ -9,9 +9,11 @@ import { Patient, Prescription, BloodTest, DrugAdministration } from "@/pages/In
 import { UserPlus, Edit, Eye, X, Search, Trash2, FileChartColumnIncreasing, ExternalLink, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import dayjs from "dayjs";
 import { getTdmTargetValue } from "@/components/pk/shared/TDMChartUtils";
+import { toast } from "sonner";
 
 interface PatientInformationProps {
   onAddPatient: (patient: Patient) => void;
@@ -68,6 +70,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewingPatient, setViewingPatient] = useState<Patient | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   
   // TDM 분석 목록 관련 상태
   const [tdmPrescriptions, setTdmPrescriptions] = useState<Prescription[]>([]);
@@ -372,12 +375,22 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     setIsViewModalOpen(true);
   };
 
-  // 환자 삭제
-  const handleDelete = () => {
+  // 환자 삭제 확인 다이얼로그 열기
+  const handleDeleteClick = () => {
     if (selectedPatient) {
+      setIsDeleteDialogOpen(true);
+    }
+  };
+
+  // 환자 삭제 실행
+  const handleDeleteConfirm = () => {
+    if (selectedPatient) {
+      const patientName = selectedPatient.name;
       onDeletePatient(selectedPatient.id);
       resetForm();
       setIsModalOpen(false);
+      setIsDeleteDialogOpen(false);
+      toast.success("환자정보가 삭제되었습니다.");
     }
   };
 
@@ -608,7 +621,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
 
                 <div className="flex gap-2 pt-4">
                   {isEditing && (
-                     <Button type="button" variant="destructive" onClick={handleDelete} className="w-fit p-2">
+                     <Button type="button" variant="destructive" onClick={handleDeleteClick} className="w-fit p-2">
                        <Trash2 className="h-4 w-4" />
                      </Button>
                   )}
@@ -622,6 +635,26 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
               </form>
             </DialogContent>
           </Dialog>
+
+          {/* 환자 삭제 확인 다이얼로그 */}
+          <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {selectedPatient ? `${selectedPatient.name} 환자의 정보를 삭제할까요?` : "환자 정보를 삭제할까요?"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  삭제된 환자 정보는 복구할 수 없습니다.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>취소</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  삭제
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
