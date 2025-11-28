@@ -988,13 +988,13 @@ const BloodTestStep = ({
           <AlertDialogContent className="transform scale-[1.5]">
             <AlertDialogHeader>
               <AlertDialogTitle>
-                 <div className="text-center">혈중 약물 농도 측정 가이드</div>
+                 <div className="text-center">채혈 가이드</div>
               </AlertDialogTitle>
               <AlertDialogDescription>
                 <div className="text-center">
                   {selectedPatient.name} 환자는 고위험군 환자입니다.
                   <br />
-                  가이드에 맞게 측정되었는지 확인 후 혈중 약물 농도를 입력해 주세요.
+                  가이드에 맞게 채혈되었는지 확인 후 입력해 주세요.
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
