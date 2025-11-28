@@ -110,7 +110,7 @@ const LoginPage = ({ onLogin, onShowTermsAgreement, onPhoneNumberSet }: LoginPag
                   />
                   <Button 
                     variant="outline" 
-                    className="text-gray-600 border-gray-300 hover:bg-gray-50 h-10"
+                    className="h-10 text-gray-700 border-gray-300 hover:bg-gray-100 active:bg-gray-200 dark:text-gray-50 dark:border-gray-600 dark:hover:bg-slate-800 dark:active:bg-slate-700"
                     onClick={handleSendVerification}
                   >
                     인증번호 전송
