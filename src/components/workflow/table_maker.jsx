@@ -272,12 +272,14 @@ function TablePage(props) {
         time: "투약 시간",
         amount: "투약용량",
         route: "투약경로",
-        injectionTime: "주입시간",
+        injectionTime: "주입시간(분)",
         isTitle: true
       };
       const rows = admins.map((adm, idx) => {
         const timeStr = `${adm.date} ${adm.time}`;
         const dt = new Date(`${adm.date}T${adm.time}`);
+        // dosageForm은 adm에 있을 수도 있고, 없을 수도 있음 (DrugAdministration 타입에는 없지만 확장 가능)
+        const dosageForm = adm.dosageForm || "";
         return {
           id: String(adm.id || `${Date.now()}_${idx}`),
           conditionId: null,
@@ -288,6 +290,7 @@ function TablePage(props) {
           amount: `${adm.dose} ${adm.unit || 'mg'}`,
           route: adm.route,
           injectionTime: adm.isIVInfusion ? (adm.infusionTime !== undefined ? String(adm.infusionTime) : '0') : '-',
+          dosageForm: (adm.route === "경구" || adm.route === "oral") ? dosageForm : "",
           isTitle: false
         };
       }).sort((a,b) => a.time - b.time);
@@ -684,7 +687,16 @@ function TablePage(props) {
       return "날짜와 시간을 입력해주세요";
     }
     const unitText = condition.unit ? condition.unit : "mg";
-    const routeText = condition.route || "-";
+    let routeText = condition.route || "-";
+    
+    // 경구 투약이고 dosageForm이 있는 경우 함께 표시
+    if ((routeText === "경구" || routeText === "oral") && condition.dosageForm) {
+      const formLabel = condition.dosageForm === "capsule/tablet" ? "캡슐/정제" : 
+                       condition.dosageForm === "oral liquid" ? "현탁/액제" : 
+                       condition.dosageForm;
+      routeText = `${routeText} (${formLabel})`;
+    }
+    
     const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
     const injectionText = condition.route === "정맥" && condition.injectionTime
       ? ` (${condition.injectionTime}분)`
@@ -1079,8 +1091,11 @@ function TablePage(props) {
       const firstDose = new Date(firstDoseDateTime);
       const route = condition.route;
       const injectionTime = condition.injectionTime;
+      const dosageForm = condition.dosageForm;
+      
       for (let i = 0; i < totalDoses; i++) {
         const doseTime = new Date(firstDose.getTime() + (i * interval * 60 * 60 * 1000));
+        const rowDosageForm = (route === "경구" || route === "oral") ? (dosageForm || "") : "";
         allDoses.push({
           id: `${condition.id}_${i+1}`,
           conditionId: condition.id,
@@ -1091,6 +1106,7 @@ function TablePage(props) {
           amount: `${condition.dosage} ${unit}`,
           route,
           injectionTime: route === "정맥" && injectionTime ? injectionTime : "-",
+          dosageForm: rowDosageForm,
           isTitle: false
         });
       }
@@ -1498,6 +1514,30 @@ function TablePage(props) {
       }
     }
     
+    // 최근 처방내역에서 dosageForm 가져오기 (경구인 경우)
+    let defaultDosageForm = "";
+    if (defaultRoute === "경구" || defaultRoute === "oral") {
+      if (latestCondition && latestCondition.dosageForm) {
+        defaultDosageForm = latestCondition.dosageForm;
+      } else {
+        // 기존 투약 기록에서 경구 투약의 dosageForm 찾기
+        const existingDosageForms = tableData
+          .filter(row => !row.isTitle && (row.route === "경구" || row.route === "oral") && row.dosageForm)
+          .map(row => row.dosageForm);
+        
+        if (existingDosageForms.length > 0) {
+          const dosageFormCounts = {};
+          existingDosageForms.forEach(form => {
+            dosageFormCounts[form] = (dosageFormCounts[form] || 0) + 1;
+          });
+          const mostCommonDosageForm = Object.keys(dosageFormCounts).reduce((a, b) => 
+            dosageFormCounts[a] > dosageFormCounts[b] ? a : b
+          );
+          defaultDosageForm = mostCommonDosageForm;
+        }
+      }
+    }
+    
     const newRow = {
       id: String(newId),
       round: `${newId}회차`,
@@ -1507,6 +1547,7 @@ function TablePage(props) {
       amount: defaultAmount,
       route: defaultRoute,
       injectionTime: defaultInjectionTime,
+      dosageForm: defaultDosageForm,
       isTitle: false,
       conditionId: latestCondition?.id || null
     };
@@ -1729,9 +1770,9 @@ function TablePage(props) {
                     color: isDarkMode ? "#e0e6f0" : "#495057"
                   }}
                 >
-                  <option value="">제형을 선택해주세요</option>
+                  <option value="">제형 선택</option>
                   <option value="capsule/tablet">캡슐/정제</option>
-                  <option value="oral liquid">경구현탁/액제</option>
+                  <option value="oral liquid">현탁/액제</option>
                 </select>
               </div>
             )}
@@ -1807,29 +1848,31 @@ function TablePage(props) {
                   />
                 </div>
 
-                <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
-                  <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
-                    주입시간 (분)
-                  </label>
-                  <input
-                    type="text"
-                    value={currentCondition.injectionTime}
-                    onChange={(e) => handleCurrentConditionChange("injectionTime", e.target.value)}
-                    placeholder="bolus 투여 시 0 입력"
-                    disabled={currentCondition.route !== "정맥"}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      backgroundColor: currentCondition.route !== "정맥" ? (isDarkMode ? "#1a1f2e" : "#f8f9fa") : (isDarkMode ? "#1e293b" : "#fff"),
-                      height: "40px",
-                      boxSizing: "border-box",
-                      color: isDarkMode ? "#e0e6f0" : "#495057"
-                    }}
-                  />
-                </div>
+                {/* 주입시간 - 정맥 투약일 때만 표시 */}
+                {currentCondition.route === "정맥" && (
+                  <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
+                    <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
+                      주입시간 (분)
+                    </label>
+                    <input
+                      type="text"
+                      value={currentCondition.injectionTime}
+                      onChange={(e) => handleCurrentConditionChange("injectionTime", e.target.value)}
+                      placeholder="bolus 투여 시 0 입력"
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        border: isDarkMode ? "1px solid #334155" : "1px solid #ced4da",
+                        borderRadius: "6px",
+                        fontSize: "14px",
+                        backgroundColor: isDarkMode ? "#1e293b" : "#fff",
+                        height: "40px",
+                        boxSizing: "border-box",
+                        color: isDarkMode ? "#e0e6f0" : "#495057"
+                      }}
+                    />
+                  </div>
+                )}
 
                 <div style={{ flex: "1 1 120px", minWidth: "100px", maxWidth: "100%" }}>
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
@@ -1858,11 +1901,13 @@ function TablePage(props) {
                   <label style={{ display: "block", marginBottom: 8, fontWeight: "bold", color: isDarkMode ? "#e0e6f0" : "#495057", fontSize: "13px" }}>
                     최초 투약 날짜/시간
                   </label>
-                  <div 
+                  <div
                     ref={firstDosePickerRef}
                     style={{ 
                       width: "100%",
-                      height: "40px"
+                      height: "40px",
+                      position: "relative",
+                      overflow: "visible"
                     }}
                     onClick={() => focusDateTimePickerInput(firstDosePickerRef)}
                   >
@@ -1921,13 +1966,26 @@ function TablePage(props) {
                     .react-datetime-picker__button:hover {
                       background-color: ${isDarkMode ? "#334155" : "#f8f9fa"};
                     }
+                    .react-datetime-picker__calendar {
+                      z-index: 1000;
+                    }
+                    .react-datetime-picker__clock {
+                      z-index: 1000;
+                    }
                     .react-calendar {
                       background-color: ${isDarkMode ? "#1e293b" : "#fff"};
                       color: ${isDarkMode ? "#e0e6f0" : "#495057"};
                       border: ${isDarkMode ? "1px solid #334155" : "1px solid #ced4da"};
+                      max-height: 300px;
                     }
                     .react-calendar__tile {
                       color: ${isDarkMode ? "#e0e6f0" : "#495057"};
+                    }
+                    .react-clock {
+                      max-height: 200px;
+                    }
+                    .react-clock__face {
+                      max-height: 200px;
                     }
                     .react-calendar__tile:enabled:hover {
                       background-color: ${isDarkMode ? "#334155" : "#f0f0f0"};
@@ -2136,6 +2194,10 @@ function TablePage(props) {
             </div>
               
               <div style={{ overflowX: "auto" }}>
+                {/* 정맥 투약이 있는지 확인 */}
+                {(() => {
+                  const hasIVRoute = tableData.some(r => !r.isTitle && (r.route === "정맥" || r.route === "IV"));
+                  return (
                 <table style={{
                   width: "100%",
                   borderCollapse: "collapse",
@@ -2144,7 +2206,8 @@ function TablePage(props) {
                   background: isDarkMode ? "#23293a" : "white"
                 }}>
                   <tbody>
-                  {tableData.length > 0 ? tableData.map((row) => (
+                  {tableData.length > 0 ? tableData.map((row) => {
+                      return (
                       <tr 
                         key={row.id} 
                         draggable={!row.isTitle}
@@ -2302,30 +2365,87 @@ function TablePage(props) {
                                 color: isDarkMode ? "#e0e6f0" : undefined
                               }}
                             >
-                              {row.route}
+                              {(() => {
+                                const route = row.route || "";
+                                let dosageForm = row.dosageForm;
+                                
+                                // conditionId가 있으면 condition에서 dosageForm 찾기
+                                if (!dosageForm && row.conditionId) {
+                                  const condition = conditions.find(c => c.id === row.conditionId);
+                                  if (condition && (route === "경구" || route === "oral")) {
+                                    dosageForm = condition.dosageForm;
+                                  }
+                                }
+                                
+                                // conditionId가 null이면 route와 시간으로 condition 찾기
+                                if (!dosageForm && !row.conditionId && (route === "경구" || route === "oral")) {
+                                  // row의 시간이 condition의 범위 내에 있는지 확인
+                                  const matchingCondition = conditions.find(c => {
+                                    if (!c.firstDoseDate || !c.firstDoseTime || c.route !== route) return false;
+                                    const conditionStart = new Date(`${c.firstDoseDate}T${c.firstDoseTime}`);
+                                    const interval = parseInt(c.intervalHours) || 12;
+                                    const totalDoses = parseInt(c.totalDoses) || 1;
+                                    const conditionEnd = new Date(conditionStart.getTime() + (totalDoses - 1) * interval * 60 * 60 * 1000);
+                                    const rowTime = new Date(row.timeStr);
+                                    return rowTime >= conditionStart && rowTime <= conditionEnd;
+                                  });
+                                  
+                                  if (matchingCondition && matchingCondition.dosageForm) {
+                                    dosageForm = matchingCondition.dosageForm;
+                                  }
+                                }
+                                
+                                // 경구 투약이고 dosageForm이 있는 경우 함께 표시
+                                if ((route === "경구" || route === "oral")) {
+                                  if (dosageForm && typeof dosageForm === "string" && dosageForm.trim() !== "") {
+                                    const formLabel = dosageForm === "capsule/tablet" ? "캡슐/정제" : 
+                                                     dosageForm === "oral liquid" ? "현탁/액제" : 
+                                                     dosageForm;
+                                    return `${route} (${formLabel})`;
+                                  }
+                                }
+                                
+                                return route;
+                              })()}
                             </div>
                           )}
                         </td>
-                        {/* 주입 시간 */}
-                        <td style={{
-                          padding: "12px",
-                          border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
-                          textAlign: "center",
-                          width: "18%",
-                          color: isDarkMode ? "#e0e6f0" : undefined,
-                          background: isDarkMode && row.isTitle ? "#2d3650" : undefined
-                        }}>
-                          {row.isTitle ? (
-                            row.injectionTime
-                          ) : (
-                            <InjectionTimeInput
-                              row={row}
-                              onUpdate={handleTableEdit}
-                              isDarkMode={isDarkMode}
-                              readOnly
-                            />
-                          )}
-                        </td>
+                        {/* 주입 시간 - 정맥 투약일 때만 표시 */}
+                        {hasIVRoute && (
+                          <td style={{
+                            padding: "12px",
+                            border: isDarkMode ? "1px solid #334155" : "1px solid #dee2e6",
+                            textAlign: "center",
+                            width: "18%",
+                            color: isDarkMode ? "#e0e6f0" : undefined,
+                            background: isDarkMode && row.isTitle ? "#2d3650" : undefined
+                          }}>
+                            {row.isTitle ? (
+                              row.injectionTime
+                            ) : (
+                              (row.route === "정맥" || row.route === "IV") ? (
+                                <InjectionTimeInput
+                                  row={row}
+                                  onUpdate={handleTableEdit}
+                                  isDarkMode={isDarkMode}
+                                  readOnly
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    textAlign: "center",
+                                    width: "100%",
+                                    color: isDarkMode ? "#e0e6f0" : undefined,
+                                    minHeight: "24px",
+                                    lineHeight: "24px",
+                                  }}
+                                >
+                                  -
+                                </div>
+                              )
+                            )}
+                          </td>
+                        )}
                         {/* 삭제 체크박스 */}
                         <td style={{
                           padding: "12px",
@@ -2352,9 +2472,10 @@ function TablePage(props) {
                           )}
                         </td>
                       </tr>
-                    )) : (
+                    );
+                    }) : (
                       <tr>
-                        <td colSpan="6" style={{
+                        <td colSpan={hasIVRoute ? "6" : "5"} style={{
                           padding: "40px",
                           textAlign: "center",
                           color: isDarkMode ? "#6b7280" : "#6b7280",
@@ -2366,6 +2487,8 @@ function TablePage(props) {
                     )}
                   </tbody>
                 </table>
+                  );
+                })()}
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "15px" }}>

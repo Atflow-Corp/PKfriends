@@ -78,7 +78,16 @@ const TDMPatientDetails = ({
       return "날짜와 시간을 입력해주세요";
     }
     const unitText = condition.unit ? condition.unit : "mg";
-    const routeText = condition.route || "경로 미입력";
+    let routeText = condition.route || "경로 미입력";
+    
+    // 경구 투약이고 dosageForm이 있는 경우 함께 표시
+    if ((routeText === "경구" || routeText === "oral") && condition.dosageForm) {
+      const formLabel = condition.dosageForm === "capsule/tablet" ? "캡슐/정제" : 
+                       condition.dosageForm === "oral liquid" ? "현탁/액제" : 
+                       condition.dosageForm;
+      routeText = `${routeText} (${formLabel})`;
+    }
+    
     const infusionText =
       condition.route === "정맥" && condition.injectionTime
         ? ` (${condition.injectionTime}분)`
@@ -301,11 +310,11 @@ const TDMPatientDetails = ({
           <div className="space-y-3">
             <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">처방 내역</div>
             {prescriptionConditions.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {prescriptionConditions.map((condition: any, index: number) => (
                   <div 
                     key={condition.id || index} 
-                    className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-slate-800"
+                    className="py-1"
                   >
                     <div className="flex items-start gap-2">
                       <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 min-w-[60px]">
