@@ -764,13 +764,6 @@ function TablePage(props) {
       
       // 투약 경로가 변경되면 제형만 설정 (투약용량 자동 설정 제거)
       if (field === "route" && props.tdmDrug?.drugName) {
-        // 반코마이신 경구 선택 시 경고 및 차단
-        const isVancomycin = props.tdmDrug.drugName?.toLowerCase() === "vancomycin";
-        if (isVancomycin && (value === "경구" || value === "oral")) {
-          alert("반코마이신은 현재 정맥 투약 모델만 지원합니다.\n정맥 투약 경로를 선택해주세요.");
-          return prev; // 변경하지 않고 이전 값 유지
-        }
-        
         // Cyclosporin 경구일 때 제형 기본값 지정
         if ((props.tdmDrug.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug.drugName?.toLowerCase() === "cyclosporine") && (value === "경구" || value === "oral")) {
           if (!newCondition.dosageForm) newCondition.dosageForm = "capsule/tablet";
@@ -951,7 +944,19 @@ function TablePage(props) {
   };
 
   // 조건 삭제
-  const removeCondition = (conditionId) => {
+  const removeCondition = (conditionId, conditionIndex) => {
+    // 삭제 확인 얼럿
+    const confirmed = window.confirm(
+      `처방 내역 summary 중 기록 ${conditionIndex + 1}을 삭제하시겠습니까?\n기록을 삭제하면 전체 투약 기록 데이터에서도 삭제됩니다.`
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+
+    // 삭제 전 conditions 개수 확인
+    const willBeEmpty = conditions.length === 1;
+
     setConditions(prev => prev.filter(c => c.id !== conditionId));
 
     let removedRowIds = [];
@@ -959,6 +964,12 @@ function TablePage(props) {
 
     setTableData(prev => {
       if (!prev || prev.length === 0) return prev;
+
+      // 기록이 1개일 때 삭제하면 모든 테이블 데이터 삭제
+      if (willBeEmpty) {
+        removedRowIds = prev.filter(row => !row.isTitle).map(row => row.id);
+        return []; // title row도 포함하여 모든 데이터 삭제
+      }
 
       const filtered = prev.filter(row => {
         const shouldRemove = !row.isTitle && row.conditionId === conditionId;
@@ -981,7 +992,7 @@ function TablePage(props) {
       return titleRow ? [titleRow, ...doseRows] : doseRows;
     });
 
-    if (!hasRemainingRows) {
+    if (willBeEmpty || !hasRemainingRows) {
       setIsTableGenerated(false);
     }
 
@@ -2133,7 +2144,7 @@ function TablePage(props) {
                             수정
                           </button>
                           <button
-                            onClick={() => removeCondition(condition.id)}
+                            onClick={() => removeCondition(condition.id, index)}
                             style={{
                               padding: "4px 8px",
                               backgroundColor: isDarkMode ? "#4b5563" : "#fff",
