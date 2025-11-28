@@ -3460,21 +3460,21 @@ const PKSimulation = ({
             <div className="flex justify-center gap-4 flex-wrap">
               <Button
                 onClick={handleDosageAdjustmentV2}
-                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center hover:bg-gray-900 active:bg-gray-800 dark:bg-black dark:hover:bg-gray-800 dark:active:bg-gray-700"
               >
-                투약용량조정(ver2)
+                용량 조정하기
               </Button>
               <Button
                 onClick={handleIntervalAdjustment}
-                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center hover:bg-gray-900 active:bg-gray-800 dark:bg-black dark:hover:bg-gray-800 dark:active:bg-gray-700"
               >
-                투약시간조정
+                시간 조정하기
               </Button>
               <Button
                 onClick={handleDosageAndIntervalAdjustment}
-                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center"
+                className="w-[300px] bg-black text-white font-bold text-lg py-3 px-6 justify-center hover:bg-gray-900 active:bg-gray-800 dark:bg-black dark:hover:bg-gray-800 dark:active:bg-gray-700"
               >
-                용량&시간 조정
+                용량&시간 조정하기
               </Button>
             </div>
           </div>

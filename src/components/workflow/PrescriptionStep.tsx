@@ -67,7 +67,6 @@ const TDM_DRUGS: TdmDrug[] = [
     name: "Vancomycin", 
     indications: ["Not specified/Korean", "Neurosurgical patients/Korean"], 
     additionalInfo: {
-      default: ["신기능", "체중", "나이", "감염 부위", "미생물 민감도"],
       "Neurosurgical patients/Korean": NEPHROTOXIC_DRUGS
     },
     targets: [
@@ -85,7 +84,6 @@ const TDM_DRUGS: TdmDrug[] = [
     name: "Cyclosporin", 
     indications: ["Renal transplant recipients/Korean", "Allo-HSCT/Korean", "Thoracic transplant recipients/European"], 
     additionalInfo: {
-      default: ["신기능", "간기능", "혈압", "약물상호작용", "이식 후 경과"],
       "Renal transplant recipients/Korean": ["POD ~2", "POD 3~6", "POD 7~"]
     },
     targets: [
@@ -376,7 +374,7 @@ const PrescriptionStep = ({
     }
     
     if (selectedDrug.name === "Cyclosporin" && formData.indication === "Renal transplant recipients/Korean") {
-      return "POD";
+      return "수술 후 경과일(POD)";
     }
     
     return "추가정보";
@@ -457,6 +455,26 @@ const PrescriptionStep = ({
     e.preventDefault();
     if (!selectedPatient) return;
     
+    // 필수 필드 검증
+    if (!formData.drugName) {
+      alert("약물명을 선택해주세요.");
+      return;
+    }
+    
+    if (!formData.indication) {
+      alert("적응증/Demographic을 선택해주세요.");
+      return;
+    }
+    
+    if (!formData.tdmTarget) {
+      alert("TDM 목표를 선택해주세요.");
+      return;
+    }
+    
+    if (!formData.tdmTargetValue) {
+      alert("TDM 목표치를 입력해주세요.");
+      return;
+    }
     
     // 신규 TDM은 약물별로 1개만 허용 - 해당 약물의 기존 신규 TDM 개수 확인
     const existingNewTdmsForDrug = prescriptions.filter(p => 
