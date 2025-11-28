@@ -457,6 +457,26 @@ const PrescriptionStep = ({
     e.preventDefault();
     if (!selectedPatient) return;
     
+    // 필수 필드 검증
+    if (!formData.drugName) {
+      alert("약물명을 선택해주세요.");
+      return;
+    }
+    
+    if (!formData.indication) {
+      alert("적응증/Demographic을 선택해주세요.");
+      return;
+    }
+    
+    if (!formData.tdmTarget) {
+      alert("TDM 목표를 선택해주세요.");
+      return;
+    }
+    
+    if (!formData.tdmTargetValue) {
+      alert("TDM 목표치를 입력해주세요.");
+      return;
+    }
     
     // 신규 TDM은 약물별로 1개만 허용 - 해당 약물의 기존 신규 TDM 개수 확인
     const existingNewTdmsForDrug = prescriptions.filter(p => 
