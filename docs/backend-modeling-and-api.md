@@ -353,3 +353,125 @@
     - dose_administrations
     - latest_run + series
     - latest_prescription_snapshot
+
+---
+
+## 4. CSV 기반 “TDM 모델 카탈로그” (동적 폼/모델코드/용량옵션 제공)
+
+프론트에서 약물/적응증/추가정보/제형/필수 공변량/용량 조정 옵션을 **하드코딩하지 않고**, CSV(혹은 DB)의 카탈로그 데이터를 조회해 동적으로 UI를 구성할 수 있도록 별도의 “설정 데이터 모델”을 둡니다.
+
+### 4.1 모델링 의도
+
+- **TDM 약물 선택 UI 구성**: 약물 목록, 적응증 목록, 추가정보 질문(label/description) 및 선택 옵션 제공
+- **기본 TDM 목표/목표치 제공**: AUC/Ctrough/Peak 등의 default 및 표시용 텍스트
+- **제형/투여경로/용량단위/용량조정단위 제공**: IV/PO + capsule/tablet 등 표시 및 입력 제약
+- **필수 공변량( CRCL/WT/AGE/SEX/TOXI ) 표시/검증**: 특정 모델에서만 요구되는 입력을 프론트가 자동으로 강제
+- **모델 code 결정(Resolve)**: 케이스 입력값을 기반으로 어떤 model_code를 사용할지 서버가 결정(또는 후보 목록 제공)
+
+### 4.2 DB 모델링 초안 (Catalog)
+
+정규화를 과도하게 하면 관리/이관이 복잡해지므로, 초기에 구현 난이도와 운영 편의성을 위해 **핵심 키는 정규화**, 나머지는 **JSONField**를 적극 활용하는 구성을 권장합니다.
+
+#### DrugCatalog
+- id
+- name: string (unique)  # 예: Vancomycin, Cyclosporin
+- is_active: bool
+- created_at / updated_at
+
+#### TdmModelCatalogItem  (CSV의 “한 줄” = 하나의 모델 항목)
+CSV 컬럼을 대부분 1:1로 담는 “원장(원본에 가까운) 테이블” 역할입니다.
+
+- id
+- drug: FK -> DrugCatalog
+- model_code: string (unique)  # 예: Vancomycin1-1
+- modeling_condition_text: string  # 예: Not specified/Korean&CRRT
+- indication_text: string  # 예: Not specified/Korean
+
+추가정보(없을 수도 있음)
+- extra_info_label: string (nullable)  # 예: 투석여부(신 대체요법)
+- extra_info_description: Text (nullable)
+- extra_info_options: JSONField (nullable)  # 예: [\"투석 안 함\", \"CRRT\"] 또는 [\"네\",\"아니오\"]
+
+TDM 목표/단위/제형/용량
+- target_specs: JSONField  # 표시/기본값 포함. 예: [{type, value_text, is_default}, ...]
+- concentration_unit: string  # 예: mg/L, ng/mL
+- dosage_forms: JSONField  # 예: [\"IV\", \"PO-capsule/tablet\", \"PO-oral liquid\"]
+- dose_unit: string  # 예: mg
+- dose_adjustment_unit_map: JSONField  # 예: {\"IV\": 10, \"PO-capsule\": 25, \"PO-oral liquid\": 10}
+
+필수 공변량 플래그
+- requires_crcl: bool
+- requires_wt: bool
+- requires_age: bool
+- requires_sex: bool
+- requires_toxi: bool
+
+투약 용량 조정 옵션(프론트에서 버튼/셀렉트로 제공할 값)
+- dose_adjustment_options: JSONField  # 예: [125,250,375,...]
+
+레퍼런스
+- reference_text: Text (nullable)
+
+운영/버전 관리
+- is_active: bool
+- source_version: string (nullable)  # CSV 버전/업데이트 태그(예: 2025-12-18)
+- created_at / updated_at
+
+권장 제약/인덱스
+- (drug, indication_text)
+- (drug, model_code)
+
+> 참고: `target_specs`, `dose_adjustment_unit_map`, `dosage_forms`, `dose_adjustment_options`는 CSV의 `|` 구분 데이터를 파싱해 넣는 것을 전제로 합니다.
+
+### 4.3 API (Catalog 제공 + 모델코드 Resolve)
+
+베이스 URL 예시: `/api/v1/`
+
+#### 4.3.1 카탈로그 조회 (프론트 폼 동적 구성용)
+
+- GET `/catalog/drugs/`
+  - 설명: 활성화된 약물 목록
+  - res 예: `[{ \"name\": \"Vancomycin\" }, { \"name\": \"Cyclosporin\" }]`
+
+- GET `/catalog/models/`
+  - 설명: 모델 항목 목록(필터 가능)
+  - query:
+    - `drug_name=Vancomycin`
+    - `indication=Not specified/Korean`
+    - `is_active=true`
+  - res: `TdmModelCatalogItem` 리스트
+
+- GET `/catalog/models/{model_code}/`
+  - 설명: 특정 model_code 상세(추가정보/목표/용량옵션/필수공변량 포함)
+
+- GET `/catalog/drugs/{drug_name}/form-schema/`
+  - 설명: 프론트가 “TDM 선택 화면”을 그리기 위한 최소 스키마(약물→적응증→추가정보 질문/옵션/기본목표)를 서버에서 조합해 제공
+  - res 예(권장):
+    - `drug_name`
+    - `indications: [{ indication, extra_info_label, extra_info_description, extra_info_options, default_targets, concentration_unit, dosage_forms, dose_unit, dose_adjustment_unit_map, required_covariates, dose_adjustment_options }]`
+
+#### 4.3.2 모델코드 결정(Resolve)
+
+프론트는 현재 하드코딩 테이블로 `model_name`을 추론하고 있는데, 이를 CSV 기반으로 서버가 결정하도록 합니다.
+
+- POST `/catalog/model-code/resolve/`
+  - 설명: 입력(약물/적응증/추가정보/환자상태)을 기반으로 사용할 `model_code`를 결정
+  - req 예:
+    - `{ \"drug_name\": \"Vancomycin\", \"indication\": \"Not specified/Korean\", \"extra_info\": \"CRRT\", \"last_dose_at\": \"2025-12-18T08:00:00Z\", \"renal_replacement\": \"CRRT\" }`
+  - res 예:
+    - `{ \"model_code\": \"Vancomycin1-2\" }`
+
+> 구현 메모(권장): resolve 로직은 (1) `drug_name + indication` 후보를 좁히고, (2) `extra_info`/CRRT 여부/within72h 등 조건을 적용해 단일 model_code를 선택합니다. 조건 필드가 더 늘어날 가능성이 크므로, `modeling_condition_text`를 단순 문자열로만 두기보다 추후 `condition_rules`(JSONField)로 확장할 수 있게 설계하는 것을 권장합니다.
+
+#### 4.3.3 카탈로그 운영(관리자/배포용)
+
+운영 편의를 위해 “CSV 업로드→파싱→DB 반영” 경로를 API나 관리 커맨드로 둡니다.
+
+- (권장: 내부/관리자) POST `/admin/catalog/import-csv/`
+  - req: multipart(csv 파일) 또는 raw text
+  - 동작:
+    - CSV 파싱
+    - `DrugCatalog` upsert
+    - `TdmModelCatalogItem` upsert (model_code 기준)
+    - 이전 버전 비활성화 등 정책 적용 가능
+
