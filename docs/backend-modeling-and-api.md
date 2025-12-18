@@ -463,15 +463,5 @@ TDM 목표/단위/제형/용량
 
 > 구현 메모(권장): resolve 로직은 (1) `drug_name + indication` 후보를 좁히고, (2) `extra_info`/CRRT 여부/within72h 등 조건을 적용해 단일 model_code를 선택합니다. 조건 필드가 더 늘어날 가능성이 크므로, `modeling_condition_text`를 단순 문자열로만 두기보다 추후 `condition_rules`(JSONField)로 확장할 수 있게 설계하는 것을 권장합니다.
 
-#### 4.3.3 카탈로그 운영(관리자/배포용)
-
-운영 편의를 위해 “CSV 업로드→파싱→DB 반영” 경로를 API나 관리 커맨드로 둡니다.
-
-- (권장: 내부/관리자) POST `/admin/catalog/import-csv/`
-  - req: multipart(csv 파일) 또는 raw text
-  - 동작:
-    - CSV 파싱
-    - `DrugCatalog` upsert
-    - `TdmModelCatalogItem` upsert (model_code 기준)
-    - 이전 버전 비활성화 등 정책 적용 가능
+> 카탈로그 데이터 적재/수정은 별도 API 없이도 `django-import-export`(또는 Django Admin)로 충분히 운영 가능합니다.
 
