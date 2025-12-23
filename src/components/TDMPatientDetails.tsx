@@ -77,28 +77,48 @@ const TDMPatientDetails = ({
     if (!condition.firstDoseDate || !condition.firstDoseTime) {
       return "날짜와 시간을 입력해주세요";
     }
-    const unitText = condition.unit ? condition.unit : "mg";
-    let routeText = condition.route || "경로 미입력";
     
-    // 경구 투약이고 dosageForm이 있는 경우 함께 표시
-    if ((routeText === "경구" || routeText === "oral") && condition.dosageForm) {
-      const formLabel = condition.dosageForm === "capsule/tablet" ? "캡슐/정제" : 
-                       condition.dosageForm === "oral liquid" ? "현탁/액제" : 
-                       condition.dosageForm;
-      routeText = `${routeText} (${formLabel})`;
+    // 약물명
+    const drugName = selectedPrescription?.drugName || "약물";
+    
+    // 용량과 단위
+    const unitText = condition.unit ? condition.unit : "mg";
+    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
+    
+    // 투약 경로 변환 (경구 -> PO, 정맥 -> IV)
+    let routeText = "";
+    if (condition.route === "경구" || condition.route === "oral") {
+      routeText = "PO";
+      // 경구 투약이고 dosageForm이 있는 경우 함께 표시
+      if (condition.dosageForm) {
+        const formLabel = condition.dosageForm === "capsule/tablet" ? "Cap/Tab" : 
+                         condition.dosageForm === "oral liquid" ? "현탁/액제" : 
+                         condition.dosageForm;
+        routeText = `PO (${formLabel})`;
+      }
+    } else if (condition.route === "정맥" || condition.route === "IV") {
+      routeText = "IV";
+      // 정맥 투약이고 주입시간이 있는 경우 함께 표시
+      if (condition.injectionTime && condition.injectionTime !== "-" && condition.injectionTime !== "") {
+        routeText = `IV (${condition.injectionTime}분 주입)`;
+      }
+    } else {
+      routeText = condition.route || "-";
     }
     
-    const infusionText =
-      condition.route === "정맥" && condition.injectionTime
-        ? ` (${condition.injectionTime}분)`
-        : "";
-    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
-    const intervalText = condition.intervalHours
-      ? `${condition.intervalHours}시간 간격`
-      : "간격 미입력";
-    const totalDoseText = condition.totalDoses ? `${condition.totalDoses}회 투약` : "투약 횟수 미입력";
+    // 간격 (12h 간격 형식)
+    const intervalText = condition.intervalHours ? `${condition.intervalHours}h 간격` : "간격 정보 없음";
+    
+    // 총 횟수
+    const dosesText = condition.totalDoses ? `총 ${condition.totalDoses}회` : "횟수 정보 없음";
+    
+    // 시작 날짜/시간
+    const startDate = condition.firstDoseDate || "날짜 정보 없음";
+    const startTime = condition.firstDoseTime || "";
+    const startDateTime = `${startDate} ${startTime}`;
 
-    return `${routeText}, ${dosageText}${infusionText}, ${intervalText}, ${condition.firstDoseDate} ${condition.firstDoseTime}부터 ${totalDoseText}`;
+    // 형식: 약물명 용량 단위 | 투약경로 (제형정보 또는 주입시간) | 간격 | 총 횟수 (시작: 날짜 시간)
+    return `${drugName} ${dosageText} | ${routeText} | ${intervalText} | ${dosesText} (시작: ${startDateTime})`.trim();
   };
 
   // localStorage에서 저장된 신기능 데이터 가져오기
