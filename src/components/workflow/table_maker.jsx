@@ -903,6 +903,16 @@ function TablePage(props) {
       }
     }
 
+    // 8. 경구 투약 경로일 때 제형정보 필수 입력 검증 (Cyclosporin인 경우)
+    if ((normalizedCondition.route === "경구" || normalizedCondition.route === "oral") && 
+        (props.tdmDrug?.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug?.drugName?.toLowerCase() === "cyclosporine")) {
+      const dosageForm = normalizedCondition.dosageForm?.trim();
+      if (!dosageForm || dosageForm === "") {
+        alert("경구 투약 경로를 선택하셨습니다. 제형정보를 반드시 선택해주세요.");
+        return;
+      }
+    }
+
     if (isEditMode) {
       // 수정 모드: 기존 조건 업데이트
       setConditions(prev => 
@@ -937,6 +947,7 @@ function TablePage(props) {
       unit: "mg",
       intervalHours: "",
       injectionTime: "",
+      dosageForm: "",
       firstDoseDate: "",
       firstDoseTime: "",
       totalDoses: ""
@@ -1016,6 +1027,7 @@ function TablePage(props) {
         unit: conditionToEdit.unit,
         intervalHours: conditionToEdit.intervalHours,
         injectionTime: conditionToEdit.injectionTime,
+        dosageForm: conditionToEdit.dosageForm || "",
         firstDoseDate: conditionToEdit.firstDoseDate,
         firstDoseTime: conditionToEdit.firstDoseTime,
         totalDoses: conditionToEdit.totalDoses
@@ -2026,7 +2038,9 @@ function TablePage(props) {
                     style={{
                       width: "60px",
                       height: "40px",
-                      backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                      backgroundColor: isEditMode 
+                        ? (isDarkMode ? "#1e3a8a" : "#1e40af")
+                        : (isDarkMode ? "#0f172a" : "#000"),
                       color: "#fff",
                       border: "none",
                       borderRadius: "10px",
@@ -2035,10 +2049,18 @@ function TablePage(props) {
                       cursor: "pointer",
                       transition: "background-color 0.2s, opacity 0.2s"
                     }}
-                    onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
-                    onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
+                    onMouseOver={e => { 
+                      e.target.style.backgroundColor = isEditMode 
+                        ? (isDarkMode ? "#2563eb" : "#3b82f6")
+                        : (isDarkMode ? "#1f2937" : "#111827"); 
+                    }}
+                    onMouseOut={e => { 
+                      e.target.style.backgroundColor = isEditMode 
+                        ? (isDarkMode ? "#1e3a8a" : "#1e40af")
+                        : (isDarkMode ? "#0f172a" : "#000"); 
+                    }}
                   >
-                    확인
+                    {isEditMode ? "수정" : "확인"}
                   </button>
                 </div>
               </div>
