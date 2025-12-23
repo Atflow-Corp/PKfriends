@@ -18,6 +18,16 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import ProfileSettings from "@/components/ProfileSettings";
+import { hasTdmResult } from "@/lib/tdm";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export interface Patient {
   id: string;
@@ -93,6 +103,8 @@ const Index = ({ onLogout }: IndexProps) => {
   const [isDark, setIsDark] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState("workflow");
+  const [showTdmResultAlert, setShowTdmResultAlert] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -267,7 +279,25 @@ const Index = ({ onLogout }: IndexProps) => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs defaultValue="workflow" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(value) => {
+          // "Let's TDM" 탭으로 전환할 때만 TDM 결과 확인 (다른 탭에서 workflow로 전환할 때만)
+          if (value === "workflow" && activeTab !== "workflow" && selectedPatient) {
+            // 선택된 처방전이 있는지 확인
+            const patientPrescriptions = prescriptions.filter(p => p.patientId === selectedPatient.id);
+            if (patientPrescriptions.length > 0) {
+              const latestPrescription = patientPrescriptions[0]; // 최신 처방전 사용
+              const hasResult = hasTdmResult(selectedPatient.id, latestPrescription.drugName);
+              
+              if (hasResult) {
+                // 이미 결과가 있는 경우 얼럿 표시하고 탭 전환 안 함
+                setShowTdmResultAlert(true);
+                return;
+              }
+            }
+          }
+          // 다른 탭으로 전환하거나 결과가 없는 경우 정상적으로 전환
+          setActiveTab(value);
+        }} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-sm h-[52px]">
             <TabsTrigger
               value="workflow"
@@ -337,6 +367,23 @@ const Index = ({ onLogout }: IndexProps) => {
         open={showProfileSettings}
         onOpenChange={setShowProfileSettings}
       />
+
+      {/* TDM 결과 이미 존재 알림 AlertDialog */}
+      <AlertDialog open={showTdmResultAlert} onOpenChange={setShowTdmResultAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>TDM Workflow 완료 안내</AlertDialogTitle>
+            <AlertDialogDescription>
+              이미 TDM Workflow를 완료한 상태입니다. 데이터를 수정한 후 새로운 예측 결과 확인을 원하실 경우, 하단의 TDM Simulation 버튼을 선택하고 새로 결과를 확인할 수 있습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowTdmResultAlert(false)}>
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
