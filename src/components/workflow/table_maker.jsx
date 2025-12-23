@@ -686,27 +686,48 @@ function TablePage(props) {
     if (!condition.firstDoseDate || !condition.firstDoseTime) {
       return "날짜와 시간을 입력해주세요";
     }
-    const unitText = condition.unit ? condition.unit : "mg";
-    let routeText = condition.route || "-";
     
-    // 경구 투약이고 dosageForm이 있는 경우 함께 표시
-    if ((routeText === "경구" || routeText === "oral") && condition.dosageForm) {
-      const formLabel = condition.dosageForm === "capsule/tablet" ? "캡슐/정제" : 
-                       condition.dosageForm === "oral liquid" ? "현탁/액제" : 
-                       condition.dosageForm;
-      routeText = `${routeText} (${formLabel})`;
+    // 약물명
+    const drugName = props.tdmDrug?.drugName || "약물";
+    
+    // 용량과 단위
+    const unitText = condition.unit ? condition.unit : "mg";
+    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
+    
+    // 투약 경로 변환 (경구 -> PO, 정맥 -> IV)
+    let routeText = "";
+    if (condition.route === "경구" || condition.route === "oral") {
+      routeText = "PO";
+      // 경구 투약이고 dosageForm이 있는 경우 함께 표시
+      if (condition.dosageForm) {
+        const formLabel = condition.dosageForm === "capsule/tablet" ? "Cap/Tab" : 
+                         condition.dosageForm === "oral liquid" ? "현탁/액제" : 
+                         condition.dosageForm;
+        routeText = `PO (${formLabel})`;
+      }
+    } else if (condition.route === "정맥" || condition.route === "IV") {
+      routeText = "IV";
+      // 정맥 투약이고 주입시간이 있는 경우 함께 표시
+      if (condition.injectionTime && condition.injectionTime !== "-" && condition.injectionTime !== "") {
+        routeText = `IV (${condition.injectionTime}분 주입)`;
+      }
+    } else {
+      routeText = condition.route || "-";
     }
     
-    const dosageText = condition.dosage ? `${condition.dosage} ${unitText}` : `0 ${unitText}`;
-    const injectionText = condition.route === "정맥" && condition.injectionTime
-      ? ` (${condition.injectionTime}분)`
-      : "";
-    const intervalText = condition.intervalHours ? `${condition.intervalHours}시간 간격` : "간격 정보 없음";
-    const dosesText = condition.totalDoses ? `${condition.totalDoses}회` : "횟수 정보 없음";
+    // 간격 (12h 간격 형식)
+    const intervalText = condition.intervalHours ? `${condition.intervalHours}h 간격` : "간격 정보 없음";
+    
+    // 총 횟수
+    const dosesText = condition.totalDoses ? `총 ${condition.totalDoses}회` : "횟수 정보 없음";
+    
+    // 시작 날짜/시간
     const startDate = condition.firstDoseDate || "날짜 정보 없음";
     const startTime = condition.firstDoseTime || "";
+    const startDateTime = `${startDate} ${startTime}`;
 
-    return `${routeText}, ${dosageText}${injectionText}, ${intervalText}, ${startDate} ${startTime}부터 ${dosesText} 투약`.trim();
+    // 형식: 약물명 용량 단위 | 투약경로 (제형정보 또는 주입시간) | 간격 | 총 횟수 (시작: 날짜 시간)
+    return `${drugName} ${dosageText} | ${routeText} | ${intervalText} | ${dosesText} (시작: ${startDateTime})`.trim();
   };
 
   const isConditionComplete = (condition) => {
@@ -903,6 +924,16 @@ function TablePage(props) {
       }
     }
 
+    // 8. 경구 투약 경로일 때 제형정보 필수 입력 검증 (Cyclosporin인 경우)
+    if ((normalizedCondition.route === "경구" || normalizedCondition.route === "oral") && 
+        (props.tdmDrug?.drugName?.toLowerCase() === "cyclosporin" || props.tdmDrug?.drugName?.toLowerCase() === "cyclosporine")) {
+      const dosageForm = normalizedCondition.dosageForm?.trim();
+      if (!dosageForm || dosageForm === "") {
+        alert("경구 투약 경로를 선택하셨습니다. 제형정보를 반드시 선택해주세요.");
+        return;
+      }
+    }
+
     if (isEditMode) {
       // 수정 모드: 기존 조건 업데이트
       setConditions(prev => 
@@ -937,6 +968,7 @@ function TablePage(props) {
       unit: "mg",
       intervalHours: "",
       injectionTime: "",
+      dosageForm: "",
       firstDoseDate: "",
       firstDoseTime: "",
       totalDoses: ""
@@ -1016,6 +1048,7 @@ function TablePage(props) {
         unit: conditionToEdit.unit,
         intervalHours: conditionToEdit.intervalHours,
         injectionTime: conditionToEdit.injectionTime,
+        dosageForm: conditionToEdit.dosageForm || "",
         firstDoseDate: conditionToEdit.firstDoseDate,
         firstDoseTime: conditionToEdit.firstDoseTime,
         totalDoses: conditionToEdit.totalDoses
@@ -2026,7 +2059,9 @@ function TablePage(props) {
                     style={{
                       width: "60px",
                       height: "40px",
-                      backgroundColor: isDarkMode ? "#0f172a" : "#000",
+                      backgroundColor: isEditMode 
+                        ? (isDarkMode ? "#1e3a8a" : "#1e40af")
+                        : (isDarkMode ? "#0f172a" : "#000"),
                       color: "#fff",
                       border: "none",
                       borderRadius: "10px",
@@ -2035,10 +2070,18 @@ function TablePage(props) {
                       cursor: "pointer",
                       transition: "background-color 0.2s, opacity 0.2s"
                     }}
-                    onMouseOver={e => { e.target.style.backgroundColor = isDarkMode ? "#1f2937" : "#111827"; }}
-                    onMouseOut={e => { e.target.style.backgroundColor = isDarkMode ? "#0f172a" : "#000"; }}
+                    onMouseOver={e => { 
+                      e.target.style.backgroundColor = isEditMode 
+                        ? (isDarkMode ? "#2563eb" : "#3b82f6")
+                        : (isDarkMode ? "#1f2937" : "#111827"); 
+                    }}
+                    onMouseOut={e => { 
+                      e.target.style.backgroundColor = isEditMode 
+                        ? (isDarkMode ? "#1e3a8a" : "#1e40af")
+                        : (isDarkMode ? "#0f172a" : "#000"); 
+                    }}
                   >
-                    확인
+                    {isEditMode ? "수정" : "확인"}
                   </button>
                 </div>
               </div>
