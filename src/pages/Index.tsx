@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
+import ProfileSettings from "@/components/ProfileSettings";
 
 export interface Patient {
   id: string;
@@ -91,6 +92,7 @@ const Index = ({ onLogout }: IndexProps) => {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -251,7 +253,7 @@ const Index = ({ onLogout }: IndexProps) => {
                       />
                     </div>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowProfileSettings(true)}>
                     프로필 설정
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={onLogout}>
@@ -329,6 +331,12 @@ const Index = ({ onLogout }: IndexProps) => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* 프로필 설정 모달 */}
+      <ProfileSettings
+        open={showProfileSettings}
+        onOpenChange={setShowProfileSettings}
+      />
     </div>
   );
 };

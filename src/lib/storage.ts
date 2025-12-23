@@ -35,4 +35,6 @@ export const STORAGE_KEYS = {
   tdmExtraSeriesPrefix: "tdmfriends:tdmExtraSeries:",
   selectedDrugPrefix: "tdmfriends:selectedDrug:",
   activeTdmPrefix: "tdmfriends:activeTdm:",
+  userProfile: "tdmfriends:userProfile",
+  inquiries: "tdmfriends:inquiries",
 } as const;
