@@ -10,7 +10,17 @@ import PrescriptionStep from "./workflow/PrescriptionStep";
 import BloodTestStep from "./workflow/BloodTestStep";
 import SimulationStep from "./workflow/SimulationStep";
 import DrugAdministrationStep from "./workflow/DrugAdministrationStep";
-import { buildTdmRequestBody, runTdmApi } from "@/lib/tdm";
+import { buildTdmRequestBody, runTdmApi, hasTdmResult } from "@/lib/tdm";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface StepWorkflowProps {
   patients: Patient[];
@@ -54,6 +64,7 @@ const StepWorkflow = ({
   const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoadingTdm, setIsLoadingTdm] = useState(false);
+  const [showTdmResultAlert, setShowTdmResultAlert] = useState(false);
 
   // Hydrate selectedPrescription from localStorage so steps 3/4/5 can work after refresh
   useEffect(() => {
@@ -212,6 +223,16 @@ const StepWorkflow = ({
                       
                       // Let's TDM (step 5) 버튼 클릭 시 API 호출
                       if (step.id === 5 && selectedPatient && selectedPrescription) {
+                        // TDM 결과가 이미 있는지 확인
+                        const hasResult = hasTdmResult(selectedPatient.id, selectedPrescription.drugName);
+                        
+                        if (hasResult) {
+                          // 이미 결과가 있는 경우 얼럿 표시하고 API 호출 안 함
+                          setShowTdmResultAlert(true);
+                          return;
+                        }
+                        
+                        // 결과가 없는 경우 API 호출
                         setIsLoadingTdm(true);
                         let apiCallSuccess = false;
                         try {
@@ -224,7 +245,7 @@ const StepWorkflow = ({
                             selectedDrugName: selectedPrescription.drugName,
                           });
                           if (body) {
-                            await runTdmApi({ body, persist: true, patientId: selectedPatient.id });
+                            await runTdmApi({ body, persist: true, patientId: selectedPatient.id, drugName: selectedPrescription.drugName });
                             apiCallSuccess = true;
                           } else {
                             // body가 null인 경우 (데이터 부족 등)
@@ -388,6 +409,29 @@ const StepWorkflow = ({
         )}
       </div>
 
+      {/* TDM 결과 이미 존재 알림 AlertDialog */}
+      <AlertDialog open={showTdmResultAlert} onOpenChange={setShowTdmResultAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>TDM Workflow 완료 안내</AlertDialogTitle>
+            <AlertDialogDescription>
+              TDM Workflow를 완료한 상태입니다. 새로운 예측 결과를 확인하시려면 투약 기록 단계에서 하단의 TDM Simulation 버튼을 선택해 주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowTdmResultAlert(false)}>
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setShowTdmResultAlert(false);
+              // 신규 API 호출 없이 Let's TDM 결과 화면(step 5)으로 이동
+              setCurrentStep(5);
+            }}>
+              결과 보기
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
