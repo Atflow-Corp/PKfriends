@@ -286,7 +286,11 @@ const DosageChart = ({
                 TDM 목표
               </span>
               <div className="flex flex-col gap-2">
-                {targetHighlight.numericValue != null && targetRangeStatus && (
+                {isLoading || (targetHighlight.numericValue == null && !targetRangeStatus) ? (
+                  <div className="text-xl font-bold text-gray-600 dark:text-gray-400">
+                    결과를 예측 중
+                  </div>
+                ) : targetHighlight.numericValue != null && targetRangeStatus ? (
                   <div className="text-xl font-bold">
                     <span
                       className={`${
@@ -301,7 +305,7 @@ const DosageChart = ({
                       {' '}으로 목표범위 {targetRangeStatus}
                     </span>
                   </div>
-                )}
+                ) : null}
                 <div className="text-sm text-gray-700 dark:text-gray-300">
                   목표 범위 {targetTypeLabel} {tdmTargetValue || '-'}
                 </div>
@@ -407,6 +411,7 @@ const DosageChart = ({
           currentResultTitle="현 용법 유지 시"
           predictedResultTitle="용법 변경 시"
           showSteadyStateComment={false}
+          isLoading={isLoading}
         />
       )}
 

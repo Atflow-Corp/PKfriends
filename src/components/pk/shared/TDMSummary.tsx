@@ -28,6 +28,7 @@ interface TDMSummaryProps {
   showSteadyStateComment?: boolean; // 항정상태 조건부 문장 표시 여부 (기본: true)
   steadyState?: boolean | string; // Steady_state 값 (API 응답에서 받아옴, boolean 또는 문자열 "true"/"false")
   input_TOXI?: number; // 신독성 고위험군 여부 (1: 고위험군, 0 또는 undefined: 일반)
+  isLoading?: boolean; // API 결과 로딩 중 여부
 }
 
 const TDMSummary = ({
@@ -48,11 +49,18 @@ const TDMSummary = ({
   predictedResultTitle = "현 용법의 항정상태 예측 결과",
   showSteadyStateComment = true,
   steadyState,
-  input_TOXI
+  input_TOXI,
+  isLoading = false
 }: TDMSummaryProps) => {
   const concentrationUnit = getConcentrationUnit(selectedDrug);
-  const targetValue = getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug);
-  const withinRange = isWithinTargetRange(tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug);
+  // 로딩 중이거나 예측값이 없으면 "결과를 예측 중" 표시
+  const isPredicting = isLoading || (predictedAUC == null && predictedMax == null && predictedTrough == null);
+  const targetValue = isPredicting 
+    ? { value: "결과를 예측 중", unit: "", numericValue: null }
+    : getTdmTargetValue(tdmTarget, predictedAUC, predictedMax, predictedTrough, selectedDrug);
+  const withinRange = isPredicting 
+    ? false 
+    : isWithinTargetRange(tdmTarget, tdmTargetValue, predictedAUC, predictedMax, predictedTrough, selectedDrug);
   
   // Steady_state가 문자열로 올 수 있으므로 boolean으로 변환
   const isSteadyState = typeof steadyState === 'boolean' 
@@ -212,15 +220,21 @@ const TDMSummary = ({
           <CardContent className="space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">AUC:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{formatInt(predictedAUC ?? null, 'mg*h/L')}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {isPredicting ? "결과를 예측 중" : formatInt(predictedAUC ?? null, 'mg*h/L')}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">max 농도:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(predictedMax ?? null, concentrationUnit)}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {isPredicting ? "결과를 예측 중" : formatFixed(predictedMax ?? null, concentrationUnit)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">trough 농도:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{formatFixed(predictedTrough ?? null, concentrationUnit)}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">
+                {isPredicting ? "결과를 예측 중" : formatFixed(predictedTrough ?? null, concentrationUnit)}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -262,17 +276,23 @@ const TDMSummary = ({
           <div className="flex items-start gap-2">
             <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
             <p className="leading-relaxed">
-              현 용법의 항정상태 {' '}
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {tdmTarget || '목표 유형'}
-              </span>는{' '}
-              <span className={withinRange ? "font-semibold text-blue-600 dark:text-blue-200" : "font-semibold text-red-600 dark:text-red-400"}>
-                {targetValue.value}
-              </span>으로{' '}
-              목표 범위를{' '}
-              <span className={targetRangeStatus === '도달' ? "font-bold text-gray-900 dark:text-white" : "font-bold text-red-600 dark:text-red-400"}>
-                {targetRangeStatus}
-              </span>할 것으로 예측됩니다.
+              {isPredicting ? (
+                <span className="font-semibold text-gray-600 dark:text-gray-400">결과를 예측 중입니다...</span>
+              ) : (
+                <>
+                  현 용법의 항정상태 {' '}
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {tdmTarget || '목표 유형'}
+                  </span>는{' '}
+                  <span className={withinRange ? "font-semibold text-blue-600 dark:text-blue-200" : "font-semibold text-red-600 dark:text-red-400"}>
+                    {targetValue.value}
+                  </span>으로{' '}
+                  목표 범위를{' '}
+                  <span className={targetRangeStatus === '도달' ? "font-bold text-gray-900 dark:text-white" : "font-bold text-red-600 dark:text-red-400"}>
+                    {targetRangeStatus}
+                  </span>할 것으로 예측됩니다.
+                </>
+              )}
             </p>
           </div>
           {/* 조건부 추천 문장 */}
