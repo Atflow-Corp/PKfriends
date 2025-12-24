@@ -907,10 +907,69 @@ const PKSimulation = ({
         }
         
         if (firstTargetReachedDose) {
-          // 첫 도달 용량 기준으로 용량조정 단위로 상향 조정한 옵션 최대 12개
+          // 첫 도달 용량 기준으로 상향 조정 옵션 12개에 대해 API 호출하여 목표치 도달 여부 검증
+          // 목표치 초과 시 해당 옵션부터 상향 옵션의 API 호출 중단
+          
+          // 목표치 범위 파싱 (목표치 초과 확인용)
+          const targetNums = (prescription.tdmTargetValue || "").match(/\d+\.?\d*/g) || [];
+          const targetMin = targetNums[0] ? parseFloat(targetNums[0]) : undefined;
+          const targetMax = targetNums[1] ? parseFloat(targetNums[1]) : undefined;
+          
+          // 목표치 범위 상태 확인 헬퍼 함수
+          const getTargetRangeStatus = (resp: TdmApiResponse): '초과' | '미달' | '도달' | null => {
+            if (!targetMin || !targetMax) return null;
+            const targetValue = getTdmTargetValue(
+              prescription.tdmTarget,
+              resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+              resp.CMAX_after ?? resp.CMAX_before ?? null,
+              resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+              prescription.drugName
+            );
+            if (!targetValue.numericValue) return null;
+            const currentValue = targetValue.numericValue;
+            if (currentValue > targetMax) return '초과';
+            if (currentValue < targetMin) return '미달';
+            return '도달';
+          };
+          
+          let upwardStopped = false; // 상향 호출 중단 플래그
+          
+          // 상향 12개 검증 (작은 용량부터 큰 용량 순서)
           for (let i = 0; i < 12; i++) {
+            if (upwardStopped) break;
+            
             const optionDose = firstTargetReachedDose + (step * i);
-            dosageOptions.push(optionDose);
+            
+            const result = await callApiForAmount(optionDose);
+            
+            if (!result.resp) {
+              // API 호출 실패 시 해당 옵션은 제외하고 계속 진행
+              continue;
+            }
+            
+            // 결과를 캐시에 저장
+            setDosageSuggestionResults((prev) => {
+              const next = { ...(prev || {}) };
+              if (!next[newCardNumber]) next[newCardNumber] = {};
+              next[newCardNumber][optionDose] = {
+                data: result.resp,
+                dataset: result.dataset || []
+              };
+              return next;
+            });
+            
+            const rangeStatus = getTargetRangeStatus(result.resp);
+            
+            if (result.isTargetReached) {
+              // 목표치 도달: 옵션 추가
+              dosageOptions.push(optionDose);
+            } else if (rangeStatus === '초과') {
+              // 목표치 초과: 상향 호출 중단 (더 큰 용량은 더 초과할 것)
+              upwardStopped = true;
+              console.log(`[용량 조정] 상향 옵션 ${optionDose}mg에서 목표치 초과 확인, 상향 호출 중단`);
+              break;
+            }
+            // 목표치 미도달인 경우는 옵션에 추가하지 않음 (이미 첫 도달 용량을 찾았으므로)
           }
         } else if (failedCount >= 5) {
           // API 호출 실패로 목표치를 찾지 못한 경우
@@ -970,12 +1029,70 @@ const PKSimulation = ({
         }
         
         if (firstTargetReachedDose) {
-          // 첫 도달 용량 기준으로 용량조정 단위로 하향 조정한 옵션 최대 12개
+          // 첫 도달 용량 기준으로 하향 조정 옵션 12개에 대해 API 호출하여 목표치 도달 여부 검증
+          // 목표치 미도달 시 해당 옵션부터 하향 옵션의 API 호출 중단
+          
+          // 목표치 범위 파싱 (목표치 미도달 확인용)
+          const targetNums = (prescription.tdmTargetValue || "").match(/\d+\.?\d*/g) || [];
+          const targetMin = targetNums[0] ? parseFloat(targetNums[0]) : undefined;
+          const targetMax = targetNums[1] ? parseFloat(targetNums[1]) : undefined;
+          
+          // 목표치 범위 상태 확인 헬퍼 함수
+          const getTargetRangeStatus = (resp: TdmApiResponse): '초과' | '미달' | '도달' | null => {
+            if (!targetMin || !targetMax) return null;
+            const targetValue = getTdmTargetValue(
+              prescription.tdmTarget,
+              resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+              resp.CMAX_after ?? resp.CMAX_before ?? null,
+              resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+              prescription.drugName
+            );
+            if (!targetValue.numericValue) return null;
+            const currentValue = targetValue.numericValue;
+            if (currentValue > targetMax) return '초과';
+            if (currentValue < targetMin) return '미달';
+            return '도달';
+          };
+          
+          let downwardStopped = false; // 하향 호출 중단 플래그
+          
+          // 하향 12개 검증 (큰 용량부터 작은 용량 순서)
           for (let i = 0; i < 12; i++) {
+            if (downwardStopped) break;
+            
             const optionDose = firstTargetReachedDose - (step * i);
-            if (optionDose >= 1) {
-              dosageOptions.push(optionDose);
+            if (optionDose < 1) continue;
+            
+            const result = await callApiForAmount(optionDose);
+            
+            if (!result.resp) {
+              // API 호출 실패 시 해당 옵션은 제외하고 계속 진행
+              continue;
             }
+            
+            // 결과를 캐시에 저장
+            setDosageSuggestionResults((prev) => {
+              const next = { ...(prev || {}) };
+              if (!next[newCardNumber]) next[newCardNumber] = {};
+              next[newCardNumber][optionDose] = {
+                data: result.resp,
+                dataset: result.dataset || []
+              };
+              return next;
+            });
+            
+            const rangeStatus = getTargetRangeStatus(result.resp);
+            
+            if (result.isTargetReached) {
+              // 목표치 도달: 옵션 추가
+              dosageOptions.push(optionDose);
+            } else if (rangeStatus === '미달') {
+              // 목표치 미도달: 하향 호출 중단 (더 작은 용량은 더 미도달할 것)
+              downwardStopped = true;
+              console.log(`[용량 조정] 하향 옵션 ${optionDose}mg에서 목표치 미도달 확인, 하향 호출 중단`);
+              break;
+            }
+            // 목표치 초과인 경우는 옵션에 추가하지 않음 (이미 첫 도달 용량을 찾았으므로)
           }
           // 정렬은 최종 옵션 생성 시 수행 (내림차순)
         } else if (failedCount >= 5) {
