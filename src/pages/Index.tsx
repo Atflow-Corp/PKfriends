@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
-import ProfileSettings from "@/components/ProfileSettings";
+import ProfileSettings, { UserProfile } from "@/components/ProfileSettings";
 import { hasTdmResult } from "@/lib/tdm";
 import {
   AlertDialog,
@@ -105,6 +105,7 @@ const Index = ({ onLogout }: IndexProps) => {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [activeTab, setActiveTab] = useState("workflow");
   const [showTdmResultAlert, setShowTdmResultAlert] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -144,6 +145,13 @@ const Index = ({ onLogout }: IndexProps) => {
       const found = revivePatients.find(p => p.id === savedSelectedPatientId) || null;
       setSelectedPatient(found);
     }
+
+    // 사용자 프로필 정보 로드
+    const savedUserProfile = storage.getJSON<UserProfile>(STORAGE_KEYS.userProfile);
+    if (savedUserProfile) {
+      setUserProfile(savedUserProfile);
+    }
+
     setHydrated(true);
   }, []);
 
@@ -237,23 +245,29 @@ const Index = ({ onLogout }: IndexProps) => {
                   <Button variant="ghost" className="flex items-center gap-2">
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={`https://avatar.vercel.sh/user.png`} alt="User" />
-                      <AvatarFallback>사용자</AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium">사용자</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">사용자</p>
-                      <p className="text-xs leading-none text-muted-foreground">
-                        user@pk-friends.com
-                      </p>
-                      <p className="text-xs leading-none text-muted-foreground pt-1">
-                        소속: PK 프렌즈 대학병원
-                      </p>
-                    </div>
-                  </DropdownMenuLabel>
+                    <AvatarFallback>
+                      {userProfile?.name ? userProfile.name.charAt(0) : "사용자"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-medium">
+                    {userProfile?.name || "사용자"}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {userProfile?.name || "사용자"}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {userProfile?.email || userProfile?.phone || "정보 없음"}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground pt-1">
+                      소속: {userProfile?.organization || "정보 없음"}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                     <div className="flex items-center justify-between w-full">
@@ -365,7 +379,16 @@ const Index = ({ onLogout }: IndexProps) => {
       {/* 프로필 설정 모달 */}
       <ProfileSettings
         open={showProfileSettings}
-        onOpenChange={setShowProfileSettings}
+        onOpenChange={(open) => {
+          setShowProfileSettings(open);
+          // 프로필 설정이 닫힐 때 업데이트된 프로필 정보 다시 로드
+          if (!open) {
+            const savedUserProfile = storage.getJSON<UserProfile>(STORAGE_KEYS.userProfile);
+            if (savedUserProfile) {
+              setUserProfile(savedUserProfile);
+            }
+          }
+        }}
       />
 
       {/* TDM 결과 이미 존재 알림 AlertDialog */}

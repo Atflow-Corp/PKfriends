@@ -21,39 +21,77 @@ const hoursDiff = (later: Date, earlier: Date) =>
   (later.getTime() - earlier.getTime()) / 36e5;
 
 // 오래된 TDM 결과를 정리하는 함수
-const clearOldTdmResults = (currentPatientId: string) => {
+const clearOldTdmResults = (currentPatientId: string, aggressive: boolean = false) => {
   try {
     // 모든 localStorage 키 확인
     const keysToRemove: string[] = [];
+    const currentPatientKeys: string[] = [];
+    
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
       if (!key) continue;
       
       // TDM 결과 관련 키만 확인
       if (key.startsWith('tdmfriends:tdmResult:') || key.startsWith('tdmfriends:tdmResults:')) {
-        // 현재 환자의 데이터는 제외
-        if (key.includes(currentPatientId)) {
+        const isCurrentPatient = key.includes(currentPatientId);
+        
+        // 현재 환자의 데이터는 별도로 관리
+        if (isCurrentPatient) {
+          currentPatientKeys.push(key);
+          // aggressive 모드에서는 현재 환자의 오래된 히스토리도 정리
+          if (aggressive && key.startsWith('tdmfriends:tdmResults:')) {
+            try {
+              const value = window.localStorage.getItem(key);
+              if (value) {
+                const parsed = JSON.parse(value);
+                if (Array.isArray(parsed) && parsed.length > 3) {
+                  // 현재 환자의 히스토리가 3개 이상이면 오래된 것부터 삭제
+                  parsed.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                  const keepCount = 2; // 최신 2개만 유지
+                  parsed.splice(0, parsed.length - keepCount);
+                  try {
+                    window.localStorage.setItem(key, JSON.stringify(parsed));
+                    console.log(`Cleared old history entries for current patient: ${key}`);
+                  } catch {
+                    // 저장 실패 시 전체 삭제 대상에 추가
+                    keysToRemove.push(key);
+                  }
+                }
+              }
+            } catch {
+              keysToRemove.push(key);
+            }
+          }
           continue;
         }
         
-        // 오래된 데이터 확인 (30일 이상 된 데이터 삭제)
+        // 다른 환자의 데이터는 오래된 것부터 삭제
         try {
           const value = window.localStorage.getItem(key);
           if (value) {
             const parsed = JSON.parse(value);
+            let shouldRemove = false;
+            
             // 히스토리 배열인 경우
             if (Array.isArray(parsed) && parsed.length > 0) {
               const oldestEntry = parsed[0];
               if (oldestEntry.timestamp) {
                 const entryDate = new Date(oldestEntry.timestamp);
                 const daysDiff = (Date.now() - entryDate.getTime()) / (1000 * 60 * 60 * 24);
-                if (daysDiff > 30) {
-                  keysToRemove.push(key);
+                // aggressive 모드에서는 7일 이상, 일반 모드에서는 30일 이상
+                if (aggressive ? daysDiff > 7 : daysDiff > 30) {
+                  shouldRemove = true;
                 }
+              } else {
+                shouldRemove = true; // 타임스탬프가 없으면 삭제
               }
             }
             // 단일 결과인 경우 - 타임스탬프가 없으면 오래된 것으로 간주
             else if (!parsed.timestamp) {
+              shouldRemove = true;
+            }
+            
+            if (shouldRemove) {
               keysToRemove.push(key);
             }
           }
@@ -64,17 +102,112 @@ const clearOldTdmResults = (currentPatientId: string) => {
       }
     }
     
-    // 오래된 데이터 삭제 (최대 10개)
-    const removeCount = Math.min(keysToRemove.length, 10);
+    // 오래된 데이터 삭제 (aggressive 모드에서는 더 많이 삭제)
+    const maxRemove = aggressive ? 50 : 10;
+    const removeCount = Math.min(keysToRemove.length, maxRemove);
     for (let i = 0; i < removeCount; i++) {
       window.localStorage.removeItem(keysToRemove[i]);
     }
     
     if (removeCount > 0) {
-      console.log(`Cleared ${removeCount} old TDM result entries`);
+      console.log(`Cleared ${removeCount} old TDM result entries (aggressive: ${aggressive})`);
     }
   } catch (error) {
     console.error("Error clearing old TDM results:", error);
+  }
+};
+
+// 사용자가 수동으로 저장소를 정리하는 함수 (프로필 설정에서 사용)
+export const clearStorage = (options?: {
+  clearAll?: boolean; // 모든 데이터 삭제 (로그아웃 시 유용)
+  clearTdmResults?: boolean; // TDM 결과만 삭제
+  clearOldOnly?: boolean; // 오래된 데이터만 삭제 (30일 이상)
+  currentPatientId?: string; // 현재 환자 ID (해당 환자 데이터 제외)
+}): { cleared: number; totalSize: number } => {
+  const { clearAll = false, clearTdmResults = false, clearOldOnly = false, currentPatientId } = options || {};
+  
+  let cleared = 0;
+  let totalSize = 0;
+  
+  try {
+    const keysToRemove: string[] = [];
+    
+    // 전체 크기 계산
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      const value = window.localStorage.getItem(key);
+      if (value) {
+        totalSize += value.length;
+      }
+    }
+    
+    // 모든 데이터 삭제
+    if (clearAll) {
+      window.localStorage.clear();
+      cleared = window.localStorage.length;
+      return { cleared: 0, totalSize: 0 };
+    }
+    
+    // TDM 결과만 삭제
+    if (clearTdmResults) {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key) continue;
+        
+        if (key.startsWith('tdmfriends:tdmResult:') || key.startsWith('tdmfriends:tdmResults:')) {
+          // 현재 환자 데이터 제외 옵션
+          if (currentPatientId && key.includes(currentPatientId)) {
+            continue;
+          }
+          
+          if (clearOldOnly) {
+            // 오래된 데이터만 삭제 (30일 이상)
+            try {
+              const value = window.localStorage.getItem(key);
+              if (value) {
+                const parsed = JSON.parse(value);
+                let shouldRemove = false;
+                
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  const oldestEntry = parsed[0];
+                  if (oldestEntry.timestamp) {
+                    const entryDate = new Date(oldestEntry.timestamp);
+                    const daysDiff = (Date.now() - entryDate.getTime()) / (1000 * 60 * 60 * 24);
+                    if (daysDiff > 30) {
+                      shouldRemove = true;
+                    }
+                  }
+                } else if (!parsed.timestamp) {
+                  shouldRemove = true;
+                }
+                
+                if (shouldRemove) {
+                  keysToRemove.push(key);
+                }
+              }
+            } catch {
+              // 파싱 실패한 경우 삭제
+              keysToRemove.push(key);
+            }
+          } else {
+            // 모든 TDM 결과 삭제
+            keysToRemove.push(key);
+          }
+        }
+      }
+    }
+    
+    // 선택된 키 삭제
+    for (const key of keysToRemove) {
+      window.localStorage.removeItem(key);
+      cleared++;
+    }
+    
+    return { cleared, totalSize };
+  } catch (error) {
+    console.error("Error clearing storage:", error);
+    return { cleared, totalSize };
   }
 };
 
@@ -829,8 +962,8 @@ export const runTdmApi = async (args: {
       console.log(`[TDM API] 응답 상태: ${response.status} ${response.statusText}`);
 
       if (response.status === 503 && attempt < retries - 1) {
-        // 503 에러인 경우 재시도 (지수 백오프)
-        const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
+        // 503 에러인 경우 재시도 (지수 백오프, 최대 10초까지)
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
         console.warn(
           `[TDM API] 서버 일시적 오류 (503) - ${attempt + 1}/${retries} 재시도 중... (${delay}ms 대기)`
         );
@@ -881,9 +1014,9 @@ export const runTdmApi = async (args: {
           } catch (setError) {
             // QuotaExceededError인 경우 기존 데이터 정리 후 재시도
             if (setError instanceof Error && setError.name === 'QuotaExceededError') {
-              console.warn('localStorage quota exceeded, attempting to clear old TDM results');
-              // 오래된 TDM 결과 정리
-              clearOldTdmResults(patientId);
+              console.warn('localStorage quota exceeded, attempting to clear old TDM results (aggressive)');
+              // 오래된 TDM 결과 정리 (aggressive 모드)
+              clearOldTdmResults(patientId, true);
               // 재시도
               try {
                 window.localStorage.setItem(
@@ -891,8 +1024,23 @@ export const runTdmApi = async (args: {
                   dataString
                 );
               } catch (retryError) {
-                console.error("Failed to save TDM result after cleanup", retryError);
-                throw new Error("localStorage 용량이 부족합니다. 브라우저 저장소를 정리해주세요.");
+                console.error("Failed to save TDM result after aggressive cleanup", retryError);
+                // 최종 시도: 현재 환자의 기존 데이터도 삭제하고 저장
+                try {
+                  window.localStorage.removeItem(`tdmfriends:tdmResult:${patientId}`);
+                  if (drugName) {
+                    window.localStorage.removeItem(`tdmfriends:tdmResult:${patientId}:${drugName}`);
+                    window.localStorage.removeItem(`tdmfriends:tdmResults:${patientId}:${drugName}`);
+                  }
+                  window.localStorage.setItem(
+                    `tdmfriends:tdmResult:${patientId}`,
+                    dataString
+                  );
+                  console.log("Saved TDM result after removing current patient's old data");
+                } catch (finalError) {
+                  console.error("Failed to save TDM result after final cleanup", finalError);
+                  throw new Error("localStorage 용량이 부족합니다. 브라우저 저장소를 정리해주세요.");
+                }
               }
             } else {
               throw setError;
@@ -933,13 +1081,13 @@ export const runTdmApi = async (args: {
             } catch (historyError) {
               // 히스토리 저장 실패 시 오래된 항목 삭제 후 재시도
               if (historyError instanceof Error && historyError.name === 'QuotaExceededError') {
-                console.warn('localStorage quota exceeded, cleaning old history entries');
-                // 오래된 TDM 결과 정리
-                clearOldTdmResults(patientId);
-                // 가장 오래된 항목 2개 삭제 후 재시도
-                if (list.length > 2) {
+                console.warn('localStorage quota exceeded, cleaning old history entries (aggressive)');
+                // 오래된 TDM 결과 정리 (aggressive 모드)
+                clearOldTdmResults(patientId, true);
+                // 가장 오래된 항목 삭제 후 재시도 (최신 1개만 유지)
+                if (list.length > 1) {
                   list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                  list.splice(0, 2);
+                  list.splice(0, list.length - 1); // 최신 1개만 유지
                   try {
                     window.localStorage.setItem(historyKey, JSON.stringify(list));
                     window.localStorage.setItem(
@@ -948,10 +1096,42 @@ export const runTdmApi = async (args: {
                     );
                   } catch (retryError) {
                     console.error("Failed to save TDM history after cleanup", retryError);
-                    throw new Error("localStorage 용량이 부족합니다. 브라우저 저장소를 정리해주세요.");
+                    // 최종 시도: 현재 환자의 기존 히스토리 전체 삭제하고 최신 것만 저장
+                    try {
+                      window.localStorage.removeItem(historyKey);
+                      window.localStorage.removeItem(`tdmfriends:tdmResult:${patientId}:${drugName}`);
+                      // 최신 항목만 다시 생성
+                      const latestEntry: TdmHistoryEntry = {
+                        id: `${Date.now()}`,
+                        timestamp: new Date().toISOString(),
+                        model_name: typedBody?.model_name,
+                        summary: data,
+                        dataset: (typedBody?.dataset as unknown[]) || [],
+                        data,
+                      };
+                      window.localStorage.setItem(historyKey, JSON.stringify([latestEntry]));
+                      window.localStorage.setItem(
+                        `tdmfriends:tdmResult:${patientId}:${drugName}`,
+                        dataString
+                      );
+                      console.log("Saved TDM history after removing all old entries");
+                    } catch (finalError) {
+                      console.error("Failed to save TDM history after final cleanup", finalError);
+                      throw new Error("localStorage 용량이 부족합니다. 브라우저 저장소를 정리해주세요.");
+                    }
                   }
                 } else {
-                  throw new Error("localStorage 용량이 부족합니다. 브라우저 저장소를 정리해주세요.");
+                  // 히스토리가 1개뿐이면 그대로 저장 시도
+                  try {
+                    window.localStorage.setItem(historyKey, JSON.stringify(list));
+                    window.localStorage.setItem(
+                      `tdmfriends:tdmResult:${patientId}:${drugName}`,
+                      dataString
+                    );
+                  } catch (finalError) {
+                    console.error("Failed to save TDM history", finalError);
+                    throw new Error("localStorage 용량이 부족합니다. 브라우저 저장소를 정리해주세요.");
+                  }
                 }
               } else {
                 throw historyError;

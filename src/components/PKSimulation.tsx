@@ -564,17 +564,612 @@ const PKSimulation = ({
     triggerDosageSuggestions(newCardNumber);
   };
 
-  const handleDosageAdjustmentV2 = () => {
+  const handleDosageAdjustmentV2 = async () => {
     if (concurrencyNotice) setConcurrencyNotice("");
     const newCardNumber = adjustmentCards.length + 1;
     setAdjustmentCards((prev) => [
       ...prev,
       { id: newCardNumber, type: "dosageV2" },
     ]);
-    setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
+    // 최초 차트는 현용법만 표시하도록 설정
+    setCardChartData((prev) => ({ ...prev, [newCardNumber]: true })); // 현용법 차트 표시
     setCustomDosageInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
-    // 현용법 데이터 로드
+    setDosageLoading((prev) => ({ ...prev, [newCardNumber]: true }));
+    setDosageError((prev) => ({ ...prev, [newCardNumber]: false }));
+    
+    // 현용법 데이터 로드 (차트에 현용법만 표시)
     void loadCurrentMethodForCard(newCardNumber);
+    
+    try {
+      if (!selectedPatientId || !selectedDrug) return;
+      
+      const patient = currentPatient;
+      if (!patient) return;
+      
+      const prescription = patientPrescriptions.find(
+        (p) => p.drugName === selectedDrug
+      ) || patientPrescriptions[0];
+      
+      if (!prescription) return;
+      
+      // 현재 TDM 결과 확인 (tdmResult 또는 최신 저장된 결과)
+      let currentTdmResult: TdmApiResponse | null = tdmResult;
+      
+      if (!currentTdmResult) {
+        try {
+          const histKey = `tdmfriends:tdmResults:${selectedPatientId}:${selectedDrug}`;
+          const rawHist = window.localStorage.getItem(histKey);
+          if (rawHist) {
+            const list = JSON.parse(rawHist) as Array<{
+              id: string;
+              timestamp: string;
+              data?: TdmApiResponse;
+            }>;
+            const latest = [...list].sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+            )[0];
+            if (latest && latest.data) {
+              currentTdmResult = latest.data as TdmApiResponse;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to load current TDM result", e);
+        }
+      }
+      
+      if (!currentTdmResult) {
+        console.warn("No current TDM result found");
+        setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+        return;
+      }
+      
+      // 목표치 도달 여부 확인
+      const isTargetReached = isWithinTargetRange(
+        prescription.tdmTarget,
+        prescription.tdmTargetValue,
+        currentTdmResult.AUC_24_after ?? currentTdmResult.AUC_24_before ?? null,
+        currentTdmResult.CMAX_after ?? currentTdmResult.CMAX_before ?? null,
+        currentTdmResult.CTROUGH_after ?? currentTdmResult.CTROUGH_before ?? null,
+        prescription.drugName
+      );
+      
+      // 항정상태 도달 여부 확인
+      const isSteadyState = typeof currentTdmResult.Steady_state === 'boolean'
+        ? currentTdmResult.Steady_state
+        : String(currentTdmResult.Steady_state).toLowerCase() === 'true';
+      
+      // 목표치 범위 확인 (초과/미달/도달)
+      const targetValue = getTdmTargetValue(
+        prescription.tdmTarget,
+        currentTdmResult.AUC_24_after ?? currentTdmResult.AUC_24_before ?? null,
+        currentTdmResult.CMAX_after ?? currentTdmResult.CMAX_before ?? null,
+        currentTdmResult.CTROUGH_after ?? currentTdmResult.CTROUGH_before ?? null,
+        prescription.drugName
+      );
+      
+      const targetRangeStatus = (() => {
+        if (!prescription.tdmTargetValue || !targetValue.numericValue) return null;
+        const rangeMatch = prescription.tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+        if (!rangeMatch) return null;
+        const minValue = parseFloat(rangeMatch[1]);
+        const maxValue = parseFloat(rangeMatch[2]);
+        const currentValue = targetValue.numericValue;
+        if (currentValue > maxValue) return '초과';
+        if (currentValue < minValue) return '미달';
+        return '도달';
+      })();
+      
+      // 용법 조정 단위 계산
+      const drug = (prescription.drugName || "").toLowerCase();
+      let step = 10; // mg (기본값)
+      
+      if (drug === "cyclosporin" || drug === "cyclosporine") {
+        let form: string | null = null;
+        try {
+          const storageKey = `tdmfriends:conditions:${patient.id}`;
+          const raw = window.localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as Array<{
+              route?: string;
+              dosageForm?: string;
+            }>;
+            const oral = parsed.find(
+              (c) => c.route === "경구" || c.route === "oral",
+            );
+            form = oral?.dosageForm || null;
+          }
+        } catch (e) {
+          console.warn("Failed to infer dosage form", e);
+        }
+        if (form && form.toLowerCase() === "capsule/tablet") step = 25;
+        else step = 10;
+      }
+      
+      // 현재 용량 확인
+      const dosesForPatient = (drugAdministrations || []).filter(
+        (d) => d.patientId === patient.id && d.drugName === prescription.drugName,
+      );
+      const lastDose = dosesForPatient.length > 0
+        ? [...dosesForPatient].sort(
+            (a, b) =>
+              toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+          )[dosesForPatient.length - 1]
+        : undefined;
+      const currentDose = Number(lastDose?.dose || prescription.dosage || 100);
+      
+      // 목표 범위 파싱
+      const targetNums = (prescription.tdmTargetValue || "").match(/\d+\.?\d*/g) || [];
+      const targetMin = targetNums[0] ? parseFloat(targetNums[0]) : undefined;
+      const targetMax = targetNums[1] ? parseFloat(targetNums[1]) : undefined;
+      
+      // API 호출 헬퍼 함수
+      const callApiForAmount = async (
+        amt: number,
+        retries: number = 7, // 503 에러 대비 재시도 횟수 증가 (5 -> 7)
+      ): Promise<{
+        amt: number;
+        resp: TdmApiResponse | null;
+        dataset: TdmDatasetRow[];
+        isTargetReached: boolean;
+        isSteadyState: boolean;
+      }> => {
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId: patient.id,
+          selectedDrugName: prescription.drugName,
+          overrides: { amount: amt },
+        });
+        
+        try {
+          // runTdmApi에 retries 파라미터 명시적으로 전달 (503 에러 재시도)
+          const resp = (await runTdmApi({ 
+            body, 
+            persist: false, 
+            retries 
+          })) as TdmApiResponse;
+          
+          const isTarget = isWithinTargetRange(
+            prescription.tdmTarget,
+            prescription.tdmTargetValue,
+            resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+            resp.CMAX_after ?? resp.CMAX_before ?? null,
+            resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+            prescription.drugName
+          );
+          const isSteady = typeof resp.Steady_state === 'boolean'
+            ? resp.Steady_state
+            : String(resp.Steady_state).toLowerCase() === 'true';
+          return {
+            amt,
+            resp,
+            dataset: (body?.dataset as TdmDatasetRow[]) || [],
+            isTargetReached: isTarget,
+            isSteadyState: isSteady,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorName = error instanceof Error ? error.name : "Unknown";
+          const lowerMessage = errorMessage.toLowerCase();
+          
+          // 에러 유형 구분
+          const is503Error = lowerMessage.includes("503") || lowerMessage.includes("service unavailable");
+          const isNetworkError = lowerMessage.includes("failed to fetch") || 
+                                lowerMessage.includes("networkerror") ||
+                                lowerMessage.includes("network error") ||
+                                errorName === "TypeError";
+          const isCorsError = lowerMessage.includes("cors") || 
+                            lowerMessage.includes("access-control-allow-origin");
+          
+          // 에러 로깅
+          if (is503Error) {
+            console.warn(`[용량 조정] ${amt}mg에 대한 API 호출 실패 (503): 모든 재시도 실패`, error);
+          } else if (isNetworkError || isCorsError) {
+            const errorType = isCorsError ? "CORS" : "네트워크";
+            console.warn(`[용량 조정] ${amt}mg에 대한 API 호출 실패 (${errorType}):`, {
+              error,
+              message: errorMessage,
+              name: errorName
+            });
+          } else {
+            console.warn(`[용량 조정] ${amt}mg에 대한 API 호출 실패:`, error);
+          }
+          
+          return {
+            amt,
+            resp: null,
+            dataset: (body?.dataset as TdmDatasetRow[]) || [],
+            isTargetReached: false,
+            isSteadyState: false,
+          };
+        }
+      };
+      
+      let dosageOptions: number[] = [];
+      let firstTargetReachedDose: number | null = null;
+      
+      // 이미 다른 카드(용량&시간 조정하기)에서 찾은 적정 용법 옵션 확인
+      const existingDosageAndIntervalCard = adjustmentCards.find(card => card.type === "dosageAndInterval");
+      if (existingDosageAndIntervalCard && dosageSuggestions[existingDosageAndIntervalCard.id] && dosageSuggestions[existingDosageAndIntervalCard.id].length > 0) {
+        const existingOptions = dosageSuggestions[existingDosageAndIntervalCard.id];
+        // 현용법을 제외한 옵션이 12개 이상 있는지 확인
+        const nonCurrentOptions = existingOptions.filter(opt => Math.abs(opt - currentDose) >= 0.01);
+        if (nonCurrentOptions.length >= 12) {
+          // 이미 12개 옵션이 생성되어 있으면 그대로 재사용 (API 호출 없이)
+          // 용량 조정하기는 시간이 고정이므로 용량&시간 조정하기의 옵션을 그대로 사용 가능
+          const recommendedOptions = nonCurrentOptions.slice(0, 12);
+          const finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+          setDosageSuggestions((prev) => ({ ...prev, [newCardNumber]: finalOptions }));
+          
+          // 기존 카드의 캐시도 복사 (시간이 다를 수 있으므로 사용자가 선택할 때 재확인 필요하지만, 참고용으로 복사)
+          // 용량 조정하기는 시간이 고정이므로 캐시를 그대로 사용 가능할 수 있지만, 안전을 위해 사용자 선택 시 재확인
+          const existingCache = dosageSuggestionResults[existingDosageAndIntervalCard.id];
+          if (existingCache) {
+            setDosageSuggestionResults((prev) => {
+              const next = { ...(prev || {}) };
+              next[newCardNumber] = { ...existingCache }; // 참고용으로 복사
+              return next;
+            });
+          }
+          
+          console.log(`[용량 조정] 기존 용량&시간 조정 카드의 12개 옵션 재사용 (옵션만 복사, 사용자 선택 시 API 호출)`);
+          // 현용법 용량을 자동으로 선택 (하이라이트)
+          const currentDoseLabel = `${Number(currentDose).toLocaleString()} mg`;
+          setSelectedDosage((prev) => ({ ...prev, [newCardNumber]: currentDoseLabel }));
+          setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+          return; // 옵션 생성 API 호출 없이 종료 (사용자 선택 시 API 호출은 정상 동작)
+        }
+      }
+      
+      // 목표치 도달 케이스에서도 옵션 재사용 확인
+      if (isTargetReached) {
+        const existingDosageAndIntervalCard = adjustmentCards.find(card => card.type === "dosageAndInterval");
+        if (existingDosageAndIntervalCard && dosageSuggestions[existingDosageAndIntervalCard.id] && dosageSuggestions[existingDosageAndIntervalCard.id].length > 0) {
+          const existingOptions = dosageSuggestions[existingDosageAndIntervalCard.id];
+          // 목표치 도달 케이스는 현용법 중심으로 하향 6개, 상향 6개를 검증하므로 옵션이 있으면 재사용 가능
+          // 현용법을 포함한 옵션이 6개 이상 있으면 재사용 (하향/상향 각각 최소 3개 이상)
+          if (existingOptions.length >= 6) {
+            // 기존 옵션을 그대로 재사용 (이미 목표치 도달 검증 완료)
+            const finalOptions = [...existingOptions];
+            setDosageSuggestions((prev) => ({ ...prev, [newCardNumber]: finalOptions }));
+            
+            // 기존 카드의 캐시도 복사
+            const existingCache = dosageSuggestionResults[existingDosageAndIntervalCard.id];
+            if (existingCache) {
+              setDosageSuggestionResults((prev) => {
+                const next = { ...(prev || {}) };
+                next[newCardNumber] = { ...existingCache };
+                return next;
+              });
+            }
+            
+            console.log(`[용량 조정] 기존 용량&시간 조정 카드의 목표치 도달 옵션 재사용 (${finalOptions.length}개)`);
+            // 현용법 용량을 자동으로 선택 (하이라이트)
+            const currentDoseLabel = `${Number(currentDose).toLocaleString()} mg`;
+            setSelectedDosage((prev) => ({ ...prev, [newCardNumber]: currentDoseLabel }));
+            setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+            return; // API 호출 없이 종료
+          }
+        }
+      }
+      
+      // 시나리오 1: 목표치 미도달
+      if (targetRangeStatus === '미달') {
+        let testDose = currentDose;
+        let foundFirstTarget = false;
+        let failedCount = 0;
+        
+        // 이미 찾은 목표치 도달 용량이 있으면 그 지점부터 시작 (시간이 다를 수 있으므로 재확인 필요)
+        if (firstTargetReachedDose) {
+          testDose = firstTargetReachedDose - step; // 한 단계 전부터 재확인 시작
+        }
+        
+        // 목표치에 도달할 때까지 1단계씩 올려가며 API 호출
+        while (!foundFirstTarget && testDose <= currentDose + (step * 20)) { // 최대 20단계까지만
+          testDose += step;
+          
+          // 이미 찾은 용량이면 재확인 (시간이 다를 수 있으므로)
+          if (firstTargetReachedDose && Math.abs(testDose - firstTargetReachedDose) < 0.01) {
+            const result = await callApiForAmount(testDose);
+            if (result.resp && result.isTargetReached) {
+              foundFirstTarget = true;
+              break;
+            }
+            // 시간이 달라서 목표치에 도달하지 못할 수 있으므로 계속 검색
+            firstTargetReachedDose = null;
+            continue;
+          }
+          
+          const result = await callApiForAmount(testDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            // 연속으로 5번 실패하면 중단 (503 에러 대비 증가)
+            if (failedCount >= 5) {
+              console.warn(`[용량 조정] 목표치 도달 검색 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            // 503 에러인 경우 추가 대기 시간 (서버 부하 완화)
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0; // 성공 시 실패 카운트 리셋
+          
+          if (result.isTargetReached) {
+            firstTargetReachedDose = testDose;
+            foundFirstTarget = true;
+            break;
+          }
+        }
+        
+        if (firstTargetReachedDose) {
+          // 첫 도달 용량 기준으로 용량조정 단위로 상향 조정한 옵션 최대 12개
+          for (let i = 0; i < 12; i++) {
+            const optionDose = firstTargetReachedDose + (step * i);
+            dosageOptions.push(optionDose);
+          }
+        } else if (failedCount >= 5) {
+          // API 호출 실패로 목표치를 찾지 못한 경우
+          setDosageError((prev) => ({ ...prev, [newCardNumber]: true }));
+          console.warn(`[용량 조정] 목표치 도달 검색 실패: 서버 응답 오류 (연속 ${failedCount}회 실패)`);
+        }
+      }
+      // 시나리오 2: 목표치 초과
+      else if (targetRangeStatus === '초과') {
+        let testDose = currentDose;
+        let foundFirstTarget = false;
+        let failedCount = 0;
+        
+        // 이미 찾은 목표치 도달 용량이 있으면 그 지점부터 시작 (시간이 다를 수 있으므로 재확인 필요)
+        if (firstTargetReachedDose) {
+          testDose = firstTargetReachedDose + step; // 한 단계 후부터 재확인 시작
+        }
+        
+        // 목표치에 도달할 때까지 1단계씩 내려가며 API 호출
+        while (!foundFirstTarget && testDose >= Math.max(1, currentDose - (step * 20))) { // 최대 20단계까지만
+          testDose -= step;
+          if (testDose < 1) break;
+          
+          // 이미 찾은 용량이면 재확인 (시간이 다를 수 있으므로)
+          if (firstTargetReachedDose && Math.abs(testDose - firstTargetReachedDose) < 0.01) {
+            const result = await callApiForAmount(testDose);
+            if (result.resp && result.isTargetReached) {
+              foundFirstTarget = true;
+              break;
+            }
+            // 시간이 달라서 목표치에 도달하지 못할 수 있으므로 계속 검색
+            firstTargetReachedDose = null;
+            continue;
+          }
+          
+          const result = await callApiForAmount(testDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            // 연속으로 5번 실패하면 중단 (503 에러 대비 증가)
+            if (failedCount >= 5) {
+              console.warn(`[용량 조정] 목표치 도달 검색 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            // 503 에러인 경우 추가 대기 시간 (서버 부하 완화)
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0; // 성공 시 실패 카운트 리셋
+          
+          if (result.isTargetReached) {
+            firstTargetReachedDose = testDose;
+            foundFirstTarget = true;
+            break;
+          }
+        }
+        
+        if (firstTargetReachedDose) {
+          // 첫 도달 용량 기준으로 용량조정 단위로 하향 조정한 옵션 최대 12개
+          for (let i = 0; i < 12; i++) {
+            const optionDose = firstTargetReachedDose - (step * i);
+            if (optionDose >= 1) {
+              dosageOptions.push(optionDose);
+            }
+          }
+          // 정렬은 최종 옵션 생성 시 수행 (내림차순)
+        } else if (failedCount >= 5) {
+          // API 호출 실패로 목표치를 찾지 못한 경우
+          setDosageError((prev) => ({ ...prev, [newCardNumber]: true }));
+          console.warn(`[용량 조정] 목표치 도달 검색 실패: 서버 응답 오류 (연속 ${failedCount}회 실패)`);
+        }
+      }
+      // 시나리오 3, 4: 목표치 도달 (항정상태 미도달 또는 모두 도달)
+      else if (isTargetReached) {
+        // 현재 용량 중심으로 하향 6개, 상향 6개 옵션을 API 호출하여 목표치 도달 여부 검증
+        // 목표치를 벗어나면 해당 방향으로의 호출 중단
+        
+        // 목표치 범위 파싱 (목표치 초과/미달 확인용)
+        const targetNums = (prescription.tdmTargetValue || "").match(/\d+\.?\d*/g) || [];
+        const targetMin = targetNums[0] ? parseFloat(targetNums[0]) : undefined;
+        const targetMax = targetNums[1] ? parseFloat(targetNums[1]) : undefined;
+        
+        // 목표치 범위 상태 확인 헬퍼 함수
+        const getTargetRangeStatus = (resp: TdmApiResponse): '초과' | '미달' | '도달' | null => {
+          if (!targetMin || !targetMax) return null;
+          const targetValue = getTdmTargetValue(
+            prescription.tdmTarget,
+            resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+            resp.CMAX_after ?? resp.CMAX_before ?? null,
+            resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+            prescription.drugName
+          );
+          if (!targetValue.numericValue) return null;
+          const currentValue = targetValue.numericValue;
+          if (currentValue > targetMax) return '초과';
+          if (currentValue < targetMin) return '미달';
+          return '도달';
+        };
+        
+        let failedCount = 0;
+        let downwardStopped = false; // 하향 호출 중단 플래그
+        let upwardStopped = false; // 상향 호출 중단 플래그
+        
+        // 하향 6개 검증 (큰 용량부터 작은 용량 순서)
+        for (let i = 6; i >= 1; i--) {
+          if (downwardStopped) break;
+          
+          const optionDose = currentDose - (step * i);
+          if (optionDose < 1) continue;
+          
+          const result = await callApiForAmount(optionDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            if (failedCount >= 5) {
+              console.warn(`[용량 조정] 목표치 도달 옵션 검증 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0;
+          
+          // 결과를 캐시에 저장
+          setDosageSuggestionResults((prev) => {
+            const next = { ...(prev || {}) };
+            if (!next[newCardNumber]) next[newCardNumber] = {};
+            next[newCardNumber][optionDose] = {
+              data: result.resp,
+              dataset: result.dataset
+            };
+            return next;
+          });
+          
+          // 목표치 범위 상태 확인
+          const rangeStatus = getTargetRangeStatus(result.resp);
+          
+          if (result.isTargetReached) {
+            // 목표치 도달: 옵션 추가
+            dosageOptions.push(optionDose);
+          } else if (rangeStatus === '미달') {
+            // 목표치 미도달: 하향 호출 중단 (더 작은 용량은 더 미도달할 것)
+            downwardStopped = true;
+            console.log(`[용량 조정] 하향 옵션 ${optionDose}mg에서 목표치 미도달 확인, 하향 호출 중단`);
+            break;
+          }
+        }
+        
+        // 현용법 검증 (이미 목표치 도달 확인됨)
+        dosageOptions.push(currentDose);
+        
+        // 상향 6개 검증 (작은 용량부터 큰 용량 순서)
+        for (let i = 1; i <= 6; i++) {
+          if (upwardStopped) break;
+          
+          const optionDose = currentDose + (step * i);
+          
+          const result = await callApiForAmount(optionDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            if (failedCount >= 5) {
+              console.warn(`[용량 조정] 목표치 도달 옵션 검증 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0;
+          
+          // 결과를 캐시에 저장
+          setDosageSuggestionResults((prev) => {
+            const next = { ...(prev || {}) };
+            if (!next[newCardNumber]) next[newCardNumber] = {};
+            next[newCardNumber][optionDose] = {
+              data: result.resp,
+              dataset: result.dataset
+            };
+            return next;
+          });
+          
+          // 목표치 범위 상태 확인
+          const rangeStatus = getTargetRangeStatus(result.resp);
+          
+          if (result.isTargetReached) {
+            // 목표치 도달: 옵션 추가
+            dosageOptions.push(optionDose);
+          } else if (rangeStatus === '초과') {
+            // 목표치 초과: 상향 호출 중단 (더 큰 용량은 더 초과할 것)
+            upwardStopped = true;
+            console.log(`[용량 조정] 상향 옵션 ${optionDose}mg에서 목표치 초과 확인, 상향 호출 중단`);
+            break;
+          }
+        }
+        
+        // 오름차순 정렬
+        dosageOptions.sort((a, b) => a - b);
+      }
+      
+      // 옵션 버튼 생성 및 정렬 정책 적용
+      let finalOptions: number[] = [];
+      
+      if (targetRangeStatus === '미달') {
+        // 목표치 미도달: 현용법(1순위) + 적정용법+추천용법 12개 오름차순
+        const recommendedOptions = dosageOptions.slice(0, 12);
+        finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+        finalOptions.sort((a, b) => a - b);
+      } else if (targetRangeStatus === '초과') {
+        // 목표치 초과: 현용법(1순위) + 적정용법+추천용법 12개 내림차순
+        const recommendedOptions = dosageOptions.slice(0, 12);
+        finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+        finalOptions.sort((a, b) => b - a);
+      } else if (isTargetReached) {
+        // 목표치 도달: 하향 6개, 현용법, 상향 6개 전체 오름차순 (이미 정렬됨)
+        finalOptions = dosageOptions;
+      } else {
+        // 기본: 현용법 + 추천 옵션
+        const recommendedOptions = dosageOptions.slice(0, 12);
+        finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+        finalOptions.sort((a, b) => a - b);
+      }
+      
+      setDosageSuggestions((prev) => ({ ...prev, [newCardNumber]: finalOptions }));
+      
+      // 현용법 용량을 자동으로 선택 (하이라이트)
+      const currentDoseLabel = `${Number(currentDose).toLocaleString()} mg`;
+      setSelectedDosage((prev) => ({ ...prev, [newCardNumber]: currentDoseLabel }));
+      
+      // 최초 차트는 현용법만 표시 (loadCurrentMethodForCard에서 처리됨)
+      // 사용자가 옵션을 선택할 때만 용법조정 결과가 차트에 추가됨
+      
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      const isNetworkError = errorMessage.toLowerCase().includes("failed to fetch") ||
+                            errorMessage.toLowerCase().includes("networkerror") ||
+                            (e instanceof TypeError);
+      
+      if (isNetworkError) {
+        console.error("[용량 조정] 네트워크 오류로 인한 실패:", e);
+        // 네트워크 오류인 경우 사용자에게 알림
+        alert(
+          "네트워크 오류가 발생했습니다.\n\n" +
+          "가능한 원인:\n" +
+          "- 인터넷 연결 문제\n" +
+          "- 서버가 일시적으로 사용 불가능한 상태\n" +
+          "- CORS 설정 문제\n\n" +
+          "잠시 후 다시 시도해주세요."
+        );
+      } else {
+        console.warn("handleDosageAdjustmentV2 failed", e);
+      }
+      
+      setDosageError((prev) => ({ ...prev, [newCardNumber]: true }));
+    } finally {
+      setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+    }
   };
 
   const handleIntervalAdjustment = () => {
@@ -590,7 +1185,7 @@ const PKSimulation = ({
     void loadCurrentMethodForCard(newCardNumber);
   };
 
-  const handleDosageAndIntervalAdjustment = () => {
+  const handleDosageAndIntervalAdjustment = async () => {
     // 용법 조정은 동시 진행 제한을 적용하지 않음
     if (concurrencyNotice) setConcurrencyNotice("");
     const newCardNumber = adjustmentCards.length + 1;
@@ -598,11 +1193,671 @@ const PKSimulation = ({
       ...prev,
       { id: newCardNumber, type: "dosageAndInterval" },
     ]);
-    setCardChartData((prev) => ({ ...prev, [newCardNumber]: false }));
+    // 최초 차트는 현용법만 표시하도록 설정
+    setCardChartData((prev) => ({ ...prev, [newCardNumber]: true })); // 현용법 차트 표시
     setCustomDosageInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
     setCustomIntervalInputs((prev) => ({ ...prev, [newCardNumber]: "" }));
-    // 현용법 데이터 로드
+    setDosageLoading((prev) => ({ ...prev, [newCardNumber]: true }));
+    setDosageError((prev) => ({ ...prev, [newCardNumber]: false }));
+    
+    // 현용법 데이터 로드 (차트에 현용법만 표시)
     void loadCurrentMethodForCard(newCardNumber);
+    
+    try {
+      if (!selectedPatientId || !selectedDrug) return;
+      
+      const patient = currentPatient;
+      if (!patient) return;
+      
+      const prescription = patientPrescriptions.find(
+        (p) => p.drugName === selectedDrug
+      ) || patientPrescriptions[0];
+      
+      if (!prescription) return;
+      
+      // 현재 TDM 결과 확인 (tdmResult 또는 최신 저장된 결과)
+      let currentTdmResult: TdmApiResponse | null = tdmResult;
+      
+      if (!currentTdmResult) {
+        try {
+          const histKey = `tdmfriends:tdmResults:${selectedPatientId}:${selectedDrug}`;
+          const rawHist = window.localStorage.getItem(histKey);
+          if (rawHist) {
+            const list = JSON.parse(rawHist) as Array<{
+              id: string;
+              timestamp: string;
+              data?: TdmApiResponse;
+            }>;
+            const latest = [...list].sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+            )[0];
+            if (latest && latest.data) {
+              currentTdmResult = latest.data as TdmApiResponse;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to load current TDM result", e);
+        }
+      }
+      
+      if (!currentTdmResult) {
+        console.warn("No current TDM result found");
+        setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+        return;
+      }
+      
+      // 목표치 도달 여부 확인
+      const isTargetReached = isWithinTargetRange(
+        prescription.tdmTarget,
+        prescription.tdmTargetValue,
+        currentTdmResult.AUC_24_after ?? currentTdmResult.AUC_24_before ?? null,
+        currentTdmResult.CMAX_after ?? currentTdmResult.CMAX_before ?? null,
+        currentTdmResult.CTROUGH_after ?? currentTdmResult.CTROUGH_before ?? null,
+        prescription.drugName
+      );
+      
+      // 목표치 범위 확인 (초과/미달/도달)
+      const targetValue = getTdmTargetValue(
+        prescription.tdmTarget,
+        currentTdmResult.AUC_24_after ?? currentTdmResult.AUC_24_before ?? null,
+        currentTdmResult.CMAX_after ?? currentTdmResult.CMAX_before ?? null,
+        currentTdmResult.CTROUGH_after ?? currentTdmResult.CTROUGH_before ?? null,
+        prescription.drugName
+      );
+      
+      const targetRangeStatus = (() => {
+        if (!prescription.tdmTargetValue || !targetValue.numericValue) return null;
+        const rangeMatch = prescription.tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+        if (!rangeMatch) return null;
+        const minValue = parseFloat(rangeMatch[1]);
+        const maxValue = parseFloat(rangeMatch[2]);
+        const currentValue = targetValue.numericValue;
+        if (currentValue > maxValue) return '초과';
+        if (currentValue < minValue) return '미달';
+        return '도달';
+      })();
+      
+      // 용법 조정 단위 계산
+      const drug = (prescription.drugName || "").toLowerCase();
+      let step = 10; // mg (기본값)
+      
+      if (drug === "cyclosporin" || drug === "cyclosporine") {
+        let form: string | null = null;
+        try {
+          const storageKey = `tdmfriends:conditions:${patient.id}`;
+          const raw = window.localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as Array<{
+              route?: string;
+              dosageForm?: string;
+            }>;
+            const oral = parsed.find(
+              (c) => c.route === "경구" || c.route === "oral",
+            );
+            form = oral?.dosageForm || null;
+          }
+        } catch (e) {
+          console.warn("Failed to infer dosage form", e);
+        }
+        if (form && form.toLowerCase() === "capsule/tablet") step = 25;
+        else step = 10;
+      }
+      
+      // 현재 용량 확인
+      const dosesForPatient = (drugAdministrations || []).filter(
+        (d) => d.patientId === patient.id && d.drugName === prescription.drugName,
+      );
+      const lastDose = dosesForPatient.length > 0
+        ? [...dosesForPatient].sort(
+            (a, b) =>
+              toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+          )[dosesForPatient.length - 1]
+        : undefined;
+      const currentDose = Number(lastDose?.dose || prescription.dosage || 100);
+      
+      // 현용법 투약 간격 정보 (함수 전체에서 재사용)
+      const currentIntervalHours = lastDose?.intervalHours;
+      
+      // 목표 범위 파싱
+      const targetNums = (prescription.tdmTargetValue || "").match(/\d+\.?\d*/g) || [];
+      const targetMin = targetNums[0] ? parseFloat(targetNums[0]) : undefined;
+      const targetMax = targetNums[1] ? parseFloat(targetNums[1]) : undefined;
+      
+      // API 호출 헬퍼 함수 (용량만 변경, 시간은 현재 값 유지)
+      const callApiForAmount = async (
+        amt: number,
+        retries: number = 5,
+      ): Promise<{
+        amt: number;
+        resp: TdmApiResponse | null;
+        dataset: TdmDatasetRow[];
+        isTargetReached: boolean;
+        isSteadyState: boolean;
+      }> => {
+        // 현재 투약 간격 유지
+        const currentInterval = lastDose?.intervalHours || 
+          (selectedPrescription?.frequency ? 
+            (() => {
+              const frequencyMatch = selectedPrescription.frequency.match(/\d+/);
+              return frequencyMatch ? parseInt(frequencyMatch[0], 10) : 12;
+            })() : 12);
+        
+        const body = buildTdmRequestBodyCore({
+          patients,
+          prescriptions,
+          bloodTests,
+          drugAdministrations,
+          selectedPatientId: patient.id,
+          selectedDrugName: prescription.drugName,
+          overrides: { amount: amt, tau: currentInterval },
+        });
+        
+        try {
+          const resp = (await runTdmApi({ 
+            body, 
+            persist: false, 
+            retries 
+          })) as TdmApiResponse;
+          
+          const isTarget = isWithinTargetRange(
+            prescription.tdmTarget,
+            prescription.tdmTargetValue,
+            resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+            resp.CMAX_after ?? resp.CMAX_before ?? null,
+            resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+            prescription.drugName
+          );
+          const isSteady = typeof resp.Steady_state === 'boolean'
+            ? resp.Steady_state
+            : String(resp.Steady_state).toLowerCase() === 'true';
+          return {
+            amt,
+            resp,
+            dataset: (body?.dataset as TdmDatasetRow[]) || [],
+            isTargetReached: isTarget,
+            isSteadyState: isSteady,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorName = error instanceof Error ? error.name : "Unknown";
+          const lowerMessage = errorMessage.toLowerCase();
+          
+          const is503Error = lowerMessage.includes("503") || lowerMessage.includes("service unavailable");
+          const isNetworkError = lowerMessage.includes("failed to fetch") || 
+                                lowerMessage.includes("networkerror") ||
+                                lowerMessage.includes("network error") ||
+                                errorName === "TypeError";
+          const isCorsError = lowerMessage.includes("cors") || 
+                            lowerMessage.includes("access-control-allow-origin");
+          
+          if (is503Error) {
+            console.warn(`[용량&시간 조정] ${amt}mg에 대한 API 호출 실패 (503): 모든 재시도 실패`, error);
+          } else if (isNetworkError || isCorsError) {
+            const errorType = isCorsError ? "CORS" : "네트워크";
+            console.warn(`[용량&시간 조정] ${amt}mg에 대한 API 호출 실패 (${errorType}):`, {
+              error,
+              message: errorMessage,
+              name: errorName
+            });
+          } else {
+            console.warn(`[용량&시간 조정] ${amt}mg에 대한 API 호출 실패:`, error);
+          }
+          
+          return {
+            amt,
+            resp: null,
+            dataset: (body?.dataset as TdmDatasetRow[]) || [],
+            isTargetReached: false,
+            isSteadyState: false,
+          };
+        }
+      };
+      
+      let dosageOptions: number[] = [];
+      let firstTargetReachedDose: number | null = null;
+      
+      // 이미 다른 카드(용량 조정하기)에서 찾은 적정 용법 옵션 확인
+      const existingDosageCard = adjustmentCards.find(card => card.type === "dosageV2");
+      if (existingDosageCard && dosageSuggestions[existingDosageCard.id] && dosageSuggestions[existingDosageCard.id].length > 0) {
+        const existingOptions = dosageSuggestions[existingDosageCard.id];
+        // 현용법을 제외한 옵션이 12개 이상 있는지 확인
+        const nonCurrentOptions = existingOptions.filter(opt => Math.abs(opt - currentDose) >= 0.01);
+        if (nonCurrentOptions.length >= 12) {
+          // 이미 12개 옵션이 생성되어 있으면 그대로 재사용 (API 호출 없이)
+          const recommendedOptions = nonCurrentOptions.slice(0, 12);
+          const finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+          setDosageSuggestions((prev) => ({ ...prev, [newCardNumber]: finalOptions }));
+          
+          // 기존 카드의 캐시도 복사 (시간이 다를 수 있으므로 사용자가 선택할 때 재확인 필요하지만, 참고용으로 복사)
+          // 사용자가 옵션을 선택하면 시간이 다를 수 있으므로 API를 호출해야 함
+          const existingCache = dosageSuggestionResults[existingDosageCard.id];
+          if (existingCache) {
+            setDosageSuggestionResults((prev) => {
+              const next = { ...(prev || {}) };
+              next[newCardNumber] = { ...existingCache }; // 참고용으로 복사 (시간이 다를 수 있으므로 재확인 필요)
+              return next;
+            });
+          }
+          
+          console.log(`[용량&시간 조정] 기존 용량 조정 카드의 12개 옵션 재사용 (옵션만 복사, 사용자 선택 시 API 호출)`);
+          // 현용법 용량을 자동으로 선택 (하이라이트)
+          const currentDoseLabel = `${Number(currentDose).toLocaleString()} mg`;
+          setSelectedDosage((prev) => ({ ...prev, [newCardNumber]: currentDoseLabel }));
+          
+          // 현용법 투약 간격도 자동으로 선택 (하이라이트)
+          if (currentIntervalHours) {
+            const intervalHours = currentIntervalHours;
+            // intervalOptions에서 일치하는 시간 찾기
+            const matchedOption = intervalOptions.find(opt => {
+              const optHours = getIntervalHours(opt.label);
+              return optHours === intervalHours;
+            });
+            
+            if (matchedOption) {
+              setSelectedIntervalOption((prev) => ({ ...prev, [newCardNumber]: matchedOption.label }));
+            } else {
+              // 일치하는 옵션이 없으면 직접 입력 형식으로 설정
+              const normalizedValue = Number.isInteger(intervalHours) && intervalHours >= 1 
+                ? String(intervalHours) 
+                : intervalHours.toString();
+              const customLabel = `직접 입력 (${normalizedValue}시간)`;
+              setSelectedIntervalOption((prev) => ({ ...prev, [newCardNumber]: customLabel }));
+              setCustomIntervalInputs((prev) => ({ ...prev, [newCardNumber]: normalizedValue }));
+            }
+          }
+          
+          setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+          return; // 옵션 생성 API 호출 없이 종료 (사용자 선택 시 API 호출은 정상 동작)
+        }
+      }
+      
+      // 목표치 도달 케이스에서도 옵션 재사용 확인
+      if (isTargetReached) {
+        const existingDosageCard = adjustmentCards.find(card => card.type === "dosageV2");
+        if (existingDosageCard && dosageSuggestions[existingDosageCard.id] && dosageSuggestions[existingDosageCard.id].length > 0) {
+          const existingOptions = dosageSuggestions[existingDosageCard.id];
+          // 목표치 도달 케이스는 현용법 중심으로 하향 6개, 상향 6개를 검증하므로 옵션이 있으면 재사용 가능
+          // 현용법을 포함한 옵션이 6개 이상 있으면 재사용 (하향/상향 각각 최소 3개 이상)
+          if (existingOptions.length >= 6) {
+            // 기존 옵션을 그대로 재사용 (이미 목표치 도달 검증 완료)
+            const finalOptions = [...existingOptions];
+            setDosageSuggestions((prev) => ({ ...prev, [newCardNumber]: finalOptions }));
+            
+            // 기존 카드의 캐시도 복사
+            const existingCache = dosageSuggestionResults[existingDosageCard.id];
+            if (existingCache) {
+              setDosageSuggestionResults((prev) => {
+                const next = { ...(prev || {}) };
+                next[newCardNumber] = { ...existingCache };
+                return next;
+              });
+            }
+            
+            console.log(`[용량&시간 조정] 기존 용량 조정 카드의 목표치 도달 옵션 재사용 (${finalOptions.length}개)`);
+            // 현용법 용량을 자동으로 선택 (하이라이트)
+            const currentDoseLabel = `${Number(currentDose).toLocaleString()} mg`;
+            setSelectedDosage((prev) => ({ ...prev, [newCardNumber]: currentDoseLabel }));
+            
+            // 현용법 투약 간격도 자동으로 선택 (하이라이트)
+            if (currentIntervalHours) {
+              const intervalHours = currentIntervalHours;
+              const matchedOption = intervalOptions.find(opt => {
+                const optHours = getIntervalHours(opt.label);
+                return optHours === intervalHours;
+              });
+              
+              if (matchedOption) {
+                setSelectedIntervalOption((prev) => ({ ...prev, [newCardNumber]: matchedOption.label }));
+              } else {
+                const normalizedValue = Number.isInteger(intervalHours) && intervalHours >= 1 
+                  ? String(intervalHours) 
+                  : intervalHours.toString();
+                const customLabel = `직접 입력 (${normalizedValue}시간)`;
+                setSelectedIntervalOption((prev) => ({ ...prev, [newCardNumber]: customLabel }));
+                setCustomIntervalInputs((prev) => ({ ...prev, [newCardNumber]: normalizedValue }));
+              }
+            }
+            
+            setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+            return; // API 호출 없이 종료
+          }
+        }
+      }
+      
+      // 시나리오 1: 목표치 미도달
+      if (targetRangeStatus === '미달') {
+        let testDose = currentDose;
+        let foundFirstTarget = false;
+        let failedCount = 0;
+        
+        // 이미 찾은 목표치 도달 용량이 있으면 그 지점부터 시작 (시간이 다를 수 있으므로 재확인 필요)
+        if (firstTargetReachedDose) {
+          testDose = firstTargetReachedDose - step; // 한 단계 전부터 재확인 시작
+        }
+        
+        // 목표치에 도달할 때까지 1단계씩 올려가며 API 호출
+        while (!foundFirstTarget && testDose <= currentDose + (step * 20)) {
+          testDose += step;
+          
+          // 이미 찾은 용량이면 재확인 (시간이 다를 수 있으므로)
+          if (firstTargetReachedDose && Math.abs(testDose - firstTargetReachedDose) < 0.01) {
+            const result = await callApiForAmount(testDose);
+            if (result.resp && result.isTargetReached) {
+              foundFirstTarget = true;
+              break;
+            }
+            // 시간이 달라서 목표치에 도달하지 못할 수 있으므로 계속 검색
+            firstTargetReachedDose = null;
+            continue;
+          }
+          
+          const result = await callApiForAmount(testDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            // 연속으로 5번 실패하면 중단 (503 에러 대비 증가)
+            if (failedCount >= 5) {
+              console.warn(`[용량&시간 조정] 목표치 도달 검색 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            // 503 에러인 경우 추가 대기 시간 (서버 부하 완화)
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0;
+          
+          if (result.isTargetReached) {
+            firstTargetReachedDose = testDose;
+            foundFirstTarget = true;
+            break;
+          }
+        }
+        
+        if (firstTargetReachedDose) {
+          // 첫 도달 용량 기준으로 용량조정 단위로 상향 조정한 옵션 최대 12개
+          for (let i = 0; i < 12; i++) {
+            const optionDose = firstTargetReachedDose + (step * i);
+            dosageOptions.push(optionDose);
+          }
+        } else if (failedCount >= 5) {
+          setDosageError((prev) => ({ ...prev, [newCardNumber]: true }));
+          console.warn(`[용량&시간 조정] 목표치 도달 검색 실패: 서버 응답 오류 (연속 ${failedCount}회 실패)`);
+        }
+      }
+      // 시나리오 2: 목표치 초과
+      else if (targetRangeStatus === '초과') {
+        let testDose = currentDose;
+        let foundFirstTarget = false;
+        let failedCount = 0;
+        
+        // 이미 찾은 목표치 도달 용량이 있으면 그 지점부터 시작 (시간이 다를 수 있으므로 재확인 필요)
+        if (firstTargetReachedDose) {
+          testDose = firstTargetReachedDose + step; // 한 단계 후부터 재확인 시작
+        }
+        
+        // 목표치에 도달할 때까지 1단계씩 내려가며 API 호출
+        while (!foundFirstTarget && testDose >= Math.max(1, currentDose - (step * 20))) {
+          testDose -= step;
+          if (testDose < 1) break;
+          
+          // 이미 찾은 용량이면 재확인 (시간이 다를 수 있으므로)
+          if (firstTargetReachedDose && Math.abs(testDose - firstTargetReachedDose) < 0.01) {
+            const result = await callApiForAmount(testDose);
+            if (result.resp && result.isTargetReached) {
+              foundFirstTarget = true;
+              break;
+            }
+            // 시간이 달라서 목표치에 도달하지 못할 수 있으므로 계속 검색
+            firstTargetReachedDose = null;
+            continue;
+          }
+          
+          const result = await callApiForAmount(testDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            // 연속으로 5번 실패하면 중단 (503 에러 대비 증가)
+            if (failedCount >= 5) {
+              console.warn(`[용량&시간 조정] 목표치 도달 검색 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            // 503 에러인 경우 추가 대기 시간 (서버 부하 완화)
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0;
+          
+          if (result.isTargetReached) {
+            firstTargetReachedDose = testDose;
+            foundFirstTarget = true;
+            break;
+          }
+        }
+        
+        if (firstTargetReachedDose) {
+          // 첫 도달 용량 기준으로 용량조정 단위로 하향 조정한 옵션 최대 12개
+          for (let i = 0; i < 12; i++) {
+            const optionDose = firstTargetReachedDose - (step * i);
+            if (optionDose >= 1) {
+              dosageOptions.push(optionDose);
+            }
+          }
+          // 정렬은 최종 옵션 생성 시 수행 (내림차순)
+        } else if (failedCount >= 5) {
+          setDosageError((prev) => ({ ...prev, [newCardNumber]: true }));
+          console.warn(`[용량&시간 조정] 목표치 도달 검색 실패: 서버 응답 오류 (연속 ${failedCount}회 실패)`);
+        }
+      }
+      // 시나리오 3, 4: 목표치 도달 (항정상태 미도달 또는 모두 도달)
+      else if (isTargetReached) {
+        // 현재 용량 중심으로 하향 6개, 상향 6개 옵션을 API 호출하여 목표치 도달 여부 검증
+        // 목표치를 벗어나면 해당 방향으로의 호출 중단
+        
+        // 목표치 범위 파싱 (목표치 초과/미달 확인용)
+        const targetNums = (prescription.tdmTargetValue || "").match(/\d+\.?\d*/g) || [];
+        const targetMin = targetNums[0] ? parseFloat(targetNums[0]) : undefined;
+        const targetMax = targetNums[1] ? parseFloat(targetNums[1]) : undefined;
+        
+        // 목표치 범위 상태 확인 헬퍼 함수
+        const getTargetRangeStatus = (resp: TdmApiResponse): '초과' | '미달' | '도달' | null => {
+          if (!targetMin || !targetMax) return null;
+          const targetValue = getTdmTargetValue(
+            prescription.tdmTarget,
+            resp.AUC_24_after ?? resp.AUC_24_before ?? null,
+            resp.CMAX_after ?? resp.CMAX_before ?? null,
+            resp.CTROUGH_after ?? resp.CTROUGH_before ?? null,
+            prescription.drugName
+          );
+          if (!targetValue.numericValue) return null;
+          const currentValue = targetValue.numericValue;
+          if (currentValue > targetMax) return '초과';
+          if (currentValue < targetMin) return '미달';
+          return '도달';
+        };
+        
+        let failedCount = 0;
+        let downwardStopped = false; // 하향 호출 중단 플래그
+        let upwardStopped = false; // 상향 호출 중단 플래그
+        
+        // 하향 6개 검증 (큰 용량부터 작은 용량 순서)
+        for (let i = 6; i >= 1; i--) {
+          if (downwardStopped) break;
+          
+          const optionDose = currentDose - (step * i);
+          if (optionDose < 1) continue;
+          
+          const result = await callApiForAmount(optionDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            if (failedCount >= 5) {
+              console.warn(`[용량&시간 조정] 목표치 도달 옵션 검증 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0;
+          
+          // 결과를 캐시에 저장
+          setDosageSuggestionResults((prev) => {
+            const next = { ...(prev || {}) };
+            if (!next[newCardNumber]) next[newCardNumber] = {};
+            next[newCardNumber][optionDose] = {
+              data: result.resp,
+              dataset: result.dataset
+            };
+            return next;
+          });
+          
+          // 목표치 범위 상태 확인
+          const rangeStatus = getTargetRangeStatus(result.resp);
+          
+          if (result.isTargetReached) {
+            // 목표치 도달: 옵션 추가
+            dosageOptions.push(optionDose);
+          } else if (rangeStatus === '미달') {
+            // 목표치 미도달: 하향 호출 중단 (더 작은 용량은 더 미도달할 것)
+            downwardStopped = true;
+            console.log(`[용량&시간 조정] 하향 옵션 ${optionDose}mg에서 목표치 미도달 확인, 하향 호출 중단`);
+            break;
+          }
+        }
+        
+        // 현용법 검증 (이미 목표치 도달 확인됨)
+        dosageOptions.push(currentDose);
+        
+        // 상향 6개 검증 (작은 용량부터 큰 용량 순서)
+        for (let i = 1; i <= 6; i++) {
+          if (upwardStopped) break;
+          
+          const optionDose = currentDose + (step * i);
+          
+          const result = await callApiForAmount(optionDose);
+          
+          if (!result.resp) {
+            failedCount++;
+            if (failedCount >= 5) {
+              console.warn(`[용량&시간 조정] 목표치 도달 옵션 검증 중 연속 실패로 중단 (${failedCount}회)`);
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          failedCount = 0;
+          
+          // 결과를 캐시에 저장
+          setDosageSuggestionResults((prev) => {
+            const next = { ...(prev || {}) };
+            if (!next[newCardNumber]) next[newCardNumber] = {};
+            next[newCardNumber][optionDose] = {
+              data: result.resp,
+              dataset: result.dataset
+            };
+            return next;
+          });
+          
+          // 목표치 범위 상태 확인
+          const rangeStatus = getTargetRangeStatus(result.resp);
+          
+          if (result.isTargetReached) {
+            // 목표치 도달: 옵션 추가
+            dosageOptions.push(optionDose);
+          } else if (rangeStatus === '초과') {
+            // 목표치 초과: 상향 호출 중단 (더 큰 용량은 더 초과할 것)
+            upwardStopped = true;
+            console.log(`[용량&시간 조정] 상향 옵션 ${optionDose}mg에서 목표치 초과 확인, 상향 호출 중단`);
+            break;
+          }
+        }
+        
+        // 오름차순 정렬
+        dosageOptions.sort((a, b) => a - b);
+      }
+      
+      // 옵션 버튼 생성 및 정렬 정책 적용
+      let finalOptions: number[] = [];
+      
+      if (targetRangeStatus === '미달') {
+        // 목표치 미도달: 현용법(1순위) + 적정용법+추천용법 12개 오름차순
+        const recommendedOptions = dosageOptions.slice(0, 12);
+        finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+        finalOptions.sort((a, b) => a - b);
+      } else if (targetRangeStatus === '초과') {
+        // 목표치 초과: 현용법(1순위) + 적정용법+추천용법 12개 내림차순
+        const recommendedOptions = dosageOptions.slice(0, 12);
+        finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+        finalOptions.sort((a, b) => b - a);
+      } else if (isTargetReached) {
+        // 목표치 도달: 하향 6개, 현용법, 상향 6개 전체 오름차순 (이미 정렬됨)
+        finalOptions = dosageOptions;
+      } else {
+        // 기본: 현용법 + 추천 옵션
+        const recommendedOptions = dosageOptions.slice(0, 12);
+        finalOptions = [currentDose, ...recommendedOptions.filter(d => d !== currentDose)];
+        finalOptions.sort((a, b) => a - b);
+      }
+      
+      setDosageSuggestions((prev) => ({ ...prev, [newCardNumber]: finalOptions }));
+      
+      // 현용법 용량을 자동으로 선택 (하이라이트)
+      const currentDoseLabel = `${Number(currentDose).toLocaleString()} mg`;
+      setSelectedDosage((prev) => ({ ...prev, [newCardNumber]: currentDoseLabel }));
+      
+      // 현용법 투약 간격도 자동으로 선택 (하이라이트)
+      if (currentIntervalHours) {
+        const intervalHours = currentIntervalHours;
+        // intervalOptions에서 일치하는 시간 찾기
+        const matchedOption = intervalOptions.find(opt => {
+          const optHours = getIntervalHours(opt.label);
+          return optHours === intervalHours;
+        });
+        
+        if (matchedOption) {
+          setSelectedIntervalOption((prev) => ({ ...prev, [newCardNumber]: matchedOption.label }));
+        } else {
+          // 일치하는 옵션이 없으면 직접 입력 형식으로 설정
+          const normalizedValue = Number.isInteger(intervalHours) && intervalHours >= 1 
+            ? String(intervalHours) 
+            : intervalHours.toString();
+          const customLabel = `직접 입력 (${normalizedValue}시간)`;
+          setSelectedIntervalOption((prev) => ({ ...prev, [newCardNumber]: customLabel }));
+          setCustomIntervalInputs((prev) => ({ ...prev, [newCardNumber]: normalizedValue }));
+        }
+      }
+      
+      // 최초 차트는 현용법만 표시 (loadCurrentMethodForCard에서 처리됨)
+      // 사용자가 옵션을 선택할 때만 용법조정 결과가 차트에 추가됨
+      
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      const isNetworkError = errorMessage.toLowerCase().includes("failed to fetch") ||
+                            errorMessage.toLowerCase().includes("networkerror") ||
+                            (e instanceof TypeError);
+      
+      if (isNetworkError) {
+        console.error("[용량&시간 조정] 네트워크 오류로 인한 실패:", e);
+        alert(
+          "네트워크 오류가 발생했습니다.\n\n" +
+          "가능한 원인:\n" +
+          "- 인터넷 연결 문제\n" +
+          "- 서버가 일시적으로 사용 불가능한 상태\n" +
+          "- CORS 설정 문제\n\n" +
+          "잠시 후 다시 시도해주세요."
+        );
+      } else {
+        console.warn("handleDosageAndIntervalAdjustment failed", e);
+      }
+      
+      setDosageError((prev) => ({ ...prev, [newCardNumber]: true }));
+    } finally {
+      setDosageLoading((prev) => ({ ...prev, [newCardNumber]: false }));
+    }
   };
 
   const handleRemoveCardClick = (cardId: number) => {
@@ -707,9 +1962,67 @@ const PKSimulation = ({
       void loadCurrentMethodForCard(cardId);
     }
 
-    // 캐시가 있다면 재호출 없이 반영
+    // 선택된 용량 확인
     const amountMg = parseFloat(dosage.replace(/[^0-9.]/g, ""));
+    
+    // 현용법 용량 확인
+    const dosesForPatient = (drugAdministrations || []).filter(
+      (d) => d.patientId === selectedPatientId && d.drugName === selectedDrug,
+    );
+    const lastDose = dosesForPatient.length > 0
+      ? [...dosesForPatient].sort(
+          (a, b) =>
+            toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+        )[dosesForPatient.length - 1]
+      : undefined;
+    const currentDose = Number(lastDose?.dose || 0);
+    
+    // 현용법 용량을 선택한 경우: 용법조정 결과를 추가하지 않고 현용법만 표시
+    if (Math.abs(amountMg - currentDose) < 0.01) {
+      // 현용법만 표시 (용법조정 결과 제거)
+      setCardTdmExtraSeries((prev) => ({
+        ...prev,
+        [cardId]: {
+          ipredSeries: [],
+          predSeries: [],
+          observedSeries: prev[cardId]?.observedSeries || [],
+          currentMethodSeries: prev[cardId]?.currentMethodSeries || [],
+        },
+      }));
+      setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
+      return;
+    }
+
+    // 캐시가 있다면 재호출 없이 반영
+    // 단, 용량&시간 조정 카드의 경우 시간이 다를 수 있으므로 캐시 사용 시 주의 필요
     const cached = dosageSuggestionResults?.[cardId]?.[amountMg];
+    const card = adjustmentCards.find(c => c.id === cardId);
+    
+    // 용량&시간 조정 카드인 경우 시간도 확인 필요
+    if (card?.type === "dosageAndInterval") {
+      const selectedInterval = selectedIntervalOption[cardId];
+      if (selectedInterval) {
+        // 시간이 선택되었으면 용량&시간 조정 API 호출
+        const hours = getIntervalHours(selectedInterval);
+        if (typeof hours === "number" && Number.isFinite(hours)) {
+          void applyDosageAndIntervalScenarioForCard(cardId, amountMg, hours);
+          return;
+        }
+      }
+      // 시간이 선택되지 않았으면 기본 시간으로 API 호출
+      const dosesForPatient = (drugAdministrations || []).filter(
+        (d) => d.patientId === selectedPatientId && d.drugName === selectedDrug,
+      );
+      const lastDose = dosesForPatient.length > 0
+        ? [...dosesForPatient].sort(
+            (a, b) =>
+              toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+          )[dosesForPatient.length - 1]
+        : undefined;
+      const defaultHours = lastDose?.intervalHours || 12;
+      void applyDosageAndIntervalScenarioForCard(cardId, amountMg, defaultHours);
+      return;
+    }
 
     if (cached && cached.data) {
       // 카드별 차트 데이터만 업데이트 (메인 차트는 변경하지 않음)
@@ -887,7 +2200,7 @@ const PKSimulation = ({
   };
 
   const handleDosagePresetSelectV2 = (cardId: number, amountMg: number) => {
-    const label = `${Number(amountMg).toLocaleString()}mg`;
+    const label = `${Number(amountMg).toLocaleString()} mg`;
     setCustomDosageInputs((prev) => ({
       ...prev,
       [cardId]: String(amountMg),
@@ -903,13 +2216,26 @@ const PKSimulation = ({
     if (card?.type === "dosageAndInterval") {
       setSelectedDosage((prev) => ({ ...prev, [cardId]: label }));
       setCardChartData((prev) => ({ ...prev, [cardId]: true }));
-      // 용량과 시간이 모두 선택되었을 때만 API 호출
+      // 시간이 선택되었으면 해당 시간으로 API 호출, 없으면 기본 시간으로 호출
       const selectedInterval = selectedIntervalOption[cardId];
       if (selectedInterval) {
         const hours = getIntervalHours(selectedInterval);
         if (typeof hours === "number" && Number.isFinite(hours)) {
           void applyDosageAndIntervalScenarioForCard(cardId, amountMg, hours);
         }
+      } else {
+        // 시간이 선택되지 않았으면 기본 시간으로 API 호출
+        const dosesForPatient = (drugAdministrations || []).filter(
+          (d) => d.patientId === selectedPatientId && d.drugName === selectedDrug,
+        );
+        const lastDose = dosesForPatient.length > 0
+          ? [...dosesForPatient].sort(
+              (a, b) =>
+                toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+            )[dosesForPatient.length - 1]
+          : undefined;
+        const defaultHours = lastDose?.intervalHours || 12;
+        void applyDosageAndIntervalScenarioForCard(cardId, amountMg, defaultHours);
       }
     } else {
       handleDosageSelect(cardId, label);
@@ -936,7 +2262,7 @@ const PKSimulation = ({
       return;
     }
 
-    const label = `${Number(amount).toLocaleString()}mg`;
+    const label = `${Number(amount).toLocaleString()} mg`;
     
     // 현용법 데이터가 없으면 로드
     if (!cardTdmExtraSeries[cardId]?.currentMethodSeries || cardTdmExtraSeries[cardId]?.currentMethodSeries.length === 0) {
@@ -1373,6 +2699,17 @@ const PKSimulation = ({
           },
         }));
         
+        // 결과를 캐시에 저장 (중복 API 호출 방지)
+        setDosageSuggestionResults((prev) => {
+          const next = { ...(prev || {}) };
+          next[cardId] = next[cardId] || {};
+          next[cardId][amountMg] = {
+            data: data,
+            dataset: (body.dataset as TdmDatasetRow[]) || [],
+          };
+          return next;
+        });
+        
         // 로딩 종료
         setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
       } catch (e) {
@@ -1509,6 +2846,66 @@ const PKSimulation = ({
       try {
         if (!selectedPatientId || !selectedDrug) return;
         
+        // 캐시 확인: 목표치 도달 케이스에서 저장한 캐시 확인
+        // 목표치 도달 케이스에서는 callApiForAmount를 사용하여 현재 투약 간격을 유지하면서 용량만 변경
+        // 따라서 같은 용량이면 같은 시간을 사용하므로, 캐시에 저장된 데이터의 시간과 현재 요청 시간이 같은지 확인
+        const cached = dosageSuggestionResults?.[cardId]?.[amountMg];
+        if (cached && cached.data) {
+          // 목표치 도달 케이스에서 저장한 캐시는 currentInterval을 사용하므로
+          // 현재 요청 시간이 currentInterval과 같으면 재사용 가능
+          const dosesForPatient = (drugAdministrations || []).filter(
+            (d) => d.patientId === selectedPatientId && d.drugName === selectedDrug,
+          );
+          const lastDose = dosesForPatient.length > 0
+            ? [...dosesForPatient].sort(
+                (a, b) =>
+                  toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+              )[dosesForPatient.length - 1]
+            : undefined;
+          const currentInterval = lastDose?.intervalHours || 12;
+          
+          // 현재 요청 시간이 currentInterval과 같으면 재사용 가능
+          if (Math.abs(tauHours - currentInterval) < 0.01) {
+            console.log(`[용량&시간 조정] 캐시된 데이터 재사용: ${amountMg}mg, ${tauHours}시간`);
+            
+            // 캐시된 데이터 사용
+            setCardTdmResults((prev) => ({ ...prev, [cardId]: cached.data }));
+            setCardTdmChartData((prev) => ({
+              ...prev,
+              [cardId]: toChartData(cached.data, cached.dataset || []),
+            }));
+            
+            setCardTdmExtraSeries((prev) => ({
+              ...prev,
+              [cardId]: {
+                ipredSeries: ((cached.data?.IPRED_CONC as ConcentrationPoint[]) || [])
+                  .map((p) => ({
+                    time: Number(p.time) || 0,
+                    value: Number(p.IPRED ?? 0) || 0,
+                  }))
+                  .filter((p) => p.time >= 0),
+                predSeries: ((cached.data?.PRED_CONC as ConcentrationPoint[]) || [])
+                  .map((p) => ({
+                    time: Number(p.time) || 0,
+                    value: Number(p.PRED ?? p.IPRED ?? 0) || 0,
+                  }))
+                  .filter((p) => p.time >= 0),
+                observedSeries: ((cached.dataset as TdmDatasetRow[]) || [])
+                  .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+                  .map((r: TdmDatasetRow) => ({
+                    time: Number(r.TIME) || 0,
+                    value: Number(r.DV),
+                  }))
+                  .filter((p) => p.time >= 0),
+                currentMethodSeries: prev[cardId]?.currentMethodSeries || [],
+              },
+            }));
+            
+            setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
+            return; // API 호출 없이 종료
+          }
+        }
+        
         // 로딩 시작
         setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
         
@@ -1528,6 +2925,17 @@ const PKSimulation = ({
           patientId: selectedPatientId,
           drugName: selectedDrug,
         })) as TdmApiResponse;
+        
+        // API 호출 결과를 캐시에 저장 (목표치 도달 케이스에서 사용할 수 있도록)
+        setDosageSuggestionResults((prev) => {
+          const next = { ...(prev || {}) };
+          if (!next[cardId]) next[cardId] = {};
+          next[cardId][amountMg] = {
+            data: data,
+            dataset: (body.dataset as TdmDatasetRow[]) || []
+          };
+          return next;
+        });
         
         // 카드별 차트 데이터만 업데이트
         setCardTdmResults((prev) => ({ ...prev, [cardId]: data }));
@@ -1689,6 +3097,60 @@ const PKSimulation = ({
       setCardChartLoading((prev) => ({ ...prev, [cardId]: true }));
 
       try {
+        // 이미 tdmResult가 있으면 즉시 사용 (API 호출 없이)
+        if (tdmResult) {
+          const body = buildTdmRequestBodyCore({
+            patients,
+            prescriptions,
+            bloodTests,
+            drugAdministrations,
+            selectedPatientId,
+            selectedDrugName: selectedDrug,
+            overrides: undefined, // 현용법이므로 overrides 없음
+          });
+
+          if (body) {
+            // 기존 tdmResult를 사용하여 차트 데이터 즉시 설정
+            const currentMethodData = (
+              (tdmResult?.IPRED_CONC as ConcentrationPoint[] | undefined) || []
+            )
+              .map((p) => ({
+                time: Number(p.time) || 0,
+                value: Number(p.IPRED ?? 0) || 0,
+              }))
+              .filter((p) => p.time >= 0);
+
+            const observedSeries = ((body.dataset as TdmDatasetRow[]) || [])
+              .filter((r: TdmDatasetRow) => r.EVID === 0 && r.DV != null)
+              .map((r: TdmDatasetRow) => ({
+                time: Number(r.TIME) || 0,
+                value: Number(r.DV),
+              }))
+              .filter((p) => p.time >= 0);
+
+            setCardTdmChartData((prev) => ({
+              ...prev,
+              [cardId]: toChartData(tdmResult, (body.dataset as TdmDatasetRow[]) || []),
+            }));
+
+            setCardTdmExtraSeries((prev) => ({
+              ...prev,
+              [cardId]: {
+                ipredSeries: prev[cardId]?.ipredSeries || [],
+                predSeries: prev[cardId]?.predSeries || [],
+                observedSeries: observedSeries,
+                currentMethodSeries: currentMethodData,
+              },
+            }));
+
+            setCardTdmResults((prev) => ({ ...prev, [cardId]: tdmResult }));
+            setCardChartData((prev) => ({ ...prev, [cardId]: true }));
+            setCardChartLoading((prev) => ({ ...prev, [cardId]: false }));
+            return; // API 호출 없이 즉시 반환
+          }
+        }
+
+        // tdmResult가 없으면 API 호출
         // 현용법 데이터 로드 (overrides 없이)
         const body = buildTdmRequestBodyCore({
           patients,
@@ -1806,6 +3268,8 @@ const PKSimulation = ({
       checkChartDataSize,
       latestAdministration,
       intervalOptions,
+      tdmResult,
+      toChartData,
     ],
   );
 
@@ -2279,7 +3743,7 @@ const PKSimulation = ({
               // 약간의 지연을 두어 상태 업데이트가 완료된 후 호출
               setTimeout(() => {
                 if (handleDosageSelectRef.current) {
-                  handleDosageSelectRef.current(cardId, `${firstAmount}mg`);
+                  handleDosageSelectRef.current(cardId, `${firstAmount} mg`);
                 }
               }, 100);
             }
@@ -2400,7 +3864,7 @@ const PKSimulation = ({
             // 약간의 지연을 두어 상태 업데이트가 완료된 후 호출
             setTimeout(() => {
               if (handleDosageSelectRef.current) {
-                handleDosageSelectRef.current(cardId, `${first}mg`);
+                handleDosageSelectRef.current(cardId, `${first} mg`);
               }
             }, 100);
           }
@@ -2967,38 +4431,87 @@ const PKSimulation = ({
                             투약 용량 선택
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {dosagePresetOptions.length > 0 ? (
-                            dosagePresetOptions.map((amount) => {
-                              const label = `${Number(amount).toLocaleString()}mg`;
-                              const isSelected = selectedDosage[card.id] === label;
-                              return (
-                                <Button
-                                  key={`${card.id}-${amount}`}
-                                  variant={isSelected ? "default" : "outline"}
-                                  size="default"
-                                  onClick={() => handleDosagePresetSelectV2(card.id, amount)}
-                                  className={`${
-                                    isSelected
-                                      ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
-                                      : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
-                                  } rounded-full px-4 py-2 text-sm font-semibold transition h-auto flex flex-col items-center justify-center gap-0.5`}
-                                  title={`${amount}mg`}
-                                  aria-pressed={isSelected}
-                                >
-                                  <span>{Number(amount).toLocaleString()}</span>
-                                  <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
-                                    mg
-                                  </span>
-                                </Button>
-                              );
-                            })
-                          ) : (
-                            <div className="text-sm text-muted-foreground text-center py-6">
-                              현재 선택한 약물에 대해 제공되는 기본 용량 프리셋이 없습니다.
+                        
+                        {/* 상태 메시지 영역 */}
+                        <div className="flex justify-center mb-4">
+                          {/* 에러 상태: API 호출 실패 시 에러 메시지 표시 */}
+                          {dosageError[card.id] && !dosageLoading[card.id] && (
+                            <div className="flex flex-col items-center gap-3 w-full">
+                              <div className="text-sm text-red-600 dark:text-red-400">
+                                제안 계산에 실패했습니다. 네트워크 상태를 확인하고 카드를 삭제한 후 다시 시도해주세요.
+                              </div>
                             </div>
                           )}
+
+                          {/* 계산 중 UI: 로딩 중이거나 옵션이 없을 때 표시 (에러가 아닐 때만) */}
+                          {!dosageError[card.id] && ((!dosageSuggestions[card.id] ||
+                            dosageSuggestions[card.id].length === 0) ||
+                            dosageLoading[card.id]) && (
+                            <span className="text-sm text-muted-foreground flex items-center gap-2">
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                ></circle>
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                                ></path>
+                              </svg>
+                              제안을 계산 중...
+                            </span>
+                          )}
                         </div>
+
+                        {/* 옵션 버튼: 로딩이 완료되고 옵션이 있을 때만 표시 */}
+                        {!dosageLoading[card.id] && (dosageSuggestions[card.id] || []).length > 0 && (() => {
+                          // 현용법 용량 확인
+                          const dosesForPatient = (drugAdministrations || []).filter(
+                            (d) => d.patientId === selectedPatientId && d.drugName === selectedDrug,
+                          );
+                          const lastDose = dosesForPatient.length > 0
+                            ? [...dosesForPatient].sort(
+                                (a, b) =>
+                                  toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+                              )[dosesForPatient.length - 1]
+                            : undefined;
+                          const currentDose = Number(lastDose?.dose || 0);
+                          
+                          return (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                              {(dosageSuggestions[card.id] || []).map((amount, index) => {
+                                const label = `${Number(amount).toLocaleString()} mg`;
+                                const isSelected = selectedDosage[card.id] === label;
+                                const isCurrentMethod = Math.abs(amount - currentDose) < 0.01;
+                                return (
+                                  <Button
+                                    key={`${card.id}-${amount}`}
+                                    variant={isSelected ? "default" : "outline"}
+                                    size="default"
+                                    onClick={() => handleDosagePresetSelectV2(card.id, amount)}
+                                    className={`${
+                                      isSelected
+                                        ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
+                                        : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
+                                    } flex h-[70px] w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                    title={`${amount}mg${isCurrentMethod ? " (현용법)" : ""}`}
+                                    aria-pressed={isSelected}
+                                  >
+                                    <span>{label}</span>
+                                    <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
+                                      {isCurrentMethod ? "현용법" : ""}
+                                    </span>
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                     </div>
@@ -3197,7 +4710,7 @@ const PKSimulation = ({
                   {(dosageSuggestions[card.id] || []).length > 0 && (
                     <div className="flex flex-wrap justify-center gap-4">
                       {(dosageSuggestions[card.id] || []).map((amt) => {
-                        const label = `${Number(amt).toLocaleString()}mg`;
+                        const label = `${Number(amt).toLocaleString()} mg`;
 
                         return (
                           <Button
@@ -3292,79 +4805,130 @@ const PKSimulation = ({
                   </div>
                 </>
               ) : (
+                // dosageV2 타입 카드
                 <>
-                  <div
-                    className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
-                    role="group"
-                    aria-label="투약 용량 옵션"
-                  >
-                    <div className="flex-1 md:pr-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                          투약 용량 선택
-                        </span>
+                  {/* 상태 메시지 영역 (위쪽) */}
+                  <div className="flex justify-center mb-4">
+                    {/* 에러 상태: API 호출 실패 시 에러 메시지 표시 */}
+                    {dosageError[card.id] && !dosageLoading[card.id] && (
+                      <div className="flex flex-col items-center gap-3 w-full">
+                        <div className="text-sm text-red-600 dark:text-red-400">
+                          제안 계산에 실패했습니다. 네트워크 상태를 확인하고 카드를 삭제한 후 다시 시도해주세요.
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                        {dosagePresetOptions.length > 0 ? (
-                          dosagePresetOptions.map((amount) => {
-                            const label = `${Number(amount).toLocaleString()}mg`;
-                            const isSelected = selectedDosage[card.id] === label;
-                            return (
-                              <Button
-                                key={`${card.id}-${amount}`}
-                                variant={isSelected ? "default" : "outline"}
-                                size="default"
-                                onClick={() => handleDosagePresetSelectV2(card.id, amount)}
-                                className={`${
-                                  isSelected
-                                    ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
-                                    : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
-                                } flex h-auto w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
-                                title={`${amount}mg`}
-                                aria-pressed={isSelected}
-                              >
-                                <span>{label}</span>
-                                <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
-                                  mg
-                                </span>
-                              </Button>
-                            );
-                          })
-                        ) : (
-                          <div className="col-span-2 sm:col-span-3 lg:col-span-6 text-sm text-muted-foreground text-center py-6">
-                            현재 선택한 약물에 대해 제공되는 기본 용량 프리셋이 없습니다.
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
-                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                        직접 입력 (mg)
+                    {/* 계산 중 UI: 로딩 중이거나 옵션이 없을 때 표시 (에러가 아닐 때만) */}
+                    {!dosageError[card.id] && ((!dosageSuggestions[card.id] ||
+                      dosageSuggestions[card.id].length === 0) ||
+                      dosageLoading[card.id]) && (
+                      <span className="text-sm text-muted-foreground flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                          ></path>
+                        </svg>
+                        제안을 계산 중...
                       </span>
-                      <div className="flex flex-col items-stretch gap-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
-                          placeholder="용량 (mg)"
-                          value={customDosageInputs[card.id] ?? ""}
-                          onChange={(e) =>
-                            handleCustomDosageChange(card.id, e.target.value)
-                          }
-                        />
-                        <div className="flex">
-                          <Button
-                            className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
-                            onClick={() => handleCustomDosageApply(card.id)}
-                          >
-                            확인
-                          </Button>
+                    )}
+                  </div>
+
+                  {/* 옵션 버튼과 직접 입력 폼: 로딩이 완료되고 옵션이 있을 때만 표시 */}
+                  {!dosageLoading[card.id] && (dosageSuggestions[card.id] || []).length > 0 && (
+                    <div
+                      className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
+                      role="group"
+                      aria-label="투약 용량 옵션"
+                    >
+                      <div className="flex-1 md:pr-6">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            투약 용량 선택
+                          </span>
+                        </div>
+                        {(() => {
+                          // 현용법 용량 확인
+                          const dosesForPatient = (drugAdministrations || []).filter(
+                            (d) => d.patientId === selectedPatientId && d.drugName === selectedDrug,
+                          );
+                          const lastDose = dosesForPatient.length > 0
+                            ? [...dosesForPatient].sort(
+                                (a, b) =>
+                                  toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime(),
+                              )[dosesForPatient.length - 1]
+                            : undefined;
+                          const currentDose = Number(lastDose?.dose || 0);
+                          
+                          return (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                              {(dosageSuggestions[card.id] || []).map((amount) => {
+                                const label = `${Number(amount).toLocaleString()} mg`;
+                                const isSelected = selectedDosage[card.id] === label;
+                                const isCurrentMethod = Math.abs(amount - currentDose) < 0.01;
+                                return (
+                                  <Button
+                                    key={`${card.id}-${amount}`}
+                                    variant={isSelected ? "default" : "outline"}
+                                    size="default"
+                                    onClick={() => handleDosagePresetSelectV2(card.id, amount)}
+                                    className={`${
+                                      isSelected
+                                        ? "bg-black dark:bg-primary text-white dark:text-primary-foreground hover:bg-gray-800 dark:hover:bg-primary/90"
+                                        : "bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700"
+                                    } flex h-[70px] w-full min-w-0 flex-col items-center justify-center gap-1 px-4 py-3 text-sm font-semibold leading-tight transition`}
+                                    title={`${amount}mg${isCurrentMethod ? " (현용법)" : ""}`}
+                                    aria-pressed={isSelected}
+                                  >
+                                    <span>{label}</span>
+                                    <span className={`text-xs font-normal ${isSelected ? "text-gray-200 dark:text-primary-foreground" : "text-muted-foreground"}`}>
+                                      {isCurrentMethod ? "현용법" : ""}
+                                    </span>
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex w-full flex-col gap-2 border-t pt-4 md:w-64 md:self-stretch md:border-t-0 md:border-l md:border-gray-200 md:pl-6 md:pt-0">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                          직접 입력 (mg)
+                        </span>
+                        <div className="flex flex-col items-stretch gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            className="w-full h-[80px] px-4 py-3 text-lg font-semibold leading-tight text-center"
+                            placeholder="용량 (mg)"
+                            value={customDosageInputs[card.id] ?? ""}
+                            onChange={(e) =>
+                              handleCustomDosageChange(card.id, e.target.value)
+                            }
+                          />
+                          <div className="flex">
+                            <Button
+                              className="w-full h-[50px] px-4 py-3 text-sm font-semibold leading-tight"
+                              onClick={() => handleCustomDosageApply(card.id)}
+                            >
+                              확인
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </>
               )}
             </div>
@@ -3426,12 +4990,15 @@ const PKSimulation = ({
                   return updated;
                 })()}
                 steadyState={cardTdmResults[card.id]?.Steady_state}
-                // 빈 차트 상태 관리: 제안 계산 중에는 숨김, 완성 후 첫 번째 자동선택 시 표시
+                // 빈 차트 상태 관리: 현용법 차트 데이터가 있으면 표시, 없으면 옵션 계산 완료까지 대기
                 isEmptyChart={
                   !cardChartData[card.id] ||
-                  (dosageLoading[card.id] &&
-                    (!dosageSuggestions[card.id] ||
-                      dosageSuggestions[card.id].length === 0))
+                  // 현용법 차트 데이터가 없고, 옵션 계산이 진행 중이면 빈 차트
+                  (!cardTdmChartData[card.id] && 
+                   !cardTdmExtraSeries[card.id]?.currentMethodSeries?.length &&
+                   dosageLoading[card.id] &&
+                   (!dosageSuggestions[card.id] ||
+                    dosageSuggestions[card.id].length === 0))
                 }
                 selectedButton={
                   card.type === "interval"
