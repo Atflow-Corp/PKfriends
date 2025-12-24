@@ -150,7 +150,7 @@ const Dashboard = ({ patients, prescriptions, bloodTests, selectedPatient, setSe
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
+            <div className="h-80 min-h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={pkData}>
                   <CartesianGrid strokeDasharray="3 3" />

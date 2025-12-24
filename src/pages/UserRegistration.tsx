@@ -9,6 +9,8 @@ import { ArrowLeft } from 'lucide-react';
 import { toast } from "sonner";
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
+import { storage, STORAGE_KEYS } from '@/lib/storage';
+import type { UserProfile } from '@/components/ProfileSettings';
 
 interface UserRegistrationProps {
   onBack: () => void;
@@ -66,15 +68,29 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
   };
 
   const handleWelcomeConfirm = () => {
-    // 임시처리: 회원가입 완료된 전화번호를 localStorage에 저장
     try {
+      // 회원가입 완료된 전화번호를 localStorage에 저장 (기존 로직 유지)
       const registeredUsers = JSON.parse(window.localStorage.getItem('tdmfriends:registeredUsers') || '[]');
       if (!registeredUsers.includes(formData.phoneNumber)) {
         registeredUsers.push(formData.phoneNumber);
         window.localStorage.setItem('tdmfriends:registeredUsers', JSON.stringify(registeredUsers));
       }
+      
+      // 사용자 프로필 정보를 localStorage에 저장
+      const userProfile: UserProfile = {
+        name: formData.name,
+        email: '', // 회원가입 시 이메일 입력 없음
+        phone: formData.phoneNumber,
+        organization: formData.organization,
+        role: formData.medicalRole === '의사' ? 'doctor' : 
+              formData.medicalRole === '간호사' ? 'nurse' : 'other',
+      };
+      
+      storage.setJSON(STORAGE_KEYS.userProfile, userProfile);
+      console.log('회원가입 정보가 저장되었습니다:', userProfile);
     } catch (error) {
       console.error('회원가입 정보 저장 실패:', error);
+      toast.error('회원가입 정보 저장 중 오류가 발생했습니다.');
     }
     
     setShowWelcomeDialog(false);
