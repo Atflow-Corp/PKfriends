@@ -29,7 +29,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Trash2, HeadphonesIcon } from "lucide-react";
+import { Camera } from "lucide-react";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import CustomerService from "./CustomerService";
 
@@ -48,7 +48,14 @@ interface ProfileSettingsProps {
 }
 
 const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
-  const [profile, setProfile] = useState<UserProfile>({
+  const [savedProfile, setSavedProfile] = useState<UserProfile>({
+    name: "사용자",
+    email: "user@pk-friends.com",
+    phone: "",
+    organization: "PK 프렌즈 대학병원",
+    role: "doctor",
+  });
+  const [tempProfile, setTempProfile] = useState<UserProfile>({
     name: "사용자",
     email: "user@pk-friends.com",
     phone: "",
@@ -56,8 +63,22 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
     role: "doctor",
   });
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [tempProfileImage, setTempProfileImage] = useState<string | null>(null);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showCustomerService, setShowCustomerService] = useState(false);
+
+  // 사전 등록된 소속기관 목록 (나에게 지정된 소속기관)
+  const baseOrganizations = ['앳플로우'];
+  
+  // 현재 프로필의 소속기관을 포함한 목록 생성
+  const getOrganizations = () => {
+    const orgSet = new Set(baseOrganizations);
+    if (tempProfile.organization && tempProfile.organization.trim() !== '') {
+      orgSet.add(tempProfile.organization);
+    }
+    return Array.from(orgSet);
+  };
+  const organizations = getOrganizations();
 
   useEffect(() => {
     if (open) {
@@ -66,18 +87,45 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
   }, [open]);
 
   const loadProfile = () => {
-    const savedProfile = storage.getJSON<UserProfile>(STORAGE_KEYS.userProfile);
-    if (savedProfile) {
-      setProfile(savedProfile);
-      if (savedProfile.profileImage) {
-        setProfileImage(savedProfile.profileImage);
+    const saved = storage.getJSON<UserProfile>(STORAGE_KEYS.userProfile);
+    if (saved) {
+      setSavedProfile(saved);
+      setTempProfile(saved);
+      if (saved.profileImage) {
+        setProfileImage(saved.profileImage);
+        setTempProfileImage(saved.profileImage);
+      } else {
+        setProfileImage(null);
+        setTempProfileImage(null);
       }
     }
   };
 
-  const saveProfile = (updatedProfile: UserProfile) => {
-    setProfile(updatedProfile);
+  const handleSave = () => {
+    const updatedProfile = { ...tempProfile, profileImage: tempProfileImage || undefined };
+    setSavedProfile(updatedProfile);
+    setProfileImage(tempProfileImage);
     storage.setJSON(STORAGE_KEYS.userProfile, updatedProfile);
+    // 부모 컴포넌트에 변경 사항 알림 (필요한 경우)
+    onOpenChange(false);
+  };
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTempProfile({ ...tempProfile, name: e.target.value });
+  };
+
+
+  const handleOrganizationChange = (value: string) => {
+    setTempProfile({ ...tempProfile, organization: value });
+  };
+
+  const handleRoleChange = (value: string) => {
+    const roleMap: Record<string, "doctor" | "nurse" | "other"> = {
+      "의사": "doctor",
+      "간호사": "nurse",
+      "기타": "other",
+    };
+    setTempProfile({ ...tempProfile, role: roleMap[value] || "other" });
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,12 +146,20 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const imageDataUrl = reader.result as string;
-        setProfileImage(imageDataUrl);
-        const updatedProfile = { ...profile, profileImage: imageDataUrl };
-        saveProfile(updatedProfile);
+        setTempProfileImage(imageDataUrl);
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // 변경사항이 있는지 확인
+  const hasChanges = () => {
+    return (
+      tempProfile.name !== savedProfile.name ||
+      tempProfile.organization !== savedProfile.organization ||
+      tempProfile.role !== savedProfile.role ||
+      tempProfileImage !== (savedProfile.profileImage || null)
+    );
   };
 
   const handleDeleteAccount = () => {
@@ -147,9 +203,9 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
                     </div> */}
                     <div className="flex flex-col items-center gap-4">
                       <Avatar className="h-32 w-32">
-                        <AvatarImage src={profileImage || profile.profileImage} alt={profile.name} />
+                        <AvatarImage src={tempProfileImage || tempProfile.profileImage} alt={tempProfile.name} />
                         <AvatarFallback className="text-3xl">
-                          {profile.name.charAt(0)}
+                          {tempProfile.name.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-col gap-2 w-full">
@@ -184,27 +240,64 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label>이름</Label>
-                        <Input value={profile.name} disabled className="bg-muted" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>이메일</Label>
-                        <Input value={profile.email} disabled className="bg-muted" />
+                        <Input 
+                          value={tempProfile.name} 
+                          onChange={handleNameChange}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>전화번호</Label>
-                        <Input value={profile.phone || "-"} disabled className="bg-muted" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>소속기관</Label>
-                        <Input value={profile.organization} disabled className="bg-muted" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>직무</Label>
-                        <Input
-                          value={getRoleLabel(profile.role)}
+                        <Input 
+                          value={tempProfile.phone || ""} 
                           disabled
                           className="bg-muted"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          전화번호 변경은 고객센터로 문의주세요.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>소속기관</Label>
+                        <Select 
+                          value={tempProfile.organization} 
+                          onValueChange={handleOrganizationChange}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="소속기관을 선택하세요" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {organizations.map((org) => (
+                              <SelectItem key={org} value={org}>
+                                {org}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>직무</Label>
+                        <Select 
+                          value={getRoleLabel(tempProfile.role)} 
+                          onValueChange={handleRoleChange}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="직무를 선택하세요" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="의사">의사</SelectItem>
+                            <SelectItem value="간호사">간호사</SelectItem>
+                            <SelectItem value="기타">기타</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="pt-2">
+                        <Button
+                          onClick={handleSave}
+                          disabled={!hasChanges()}
+                          className="w-full"
+                        >
+                          저장
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -214,30 +307,21 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
 
             <Separator />
 
-            {/* 고객센터 버튼 */}
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                onClick={() => setShowCustomerService(true)}
-                className="w-full"
-              >
-                <HeadphonesIcon className="h-4 w-4 mr-2" />
-                고객센터
-              </Button>
-            </div>
-
-            <Separator />
-
-            {/* 계정 삭제 버튼 */}
-            <div className="flex justify-center">
-              <Button
-                variant="destructive"
+            {/* 계정 삭제 및 고객문의 링크 */}
+            <div className="flex justify-center items-center gap-2 text-sm text-muted-foreground">
+              <button
                 onClick={handleDeleteAccount}
-                className="w-full"
+                className="underline hover:text-primary cursor-pointer"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                계정 삭제
-              </Button>
+                계정삭제
+              </button>
+              <span>|</span>
+              <button
+                onClick={() => setShowCustomerService(true)}
+                className="underline hover:text-primary cursor-pointer"
+              >
+                고객센터
+              </button>
             </div>
           </div>
         </DialogContent>
@@ -250,8 +334,7 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
             <AlertDialogTitle>계정 삭제 안내</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p>
-                TDM friends에서는 안정적인 서비스 운영을 위해 계정 삭제를 지원하지 않습니다. 삭제를 원하시는 경우 번거로우시더라도 반드시 시스템 관리자에게
-                문의해주세요.
+              TDM friends는 계정 삭제 전 데이터 위임 및 이관 확인 절차를 거치고 있습니다. 번거로우시더라도 관리자에게 문의해 주시면 안전하게 처리를 도와드리겠습니다.
               </p>
               <p className="font-semibold text-destructive">
                 ⚠️ 주의: 계정 삭제 시 등록된 모든 환자 정보와 TDM 분석 데이터는 소속 기관 내 다른 관리자에게 위임되어야 합니다.
@@ -259,7 +342,7 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
               <div className="pt-2 border-t">
                 <p className="font-medium">시스템 관리자 연락처</p>
                 <p className="text-sm text-muted-foreground">
-                  이메일: admin@pk-friends.com
+                  이메일: admin@tdmfriends.com
                 </p>
               </div>
             </AlertDialogDescription>
@@ -274,8 +357,8 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
       <CustomerService
         open={showCustomerService}
         onOpenChange={setShowCustomerService}
-        userName={profile.name}
-        userEmail={profile.email}
+        userName={tempProfile.name}
+        userEmail={tempProfile.email}
       />
     </>
   );

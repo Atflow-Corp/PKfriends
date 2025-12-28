@@ -72,6 +72,10 @@ const TDMSummary = ({
     originalAdministration.dose !== latestAdministration.dose;
   const isIntervalChanged = originalAdministration && latestAdministration && 
     originalAdministration.intervalHours !== latestAdministration.intervalHours;
+  const hasDosageChanged = isDoseChanged || isIntervalChanged;
+  
+  // "용법 변경 시" 카드인지 확인
+  const isDosageAdjustmentCard = predictedResultTitle === "용법 변경 시";
 
   const intervalValueText =
     latestAdministration?.intervalHours != null
@@ -218,24 +222,34 @@ const TDMSummary = ({
             <CardTitle className="text-lg text-gray-800 dark:text-gray-200">{predictedResultTitle}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">AUC:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {isPredicting ? "결과를 예측 중" : formatInt(predictedAUC ?? null, 'mg*h/L')}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">max 농도:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {isPredicting ? "결과를 예측 중" : formatFixed(predictedMax ?? null, concentrationUnit)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">trough 농도:</span>
-              <span className="font-semibold text-gray-900 dark:text-white">
-                {isPredicting ? "결과를 예측 중" : formatFixed(predictedTrough ?? null, concentrationUnit)}
-              </span>
-            </div>
+            {isDosageAdjustmentCard && !hasDosageChanged ? (
+              <div className="flex items-center justify-center py-8">
+                <p className="text-gray-600 dark:text-gray-400 text-base">
+                  용법을 조정해 주세요
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">AUC:</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {isPredicting ? "결과를 예측 중" : formatInt(predictedAUC ?? null, 'mg*h/L')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">max 농도:</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {isPredicting ? "결과를 예측 중" : formatFixed(predictedMax ?? null, concentrationUnit)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">trough 농도:</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {isPredicting ? "결과를 예측 중" : formatFixed(predictedTrough ?? null, concentrationUnit)}
+                  </span>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

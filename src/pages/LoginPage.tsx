@@ -96,14 +96,14 @@ const LoginPage = ({ onLogin, onShowTermsAgreement, onPhoneNumberSet }: LoginPag
           <CardContent>
             <div className="space-y-4">
               <div className="text-center text-sm text-muted-foreground space-y-1">
-                <p>초대받은 휴대폰 번호를 입력한 후 인증해주세요.</p>
+                <p>초대받은 휴대폰 번호로 인증해주세요.</p>
               </div>
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="휴대폰 번호 ('-' 제외)"
+                    placeholder="숫자만 입력"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     className="flex-1 h-10"
@@ -134,10 +134,15 @@ const LoginPage = ({ onLogin, onShowTermsAgreement, onPhoneNumberSet }: LoginPag
               >
                 로그인
               </Button>
-              <div className="text-center space-y-2">
-                <div className="text-xs text-muted-foreground pt-2 space-y-1">
-                  <p>TDM Friends는 초대 기반으로 운영하고 있습니다.</p>
-                  <p>사용에 관심이 있으신 분은 contact@pkfriend.co.kr로 문의주세요.</p>
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground pt-2 space-y-1 text-left">
+                  <p className="font-semibold text-gray-900 dark:text-white">서비스 이용 안내</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>TDM Friends는 초대 기반으로 운영하고 있습니다.</li>
+                    <li>사용에 관심이 있으신 분은 아래로 문의주세요.</li>
+                    <li>사용 중 전화번호 변경 시 시스템 관리자에게 문의해주세요.</li>
+                    <li className="pt-1">시스템 관리자: admin@tdmfriend.com</li>
+                  </ul>
                 </div>
               </div>
             </div>

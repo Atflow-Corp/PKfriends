@@ -244,7 +244,7 @@ const Index = ({ onLogout }: IndexProps) => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2">
                     <Avatar className="h-9 w-9">
-                      <AvatarImage src={`https://avatar.vercel.sh/user.png`} alt="User" />
+                      <AvatarImage src={userProfile?.profileImage} alt="User" />
                     <AvatarFallback>
                       {userProfile?.name ? userProfile.name.charAt(0) : "사용자"}
                     </AvatarFallback>
