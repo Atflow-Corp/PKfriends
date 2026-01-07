@@ -10,6 +10,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import { useTdmReportData } from "@/hooks/useTdmReportData";
+import { computeRenalFunction, getSelectedRenalInfo } from "@/lib/tdm";
 
 const TDMReportPage = () => {
   const [analysisDate, setAnalysisDate] = useState<string>("");
@@ -356,6 +357,78 @@ const TDMReportPage = () => {
                     return null;
                   })() : null)}
                 amountBefore={prescriptionInfo?.amount || selectedPrescription?.dosage || null}
+                // 특이 케이스 코멘트용 props
+                prescriptionAdditionalInfo={selectedPrescription?.additionalInfo}
+                renalReplacement={(() => {
+                  try {
+                    if (!selectedPatient?.id) return undefined;
+                    const renalInfo = getSelectedRenalInfo(selectedPatient.id, selectedDrug);
+                    return renalInfo?.renalReplacement;
+                  } catch {
+                    return undefined;
+                  }
+                })()}
+                patientAge={selectedPatient?.age}
+                currentCrCl={(() => {
+                  try {
+                    if (!selectedPatient) return undefined;
+                    const renalFunction = computeRenalFunction(
+                      selectedPatient.id,
+                      selectedPatient.weight,
+                      selectedPatient.age,
+                      selectedPatient.gender === "male" ? 1 : 0,
+                      selectedPatient.height,
+                      selectedDrug
+                    );
+                    return renalFunction.crcl;
+                  } catch {
+                    return undefined;
+                  }
+                })()}
+                crclHistory={(() => {
+                  try {
+                    if (!selectedPatient?.id) return [];
+                    const raw = window.localStorage.getItem(
+                      `tdmfriends:renal:${selectedPatient.id}`
+                    );
+                    if (!raw) return [];
+                    const list = JSON.parse(raw) as Array<{
+                      id: string;
+                      creatinine: string;
+                      date: string;
+                      formula: string;
+                      result: string;
+                      dialysis: string;
+                      renalReplacement: string;
+                      isSelected: boolean;
+                    }>;
+                    const crclHistory: Array<{ value: number; date: Date }> = [];
+                    for (const item of list) {
+                      const resultStr = (item.result || "").toString();
+                      const match = resultStr.match(/(CRCL|eGFR)\s*=\s*([\d.]+)/i);
+                      if (match) {
+                        const value = parseFloat(match[2]);
+                        if (!Number.isNaN(value) && value > 0) {
+                          crclHistory.push({
+                            value,
+                            date: new Date(item.date)
+                          });
+                        }
+                      } else {
+                        const parsedResult = parseFloat(resultStr.replace(/[^0-9.-]/g, ""));
+                        if (!Number.isNaN(parsedResult) && parsedResult > 0) {
+                          crclHistory.push({
+                            value: parsedResult,
+                            date: new Date(item.date)
+                          });
+                        }
+                      }
+                    }
+                    return crclHistory;
+                  } catch {
+                    return [];
+                  }
+                })()}
               />
               ) : (
                 <div className="text-center py-8 text-gray-500 dark:text-muted-foreground">

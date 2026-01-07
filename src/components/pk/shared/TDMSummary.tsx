@@ -28,6 +28,12 @@ interface TDMSummaryProps {
   showSteadyStateComment?: boolean; // 항정상태 조건부 문장 표시 여부 (기본: true)
   steadyState?: boolean | string; // Steady_state 값 (API 응답에서 받아옴, boolean 또는 문자열 "true"/"false")
   isLoading?: boolean; // API 결과 로딩 중 여부
+  // 특이 케이스 코멘트용 props
+  isCRRT?: boolean; // CRRT 시행 여부
+  isNephrotoxicDrug?: boolean; // 신독성 약물 복용 여부 ("네")
+  isUnstableRenalFunction?: boolean; // 신기능 불안정 여부 (CrCl<60 또는 48-72시간 내 20% 이상 변동)
+  isPostTransplantEarly?: boolean; // 이식수술 후 초기 회복 단계 (POD ~2, POD 3~6)
+  patientAge?: number; // 환자 나이
 }
 
 const TDMSummary = ({
@@ -48,7 +54,12 @@ const TDMSummary = ({
   predictedResultTitle = "현 용법의 항정상태 예측 결과",
   showSteadyStateComment = true,
   steadyState,
-  isLoading = false
+  isLoading = false,
+  isCRRT = false,
+  isNephrotoxicDrug = false,
+  isUnstableRenalFunction = false,
+  isPostTransplantEarly = false,
+  patientAge
 }: TDMSummaryProps) => {
   const concentrationUnit = getConcentrationUnit(selectedDrug);
   // 로딩 중이거나 예측값이 없으면 "결과를 예측 중" 표시
@@ -131,6 +142,43 @@ const TDMSummary = ({
   };
 
   const recommendationText = getRecommendationText();
+
+  // 특이 케이스 코멘트 생성 (우선순위: case1 > case2 > case3 > case4 > case5 > case6)
+  const getSpecialCaseComment = (): string | null => {
+    // case1: CRRT
+    if (isCRRT) {
+      return "환자가 CRRT를 시행 중인 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case2: 신독성 약물 복용
+    if (isNephrotoxicDrug) {
+      return "환자가 신독성 약물을 병용 중인 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case3: 신기능 불안정
+    if (isUnstableRenalFunction) {
+      return "환자가 신기능 변동 가능성이 있는 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case4: 이식수술 후 초기 회복 단계
+    if (isPostTransplantEarly) {
+      return "환자가 이식수술 후 초기 회복 단계임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case5: 60세 이상
+    if (patientAge !== undefined && patientAge >= 60) {
+      return "환자가 고령으로 약물 약동학 변동 가능성이 있는 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case6: 항정상태 미도달
+    if (!isSteadyState && steadyState !== undefined) {
+      return "환자가 투약 후 항정상태에 미도달임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    return null;
+  };
+
+  const specialCaseComment = getSpecialCaseComment();
 
   return (
     <div className="bg-gray-100 dark:bg-gray-800/40 rounded-lg p-6 mb-6 mt-4">
@@ -259,6 +307,15 @@ const TDMSummary = ({
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
                 {recommendationText}
+              </p>
+            </div>
+          )}
+          {/* 특이 케이스 코멘트 */}
+          {specialCaseComment && (
+            <div className="flex items-start gap-2 mt-3">
+              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
+              <p className="leading-relaxed">
+                {specialCaseComment}
               </p>
             </div>
           )}

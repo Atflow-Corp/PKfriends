@@ -42,6 +42,12 @@ interface PKChartsProps {
   input_TOXI?: number;
   tauBefore?: number;
   amountBefore?: number;
+  // 특이 케이스 코멘트용 props
+  prescriptionAdditionalInfo?: string; // Prescription의 additionalInfo
+  renalReplacement?: string; // BloodTest의 renalReplacement
+  patientAge?: number; // Patient의 age
+  currentCrCl?: number; // 현재 CrCl 값
+  crclHistory?: Array<{ value: number; date: Date }>; // CrCl 히스토리 (48-72시간 내 데이터 비교용)
 }
 
 const PKCharts = ({
@@ -67,7 +73,12 @@ const PKCharts = ({
   steadyState,
   input_TOXI,
   tauBefore,
-  amountBefore
+  amountBefore,
+  prescriptionAdditionalInfo,
+  renalReplacement,
+  patientAge,
+  currentCrCl,
+  crclHistory = []
 }: PKChartsProps) => {
   // 다크모드 감지
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -371,21 +382,64 @@ const PKCharts = ({
       </div>
 
       {/* TDM Summary */}
-      <TDMSummary
-        selectedDrug={selectedDrug}
-        tdmIndication={tdmIndication}
-        tdmTarget={tdmTarget}
-        tdmTargetValue={tdmTargetValue}
-        latestAdministration={latestAdministration}
-        recentAUC={recentAUC}
-        recentMax={recentMax}
-        recentTrough={recentTrough}
-        predictedAUC={predictedAUC}
-        predictedMax={predictedMax}
-        predictedTrough={predictedTrough}
-        commentTitle="TDM friends Comments"
-        steadyState={steadyState}
-      />
+      {(() => {
+        // 특이 케이스 판단 로직
+        // case1: CRRT 여부
+        const isCRRT = /crrt/i.test(renalReplacement || "") || /crrt/i.test(prescriptionAdditionalInfo || "");
+        
+        // case2: 신독성 약물 복용 여부 ("네")
+        const isNephrotoxicDrug = prescriptionAdditionalInfo === "네";
+        
+        // case3: 신기능 불안정 여부
+        let isUnstableRenalFunction = false;
+        if (currentCrCl !== undefined && currentCrCl < 60) {
+          isUnstableRenalFunction = true;
+        } else if (crclHistory.length >= 2) {
+          // 48-72시간 이내 데이터 필터링
+          const now = new Date();
+          const recentCrclData = crclHistory.filter(item => {
+            const hoursDiff = (now.getTime() - item.date.getTime()) / (1000 * 60 * 60);
+            return hoursDiff >= 48 && hoursDiff <= 72;
+          });
+          
+          if (recentCrclData.length >= 2) {
+            // 최신 2개 값 비교
+            const sorted = [...recentCrclData].sort((a, b) => b.date.getTime() - a.date.getTime());
+            const latest = sorted[0].value;
+            const previous = sorted[1].value;
+            const diffPercent = Math.abs((latest - previous) / previous) * 100;
+            if (diffPercent >= 20) {
+              isUnstableRenalFunction = true;
+            }
+          }
+        }
+        
+        // case4: 이식수술 후 초기 회복 단계 (POD ~2, POD 3~6)
+        const isPostTransplantEarly = prescriptionAdditionalInfo === "POD ~2" || prescriptionAdditionalInfo === "POD 3~6";
+        
+        return (
+          <TDMSummary
+            selectedDrug={selectedDrug}
+            tdmIndication={tdmIndication}
+            tdmTarget={tdmTarget}
+            tdmTargetValue={tdmTargetValue}
+            latestAdministration={latestAdministration}
+            recentAUC={recentAUC}
+            recentMax={recentMax}
+            recentTrough={recentTrough}
+            predictedAUC={predictedAUC}
+            predictedMax={predictedMax}
+            predictedTrough={predictedTrough}
+            commentTitle="TDM friends Comments"
+            steadyState={steadyState}
+            isCRRT={isCRRT}
+            isNephrotoxicDrug={isNephrotoxicDrug}
+            isUnstableRenalFunction={isUnstableRenalFunction}
+            isPostTransplantEarly={isPostTransplantEarly}
+            patientAge={patientAge}
+          />
+        );
+      })()}
     </div>
   );
 };
