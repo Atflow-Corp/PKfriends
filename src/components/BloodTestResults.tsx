@@ -321,7 +321,11 @@ const BloodTestResults = ({ patients, bloodTests, onAddBloodTest, selectedPatien
                       return (
                         <TableRow key={test.id}>
                           <TableCell className="font-medium">
-                            {patient?.name || "Unknown"}
+                            <span title={patient?.name || "Unknown"}>
+                              {patient?.name && patient.name.length > 5 
+                                ? `${patient.name.slice(0, 4)}...` 
+                                : (patient?.name || "Unknown")}
+                            </span>
                           </TableCell>
                           <TableCell>{test.drugName}</TableCell>
                           <TableCell>

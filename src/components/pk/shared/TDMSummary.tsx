@@ -27,8 +27,13 @@ interface TDMSummaryProps {
   predictedResultTitle?: string; // 우측 카드 제목 (기본: 현 용법의 항정상태 예측 결과)
   showSteadyStateComment?: boolean; // 항정상태 조건부 문장 표시 여부 (기본: true)
   steadyState?: boolean | string; // Steady_state 값 (API 응답에서 받아옴, boolean 또는 문자열 "true"/"false")
-  input_TOXI?: number; // 신독성 고위험군 여부 (1: 고위험군, 0 또는 undefined: 일반)
   isLoading?: boolean; // API 결과 로딩 중 여부
+  // 특이 케이스 코멘트용 props
+  isCRRT?: boolean; // CRRT 시행 여부
+  isNephrotoxicDrug?: boolean; // 신독성 약물 복용 여부 ("네")
+  isUnstableRenalFunction?: boolean; // 신기능 불안정 여부 (CrCl<60 또는 48-72시간 내 20% 이상 변동)
+  isPostTransplantEarly?: boolean; // 이식수술 후 초기 회복 단계 (POD ~2, POD 3~6)
+  patientAge?: number; // 환자 나이
 }
 
 const TDMSummary = ({
@@ -49,8 +54,12 @@ const TDMSummary = ({
   predictedResultTitle = "현 용법의 항정상태 예측 결과",
   showSteadyStateComment = true,
   steadyState,
-  input_TOXI,
-  isLoading = false
+  isLoading = false,
+  isCRRT = false,
+  isNephrotoxicDrug = false,
+  isUnstableRenalFunction = false,
+  isPostTransplantEarly = false,
+  patientAge
 }: TDMSummaryProps) => {
   const concentrationUnit = getConcentrationUnit(selectedDrug);
   // 로딩 중이거나 예측값이 없으면 "결과를 예측 중" 표시
@@ -111,59 +120,6 @@ const TDMSummary = ({
 
   const targetRangeStatus = getTargetRangeStatus();
 
-  const cyclosporinTroughWarningThresholds: Record<string, number> = {
-    "Renal transplant recipients/Korean": 10,
-    "Allo-HSCT/Korean": 50,
-    "Thoracic transplant recipients/European": 20
-  };
-
-  // 신독성 고위험군 추가 문구 생성 (도달 케이스에서만)
-  const getToxicityWarningText = (): string | null => {
-    // 도달 케이스가 아니면 null 반환
-    const status = getTargetRangeStatus();
-    if (status !== '도달') return null;
-    
-    // input_TOXI가 1이 아니면 null 반환
-    if (input_TOXI !== 1) return null;
-    
-    // 필수 값 체크
-    if (!tdmTargetValue || targetValue.numericValue == null) return null;
-    
-    // 다양한 범위 형식 지원: "400-600", "400 - 600", "400~600", "400–600" 등
-    // 중간점(·)이나 다른 특수문자가 있어도 숫자 범위를 추출
-    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*[-~–]\s*(\d+(?:\.\d+)?)/);
-    if (!rangeMatch) return null;
-    
-    const maxValue = parseFloat(rangeMatch[2]);
-    const currentValue = targetValue.numericValue;
-    
-    // 유효하지 않은 값 체크
-    if (!Number.isFinite(maxValue) || !Number.isFinite(currentValue)) return null;
-    
-    const diffFromMax = maxValue - currentValue;
-    
-    // 반코마이신 + AUC: 100 이내
-    const isVancomycinAUC = selectedDrug === 'Vancomycin' && 
-      (tdmTarget?.toLowerCase().includes('auc') || tdmTarget?.toLowerCase().includes('auc24'));
-    
-    if (isVancomycinAUC) {
-      if (diffFromMax <= 100 && diffFromMax >= 0) {
-        return "환자가 신독성 약물을 복용 중인 경우, 예측 결과가 목표 범위 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
-      }
-    }
-    
-    // 사이클로스포린 + Trough: 적응증별 상한 근접 기준
-    if (selectedDrug === 'Cyclosporin' && tdmTarget?.toLowerCase().includes('trough')) {
-      const normalizedIndication = (tdmIndication || '').trim();
-      const indicationThreshold = cyclosporinTroughWarningThresholds[normalizedIndication] ?? 50;
-      if (diffFromMax <= indicationThreshold && diffFromMax >= 0) {
-        return "환자가 신독성 고위험군인 경우, 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
-      }
-    }
-    
-    return null;
-  };
-
   // 목표 범위 초과/미달 판단 및 조건부 문장 생성
   const getRecommendationText = (): string | null => {
     if (!tdmTargetValue || !targetValue.numericValue) return null;
@@ -186,7 +142,43 @@ const TDMSummary = ({
   };
 
   const recommendationText = getRecommendationText();
-  const toxicityWarningText = getToxicityWarningText();
+
+  // 특이 케이스 코멘트 생성 (우선순위: case1 > case2 > case3 > case4 > case5 > case6)
+  const getSpecialCaseComment = (): string | null => {
+    // case1: CRRT
+    if (isCRRT) {
+      return "환자가 CRRT를 시행 중인 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case2: 신독성 약물 복용
+    if (isNephrotoxicDrug) {
+      return "환자가 신독성 약물을 병용 중인 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case3: 신기능 불안정
+    if (isUnstableRenalFunction) {
+      return "환자가 신기능 변동 가능성이 있는 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case4: 이식수술 후 초기 회복 단계
+    if (isPostTransplantEarly) {
+      return "환자가 이식수술 후 초기 회복 단계임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case5: 60세 이상
+    if (patientAge !== undefined && patientAge >= 60) {
+      return "환자가 고령으로 약물 약동학 변동 가능성이 있는 상태임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    // case6: 항정상태 미도달
+    if (!isSteadyState && steadyState !== undefined) {
+      return "환자가 투약 후 항정상태에 미도달임을 고려할 때 향후 목표 범위를 벗어날 가능성이 있어 주기적인 TDM을 권장합니다.";
+    }
+
+    return null;
+  };
+
+  const specialCaseComment = getSpecialCaseComment();
 
   return (
     <div className="bg-gray-100 dark:bg-gray-800/40 rounded-lg p-6 mb-6 mt-4">
@@ -318,12 +310,12 @@ const TDMSummary = ({
               </p>
             </div>
           )}
-          {/* 신독성 고위험군 추가 문구 */}
-          {toxicityWarningText && (
+          {/* 특이 케이스 코멘트 */}
+          {specialCaseComment && (
             <div className="flex items-start gap-2 mt-3">
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
-                {toxicityWarningText}
+                {specialCaseComment}
               </p>
             </div>
           )}

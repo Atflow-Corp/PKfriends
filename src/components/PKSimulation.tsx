@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import {
   runTdmApi,
   buildTdmRequestBody as buildTdmRequestBodyCore,
+  computeRenalFunction,
   isActiveTdmExists,
   setActiveTdm,
   computeTauFromAdministrations,
@@ -4454,39 +4455,113 @@ const PKSimulation = ({
             )}
           </div>
         )}
-        <PKCharts
-          showSimulation={true}
-          currentPatientName={currentPatient.name}
-          selectedDrug={selectedDrug}
-          targetMin={getTargetBand().min}
-          targetMax={getTargetBand().max}
-          recentAUC={tdmResult?.AUC_24_before}
-          recentMax={tdmResult?.CMAX_before}
-          recentTrough={tdmResult?.CTROUGH_before}
-          predictedAUC={
-            isCompletedView
-              ? null
-              : tdmResult?.AUC_24_after
-          }
-          predictedMax={isCompletedView ? null : tdmResult?.CMAX_after}
-          predictedTrough={isCompletedView ? null : tdmResult?.CTROUGH_after}
-          ipredSeries={tdmExtraSeries?.ipredSeries}
-          predSeries={tdmExtraSeries?.predSeries}
-          observedSeries={tdmExtraSeries?.observedSeries}
-          // TDM 내역 데이터 - selectedPrescription을 직접 사용하여 현재 선택된 약품의 정보 사용
-          tdmIndication={getTdmData(selectedPrescription?.drugName || selectedDrug).indication}
-          tdmTarget={getTdmData(selectedPrescription?.drugName || selectedDrug).target}
-          tdmTargetValue={getTdmData(selectedPrescription?.drugName || selectedDrug).targetValue}
-          // 투약기록 데이터
-          latestAdministration={latestAdministration}
-          drugAdministrations={drugAdministrations}
-          steadyState={tdmResult?.Steady_state}
-          input_TOXI={input_TOXI}
-          // API의 input_tau_before와 동일한 값 전달
-          tauBefore={buildTdmRequestBody()?.input_tau_before}
-          // API의 input_amount_before와 동일한 값 전달
-          amountBefore={buildTdmRequestBody()?.input_amount_before}
-        />
+        {(() => {
+          // 특이 케이스 코멘트용 정보 계산
+          const renalInfo = getSelectedRenalInfo();
+          const renalFunction = currentPatient ? computeRenalFunction(
+            selectedPatientId,
+            currentPatient.weight,
+            currentPatient.age,
+            currentPatient.gender === "male" ? 1 : 0,
+            currentPatient.height,
+            selectedDrug
+          ) : { crcl: undefined, egfr: undefined };
+          
+          // CrCl 히스토리 가져오기 (48-72시간 내 데이터 비교용)
+          const getCrclHistory = (): Array<{ value: number; date: Date }> => {
+            try {
+              if (!selectedPatientId) return [];
+              
+              const raw = window.localStorage.getItem(
+                `tdmfriends:renal:${selectedPatientId}`
+              );
+              
+              if (!raw) return [];
+              
+              const list = JSON.parse(raw) as Array<{
+                id: string;
+                creatinine: string;
+                date: string;
+                formula: string;
+                result: string;
+                dialysis: string;
+                renalReplacement: string;
+                isSelected: boolean;
+              }>;
+              
+              // result에서 CrCl 값 추출
+              const crclHistory: Array<{ value: number; date: Date }> = [];
+              for (const item of list) {
+                const resultStr = (item.result || "").toString();
+                const match = resultStr.match(/(CRCL|eGFR)\s*=\s*([\d.]+)/i);
+                if (match) {
+                  const value = parseFloat(match[2]);
+                  if (!Number.isNaN(value) && value > 0) {
+                    crclHistory.push({
+                      value,
+                      date: new Date(item.date)
+                    });
+                  }
+                } else {
+                  // 일반적인 숫자 파싱
+                  const parsedResult = parseFloat(resultStr.replace(/[^0-9.-]/g, ""));
+                  if (!Number.isNaN(parsedResult) && parsedResult > 0) {
+                    crclHistory.push({
+                      value: parsedResult,
+                      date: new Date(item.date)
+                    });
+                  }
+                }
+              }
+              
+              return crclHistory;
+            } catch {
+              return [];
+            }
+          };
+          
+          return (
+            <PKCharts
+              showSimulation={true}
+              currentPatientName={currentPatient.name}
+              selectedDrug={selectedDrug}
+              targetMin={getTargetBand().min}
+              targetMax={getTargetBand().max}
+              recentAUC={tdmResult?.AUC_24_before}
+              recentMax={tdmResult?.CMAX_before}
+              recentTrough={tdmResult?.CTROUGH_before}
+              predictedAUC={
+                isCompletedView
+                  ? null
+                  : tdmResult?.AUC_24_after
+              }
+              predictedMax={isCompletedView ? null : tdmResult?.CMAX_after}
+              predictedTrough={isCompletedView ? null : tdmResult?.CTROUGH_after}
+              ipredSeries={tdmExtraSeries?.ipredSeries}
+              predSeries={tdmExtraSeries?.predSeries}
+              observedSeries={tdmExtraSeries?.observedSeries}
+              // TDM 내역 데이터 - selectedPrescription을 직접 사용하여 현재 선택된 약품의 정보 사용
+              tdmIndication={getTdmData(selectedPrescription?.drugName || selectedDrug).indication}
+              tdmTarget={getTdmData(selectedPrescription?.drugName || selectedDrug).target}
+              tdmTargetValue={getTdmData(selectedPrescription?.drugName || selectedDrug).targetValue}
+              // 투약기록 데이터
+              latestAdministration={latestAdministration}
+              drugAdministrations={drugAdministrations}
+              steadyState={tdmResult?.Steady_state}
+              input_TOXI={input_TOXI}
+              // API의 input_tau_before와 동일한 값 전달
+              tauBefore={buildTdmRequestBody()?.input_tau_before}
+              // API의 input_amount_before와 동일한 값 전달
+              amountBefore={buildTdmRequestBody()?.input_amount_before}
+              // 특이 케이스 코멘트용 props
+              prescriptionAdditionalInfo={selectedPrescription?.additionalInfo}
+              renalReplacement={renalInfo?.renalReplacement}
+              patientAge={currentPatient?.age}
+              currentCrCl={renalFunction.crcl}
+              crclHistory={getCrclHistory()}
+            />
+          );
+        })()}
       </div>
 
       {/* 용법 조정 카드들 */}
