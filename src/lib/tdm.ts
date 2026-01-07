@@ -211,7 +211,7 @@ export const clearStorage = (options?: {
   }
 };
 
-const getSelectedRenalInfo = (
+export const getSelectedRenalInfo = (
   selectedPatientId: string | null | undefined,
   drugName?: string
 ): RenalInfo | null => {
