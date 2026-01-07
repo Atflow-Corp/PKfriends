@@ -385,7 +385,6 @@ const PKCharts = ({
         predictedTrough={predictedTrough}
         commentTitle="TDM friends Comments"
         steadyState={steadyState}
-        input_TOXI={input_TOXI}
       />
     </div>
   );

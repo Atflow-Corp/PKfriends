@@ -27,7 +27,6 @@ interface TDMSummaryProps {
   predictedResultTitle?: string; // 우측 카드 제목 (기본: 현 용법의 항정상태 예측 결과)
   showSteadyStateComment?: boolean; // 항정상태 조건부 문장 표시 여부 (기본: true)
   steadyState?: boolean | string; // Steady_state 값 (API 응답에서 받아옴, boolean 또는 문자열 "true"/"false")
-  input_TOXI?: number; // 신독성 고위험군 여부 (1: 고위험군, 0 또는 undefined: 일반)
   isLoading?: boolean; // API 결과 로딩 중 여부
 }
 
@@ -49,7 +48,6 @@ const TDMSummary = ({
   predictedResultTitle = "현 용법의 항정상태 예측 결과",
   showSteadyStateComment = true,
   steadyState,
-  input_TOXI,
   isLoading = false
 }: TDMSummaryProps) => {
   const concentrationUnit = getConcentrationUnit(selectedDrug);
@@ -111,59 +109,6 @@ const TDMSummary = ({
 
   const targetRangeStatus = getTargetRangeStatus();
 
-  const cyclosporinTroughWarningThresholds: Record<string, number> = {
-    "Renal transplant recipients/Korean": 10,
-    "Allo-HSCT/Korean": 50,
-    "Thoracic transplant recipients/European": 20
-  };
-
-  // 신독성 고위험군 추가 문구 생성 (도달 케이스에서만)
-  const getToxicityWarningText = (): string | null => {
-    // 도달 케이스가 아니면 null 반환
-    const status = getTargetRangeStatus();
-    if (status !== '도달') return null;
-    
-    // input_TOXI가 1이 아니면 null 반환
-    if (input_TOXI !== 1) return null;
-    
-    // 필수 값 체크
-    if (!tdmTargetValue || targetValue.numericValue == null) return null;
-    
-    // 다양한 범위 형식 지원: "400-600", "400 - 600", "400~600", "400–600" 등
-    // 중간점(·)이나 다른 특수문자가 있어도 숫자 범위를 추출
-    const rangeMatch = tdmTargetValue.match(/(\d+(?:\.\d+)?)\s*[-~–]\s*(\d+(?:\.\d+)?)/);
-    if (!rangeMatch) return null;
-    
-    const maxValue = parseFloat(rangeMatch[2]);
-    const currentValue = targetValue.numericValue;
-    
-    // 유효하지 않은 값 체크
-    if (!Number.isFinite(maxValue) || !Number.isFinite(currentValue)) return null;
-    
-    const diffFromMax = maxValue - currentValue;
-    
-    // 반코마이신 + AUC: 100 이내
-    const isVancomycinAUC = selectedDrug === 'Vancomycin' && 
-      (tdmTarget?.toLowerCase().includes('auc') || tdmTarget?.toLowerCase().includes('auc24'));
-    
-    if (isVancomycinAUC) {
-      if (diffFromMax <= 100 && diffFromMax >= 0) {
-        return "환자가 신독성 약물을 복용 중인 경우, 예측 결과가 목표 범위 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
-      }
-    }
-    
-    // 사이클로스포린 + Trough: 적응증별 상한 근접 기준
-    if (selectedDrug === 'Cyclosporin' && tdmTarget?.toLowerCase().includes('trough')) {
-      const normalizedIndication = (tdmIndication || '').trim();
-      const indicationThreshold = cyclosporinTroughWarningThresholds[normalizedIndication] ?? 50;
-      if (diffFromMax <= indicationThreshold && diffFromMax >= 0) {
-        return "환자가 신독성 고위험군인 경우, 상한에 가까운 노출임을 고려하여 임상의 재량에 따라 보수적 감량 여부를 검토할 수 있습니다.";
-      }
-    }
-    
-    return null;
-  };
-
   // 목표 범위 초과/미달 판단 및 조건부 문장 생성
   const getRecommendationText = (): string | null => {
     if (!tdmTargetValue || !targetValue.numericValue) return null;
@@ -186,7 +131,6 @@ const TDMSummary = ({
   };
 
   const recommendationText = getRecommendationText();
-  const toxicityWarningText = getToxicityWarningText();
 
   return (
     <div className="bg-gray-100 dark:bg-gray-800/40 rounded-lg p-6 mb-6 mt-4">
@@ -315,15 +259,6 @@ const TDMSummary = ({
               <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
               <p className="leading-relaxed">
                 {recommendationText}
-              </p>
-            </div>
-          )}
-          {/* 신독성 고위험군 추가 문구 */}
-          {toxicityWarningText && (
-            <div className="flex items-start gap-2 mt-3">
-              <div className="w-1.5 h-1.5 bg-gray-800 dark:bg-gray-200 rounded-full mt-2 flex-shrink-0"></div>
-              <p className="leading-relaxed">
-                {toxicityWarningText}
               </p>
             </div>
           )}
