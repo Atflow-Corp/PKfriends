@@ -238,7 +238,14 @@ const Index = ({ onLogout }: IndexProps) => {
             <div className="flex items-center gap-6">
               <div className="text-right">
                 <p className="text-sm text-slate-600 dark:text-slate-300">등록된 환자 수: {patients.length}</p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">선택된 환자: {selectedPatient?.name || "None"}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  선택된 환자:{" "}
+                  <span title={selectedPatient?.name || "None"}>
+                    {selectedPatient?.name && selectedPatient.name.length > 5 
+                      ? `${selectedPatient.name.slice(0, 4)}...` 
+                      : (selectedPatient?.name || "None")}
+                  </span>
+                </p>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

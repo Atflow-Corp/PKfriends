@@ -217,6 +217,8 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
                   placeholder="이름을 입력해주세요"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
+                  onCompositionStart={handleCompositionStart}
+                  onCompositionEnd={handleCompositionEnd}
                   maxLength={100}
                 />
               </div>
