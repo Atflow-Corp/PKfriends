@@ -26,6 +26,9 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
     medicalRole: ''
   });
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
+  
+  // 한글 입력 조합 중인지 확인하는 상태
+  const [isComposing, setIsComposing] = useState(false);
 
   // 사전 등록된 병원 목록
   const organizations = ['앳플로우'];
@@ -43,11 +46,106 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
     }
   }, [initialPhoneNumber]);
 
+  // 이름 입력 검증 함수
+  const validateNameInput = (value: string, previousValue: string): { value: string; shouldShowToast: boolean } => {
+    // 허용 문자: 한글, 영문, 띄어쓰기, 하이픈(-), 아포스트로피(')
+    const allowedPattern = /^[가-힣a-zA-Z\s\-']*$/;
+    
+    // 허용 문자 외 입력 체크
+    if (!allowedPattern.test(value)) {
+      // 허용되지 않는 문자 제거
+      const cleaned = value.replace(/[^가-힣a-zA-Z\s\-']/g, '');
+      // 제거된 문자가 실제로 있었는지 확인 (이전 값과 다를 때만 알림)
+      const shouldShowToast = cleaned !== previousValue && value !== previousValue;
+      // 제거 후 다시 검증 (한글/영문 혼용 체크)
+      const result = validateNameInput(cleaned, previousValue);
+      return { value: result.value, shouldShowToast: shouldShowToast || result.shouldShowToast };
+    }
+    
+    // 한글과 영문 혼용 여부 확인
+    const hasKorean = /[가-힣]/.test(value);
+    const hasEnglish = /[a-zA-Z]/.test(value);
+    const prevHasKorean = /[가-힣]/.test(previousValue);
+    const prevHasEnglish = /[a-zA-Z]/.test(previousValue);
+    
+    // 실제로 혼용이 발생했을 때만 알림 (이전에는 혼용이 없었고, 현재 혼용이 있는 경우)
+    if (hasKorean && hasEnglish && !(prevHasKorean && prevHasEnglish)) {
+      return { value: previousValue, shouldShowToast: true }; // 이전 값 반환
+    }
+    
+    // 글자 수 제한
+    if (hasKorean) {
+      // 한글인 경우 최대 50자
+      if (value.length > 50) {
+        // 이전 값이 50자 이하이고 현재 값이 50자 초과인 경우에만 알림 표시
+        const shouldShowToast = previousValue.length <= 50 && value.length > 50;
+        return { value: value.slice(0, 50), shouldShowToast };
+      }
+    } else if (hasEnglish) {
+      // 영문인 경우 최대 100자
+      if (value.length > 100) {
+        // 이전 값이 100자 이하이고 현재 값이 100자 초과인 경우에만 알림 표시
+        const shouldShowToast = previousValue.length <= 100 && value.length > 100;
+        return { value: value.slice(0, 100), shouldShowToast };
+      }
+    }
+    // 띄어쓰기만 있거나 빈 문자열도 허용 (trim() 체크 제거)
+    
+    return { value, shouldShowToast: false };
+  };
+
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    // 이름 필드인 경우 검증 로직 적용
+    if (field === 'name') {
+      // 한글 입력 조합 중이면 검증 건너뛰기
+      if (isComposing) {
+        setFormData(prev => ({
+          ...prev,
+          [field]: value
+        }));
+        return;
+      }
+      
+      const previousValue = formData.name;
+      const result = validateNameInput(value, previousValue);
+      
+      // 알림 표시
+      if (result.shouldShowToast) {
+        // 글자 수 초과인지 확인
+        const hasKorean = /[가-힣]/.test(value);
+        const hasEnglish = /[a-zA-Z]/.test(value);
+        
+        if (hasKorean && value.length > 50) {
+          toast.error("한글 이름은 최대 50자까지 입력 가능합니다.");
+        } else if (hasEnglish && value.length > 100) {
+          toast.error("영문 이름은 최대 100자까지 입력 가능합니다.");
+        } else {
+          toast.error("이름은 한글 또는 영문으로 입력해 주세요. \n (띄어쓰기, 하이픈(-), 아포스트로피(') 사용 가능)");
+        }
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        [field]: result.value
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+  };
+  
+  // 한글 입력 조합 시작
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+  
+  // 한글 입력 조합 종료
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    setIsComposing(false);
+    // 조합 종료 후 최종 검증
+    handleInputChange('name', e.currentTarget.value);
   };
 
 
@@ -119,6 +217,7 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
                   placeholder="이름을 입력해주세요"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
+                  maxLength={100}
                 />
               </div>
 

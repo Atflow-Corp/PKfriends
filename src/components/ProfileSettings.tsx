@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { Camera } from "lucide-react";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import CustomerService from "./CustomerService";
+import { toast } from "sonner";
 
 export interface UserProfile {
   name: string;
@@ -62,6 +63,9 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
     organization: "PK 프렌즈 대학병원",
     role: "doctor",
   });
+  
+  // 한글 입력 조합 중인지 확인하는 상태
+  const [isComposing, setIsComposing] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [tempProfileImage, setTempProfileImage] = useState<string | null>(null);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
@@ -110,8 +114,92 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
     onOpenChange(false);
   };
 
+  // 이름 입력 검증 함수
+  const validateNameInput = (value: string, previousValue: string): { value: string; shouldShowToast: boolean } => {
+    // 허용 문자: 한글, 영문, 띄어쓰기, 하이픈(-), 아포스트로피(')
+    const allowedPattern = /^[가-힣a-zA-Z\s\-']*$/;
+    
+    // 허용 문자 외 입력 체크
+    if (!allowedPattern.test(value)) {
+      // 허용되지 않는 문자 제거
+      const cleaned = value.replace(/[^가-힣a-zA-Z\s\-']/g, '');
+      // 제거된 문자가 실제로 있었는지 확인 (이전 값과 다를 때만 알림)
+      const shouldShowToast = cleaned !== previousValue && value !== previousValue;
+      // 제거 후 다시 검증 (한글/영문 혼용 체크)
+      const result = validateNameInput(cleaned, previousValue);
+      return { value: result.value, shouldShowToast: shouldShowToast || result.shouldShowToast };
+    }
+    
+    // 한글과 영문 혼용 여부 확인
+    const hasKorean = /[가-힣]/.test(value);
+    const hasEnglish = /[a-zA-Z]/.test(value);
+    const prevHasKorean = /[가-힣]/.test(previousValue);
+    const prevHasEnglish = /[a-zA-Z]/.test(previousValue);
+    
+    // 실제로 혼용이 발생했을 때만 알림 (이전에는 혼용이 없었고, 현재 혼용이 있는 경우)
+    if (hasKorean && hasEnglish && !(prevHasKorean && prevHasEnglish)) {
+      return { value: previousValue, shouldShowToast: true }; // 이전 값 반환
+    }
+    
+    // 글자 수 제한
+    if (hasKorean) {
+      // 한글인 경우 최대 50자
+      if (value.length > 50) {
+        // 이전 값이 50자 이하이고 현재 값이 50자 초과인 경우에만 알림 표시
+        const shouldShowToast = previousValue.length <= 50 && value.length > 50;
+        return { value: value.slice(0, 50), shouldShowToast };
+      }
+    } else if (hasEnglish) {
+      // 영문인 경우 최대 100자
+      if (value.length > 100) {
+        // 이전 값이 100자 이하이고 현재 값이 100자 초과인 경우에만 알림 표시
+        const shouldShowToast = previousValue.length <= 100 && value.length > 100;
+        return { value: value.slice(0, 100), shouldShowToast };
+      }
+    }
+    // 띄어쓰기만 있거나 빈 문자열도 허용 (trim() 체크 제거)
+    
+    return { value, shouldShowToast: false };
+  };
+
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTempProfile({ ...tempProfile, name: e.target.value });
+    // 한글 입력 조합 중이면 검증 건너뛰기
+    if (isComposing) {
+      setTempProfile({ ...tempProfile, name: e.target.value });
+      return;
+    }
+    
+    const previousValue = tempProfile.name;
+    const result = validateNameInput(e.target.value, previousValue);
+    
+    // 알림 표시
+    if (result.shouldShowToast) {
+      // 글자 수 초과인지 확인
+      const hasKorean = /[가-힣]/.test(e.target.value);
+      const hasEnglish = /[a-zA-Z]/.test(e.target.value);
+      
+      if (hasKorean && e.target.value.length > 50) {
+        toast.error("한글 이름은 최대 50자까지 입력 가능합니다.");
+      } else if (hasEnglish && e.target.value.length > 100) {
+        toast.error("영문 이름은 최대 100자까지 입력 가능합니다.");
+      } else {
+        toast.error("이름은 한글 또는 영문으로 입력해 주세요.(혼용 불가) \n (띄어쓰기, 하이픈(-), 아포스트로피(') 사용 가능)");
+      }
+    }
+    
+    setTempProfile({ ...tempProfile, name: result.value });
+  };
+  
+  // 한글 입력 조합 시작
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+  
+  // 한글 입력 조합 종료
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    setIsComposing(false);
+    // 조합 종료 후 최종 검증
+    handleNameChange(e as any);
   };
 
 
@@ -241,8 +329,12 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
                       <div className="space-y-2">
                         <Label>이름</Label>
                         <Input 
+                          type="text"
                           value={tempProfile.name} 
                           onChange={handleNameChange}
+                          onCompositionStart={handleCompositionStart}
+                          onCompositionEnd={handleCompositionEnd}
+                          maxLength={100}
                         />
                       </div>
                       <div className="space-y-2">

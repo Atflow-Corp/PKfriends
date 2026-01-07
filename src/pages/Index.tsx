@@ -249,16 +249,20 @@ const Index = ({ onLogout }: IndexProps) => {
                       {userProfile?.name ? userProfile.name.charAt(0) : "사용자"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="font-medium">
-                    {userProfile?.name || "사용자"}
-                  </span>
+                    <span className="font-medium whitespace-nowrap" title={userProfile?.name || "사용자"}>
+                     {userProfile?.name && userProfile.name.length > 5 
+                       ? `${userProfile.name.slice(0, 4)}...` 
+                       : (userProfile?.name || "사용자")}
+                    </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {userProfile?.name || "사용자"}
+                    <p className="text-sm font-medium leading-none truncate" style={{ maxWidth: '13em' }} title={userProfile?.name || "사용자"}>
+                      {userProfile?.name && userProfile.name.length > 13 
+                        ? `${userProfile.name.slice(0, 13)}...` 
+                        : (userProfile?.name || "사용자")}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
                       {userProfile?.email || userProfile?.phone || "정보 없음"}
