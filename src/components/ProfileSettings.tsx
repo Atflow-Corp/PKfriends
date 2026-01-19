@@ -16,22 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Camera } from "lucide-react";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
-import CustomerService from "./CustomerService";
 
 export interface UserProfile {
   name: string;
@@ -67,8 +56,6 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
   const [isComposing, setIsComposing] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [tempProfileImage, setTempProfileImage] = useState<string | null>(null);
-  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
-  const [showCustomerService, setShowCustomerService] = useState(false);
 
   // 사전 등록된 소속기관 목록 (나에게 지정된 소속기관)
   const baseOrganizations = ['앳플로우'];
@@ -327,9 +314,6 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
     );
   };
 
-  const handleDeleteAccount = () => {
-    setShowDeleteAlert(true);
-  };
 
   const getRoleLabel = (role: string) => {
     switch (role) {
@@ -478,62 +462,10 @@ const ProfileSettings = ({ open, onOpenChange }: ProfileSettingsProps) => {
                 </div>
               </CardContent>
             </Card>
-
-            <Separator />
-
-            {/* 계정 삭제 및 고객문의 링크 */}
-            <div className="flex justify-center items-center gap-2 text-sm text-muted-foreground">
-              <button
-                onClick={handleDeleteAccount}
-                className="underline hover:text-primary cursor-pointer"
-              >
-                계정삭제
-              </button>
-              <span>|</span>
-              <button
-                onClick={() => setShowCustomerService(true)}
-                className="underline hover:text-primary cursor-pointer"
-              >
-                고객센터
-              </button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* 계정 삭제 확인 AlertDialog */}
-      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>계정 삭제 안내</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>
-              TDM friends는 계정 삭제 전 데이터 위임 및 이관 확인 절차를 거치고 있습니다. 번거로우시더라도 관리자에게 문의해 주시면 안전하게 처리를 도와드리겠습니다.
-              </p>
-              <p className="font-semibold text-destructive">
-                ⚠️ 주의: 계정 삭제 시 등록된 모든 환자 정보와 TDM 분석 데이터는 소속 기관 내 다른 관리자에게 위임되어야 합니다.
-              </p>
-              <div className="pt-2 border-t">
-                <p className="font-medium">시스템 관리자 연락처</p>
-                <p className="text-sm text-muted-foreground">
-                  이메일: admin@tdmfriends.com
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>확인</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* 고객센터 모달 */}
-      <CustomerService
-        open={showCustomerService}
-        onOpenChange={setShowCustomerService}
-        userName={tempProfile.name}
-        userEmail={tempProfile.email}
-      />
     </>
   );
 };

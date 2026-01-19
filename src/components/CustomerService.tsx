@@ -39,11 +39,9 @@ export interface Inquiry {
 interface CustomerServiceProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  userName: string;
-  userEmail: string;
 }
 
-const CustomerService = ({ open, onOpenChange, userName, userEmail }: CustomerServiceProps) => {
+const CustomerService = ({ open, onOpenChange }: CustomerServiceProps) => {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [title, setTitle] = useState("");
   const [errorType, setErrorType] = useState("");
@@ -144,12 +142,20 @@ const CustomerService = ({ open, onOpenChange, userName, userEmail }: CustomerSe
       alert("문의 제목을 입력해주세요.");
       return;
     }
+    if (title.length > 60) {
+      alert("문의 제목은 최대 60자까지 입력 가능합니다.");
+      return;
+    }
     if (!errorType) {
       alert("오류 유형을 선택해주세요.");
       return;
     }
     if (!content.trim()) {
       alert("문의 내용을 입력해주세요.");
+      return;
+    }
+    if (content.length > 1000) {
+      alert("문의 내용은 최대 1000자까지 입력 가능합니다.");
       return;
     }
 
@@ -247,17 +253,6 @@ const CustomerService = ({ open, onOpenChange, userName, userEmail }: CustomerSe
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>이름</Label>
-                    <Input value={userName} disabled className="bg-muted" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>이메일</Label>
-                    <Input value={userEmail} disabled className="bg-muted" />
-                  </div>
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="title">문의 제목 *</Label>
                   <Input
@@ -265,7 +260,11 @@ const CustomerService = ({ open, onOpenChange, userName, userEmail }: CustomerSe
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="문의 제목을 입력해주세요"
+                    maxLength={60}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {title.length}/60자
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -289,10 +288,30 @@ const CustomerService = ({ open, onOpenChange, userName, userEmail }: CustomerSe
                   <Textarea
                     id="content"
                     value={content}
-                    onChange={(e) => setContent(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // 위험한 텍스트 필터링 (HTML 태그, 스크립트 태그 등)
+                      const filteredValue = value
+                        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // <script> 태그 제거
+                        .replace(/<[^>]*>/g, '') // 모든 HTML 태그 제거
+                        .replace(/javascript:/gi, '') // javascript: 프로토콜 제거
+                        .replace(/on\w+\s*=/gi, '') // 이벤트 핸들러 제거 (onclick=, onerror= 등)
+                        .replace(/data:/gi, ''); // data: 프로토콜 제거
+                      
+                      // 필터링된 값이 원본과 다르면 알림
+                      if (filteredValue !== value) {
+                        alert('입력할 수 없는 문자가 포함되어 있습니다.');
+                      }
+                      
+                      setContent(filteredValue);
+                    }}
                     placeholder="문의 내용을 상세히 작성해주세요"
                     rows={6}
+                    maxLength={1000}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {content.length}/1000자
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -372,8 +391,10 @@ const CustomerService = ({ open, onOpenChange, userName, userEmail }: CustomerSe
                     >
                       <CardHeader>
                         <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="text-base">{inquiry.title}</CardTitle>
+                          <div className="flex-1 min-w-0">
+                            <CardTitle className="text-base truncate">
+                              {inquiry.title.length > 45 ? `${inquiry.title.substring(0, 45)}...` : inquiry.title}
+                            </CardTitle>
                             <CardDescription className="mt-1">
                               {new Date(inquiry.createdAt).toLocaleString("ko-KR")}
                             </CardDescription>
