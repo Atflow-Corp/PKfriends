@@ -81,18 +81,9 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
 
   // 이름 입력 검증 함수
   const validateNameInput = (value: string, previousValue: string): { value: string; shouldShowToast: boolean } => {
-    // 허용 문자: 한글, 영문, 띄어쓰기, 하이픈(-), 아포스트로피(')
-    const allowedPattern = /^[가-힣a-zA-Z\s\-']*$/;
-    
-    // 허용 문자 외 입력 체크
-    if (!allowedPattern.test(value)) {
-      // 허용되지 않는 문자 제거
-      const cleaned = value.replace(/[^가-힣a-zA-Z\s\-']/g, '');
-      // 제거된 문자가 실제로 있었는지 확인 (이전 값과 다를 때만 알림)
-      const shouldShowToast = cleaned !== previousValue && value !== previousValue;
-      // 제거 후 다시 검증 (한글/영문 혼용 체크)
-      const result = validateNameInput(cleaned, previousValue);
-      return { value: result.value, shouldShowToast: shouldShowToast || result.shouldShowToast };
+    // 빈 문자열은 허용 (입력 중일 수 있음)
+    if (value === '') {
+      return { value: '', shouldShowToast: false };
     }
     
     // 한글과 영문 혼용 여부 확인
@@ -106,25 +97,119 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
       return { value: previousValue, shouldShowToast: true }; // 이전 값 반환
     }
     
-    // 글자 수 제한
+    let cleaned = value;
+    let shouldShowToast = false;
+    
     if (hasKorean) {
-      // 한글인 경우 최대 50자
-      if (value.length > 50) {
-        // 이전 값이 50자 이하이고 현재 값이 50자 초과인 경우에만 알림 표시
-        const shouldShowToast = previousValue.length <= 50 && value.length > 50;
-        return { value: value.slice(0, 50), shouldShowToast };
+      // 한글인 경우: 완성형 한글만 허용 (자음/모음만 있는 경우 제거)
+      // 완성형 한글: 가-힣 (U+AC00 ~ U+D7A3)
+      // 자음: ㄱ-ㅎ (U+3131 ~ U+314E)
+      // 모음: ㅏ-ㅣ (U+314F ~ U+3163)
+      
+      // 자음/모음만 있는지 확인
+      const hasOnlyJamo = /^[ㄱ-ㅎㅏ-ㅣ]+$/.test(value);
+      if (hasOnlyJamo) {
+        // 자음/모음만 있는 경우 이전 값 유지
+        return { value: previousValue, shouldShowToast: true };
+      }
+      
+      // 완성형 한글만 남기고 나머지 제거
+      cleaned = value.replace(/[^가-힣]/g, '');
+      // 자음/모음도 제거
+      cleaned = cleaned.replace(/[ㄱ-ㅎㅏ-ㅣ]/g, '');
+      
+      if (cleaned !== value) {
+        shouldShowToast = cleaned !== previousValue && value !== previousValue;
+      }
+      
+      // 한글 길이 제한: 2~10자
+      if (cleaned.length > 10) {
+        const shouldShowToastForLength = previousValue.length <= 10 && cleaned.length > 10;
+        cleaned = cleaned.slice(0, 10);
+        shouldShowToast = shouldShowToast || shouldShowToastForLength;
       }
     } else if (hasEnglish) {
-      // 영문인 경우 최대 100자
-      if (value.length > 100) {
-        // 이전 값이 100자 이하이고 현재 값이 100자 초과인 경우에만 알림 표시
-        const shouldShowToast = previousValue.length <= 100 && value.length > 100;
-        return { value: value.slice(0, 100), shouldShowToast };
+      // 영문인 경우: 영문, 띄어쓰기, comma(,), dash(-)만 허용 (숫자 불가)
+      const englishPattern = /^[a-zA-Z\s,\-]*$/;
+      if (!englishPattern.test(value)) {
+        // 허용되지 않는 문자 제거
+        cleaned = value.replace(/[^a-zA-Z\s,\-]/g, '');
+        shouldShowToast = cleaned !== previousValue && value !== previousValue;
+      }
+      
+      // 영문 길이 제한: 2~50자
+      if (cleaned.length > 50) {
+        const shouldShowToastForLength = previousValue.length <= 50 && cleaned.length > 50;
+        cleaned = cleaned.slice(0, 50);
+        shouldShowToast = shouldShowToast || shouldShowToastForLength;
+      }
+    } else {
+      // 한글도 영문도 없는 경우 (숫자나 특수문자만 입력된 경우)
+      cleaned = '';
+      shouldShowToast = value !== previousValue;
+    }
+    
+    return { value: cleaned, shouldShowToast };
+  };
+
+  // 이름 입력 검증 메시지 생성 함수
+  const getNameValidationMessage = (value: string): string | null => {
+    if (!value || value.trim() === '') {
+      return null;
+    }
+    
+    const hasKorean = /[가-힣]/.test(value);
+    const hasEnglish = /[a-zA-Z]/.test(value);
+    
+    // 자음/모음만 입력된 경우
+    const hasOnlyJamo = /^[ㄱ-ㅎㅏ-ㅣ]+$/.test(value);
+    if (hasOnlyJamo) {
+      return "완성된 한글만 입력 가능합니다. (자음/모음만 입력 불가)";
+    }
+    
+    // 국영문 혼용 체크
+    if (hasKorean && hasEnglish) {
+      return "이름은 한글 또는 영문으로만 입력해 주세요. (혼용 불가)";
+    }
+    
+    // 한글 검증
+    if (hasKorean) {
+      if (value.length < 2) {
+        return "한글 이름은 2자 이상 입력해 주세요.";
+      }
+      if (value.length > 10) {
+        return "한글 이름은 2~10자까지 입력 가능합니다.";
+      }
+      // 한글에 띄어쓰기, 숫자, 특수문자가 포함된 경우
+      if (/[\s0-9]/.test(value) || /[^가-힣]/.test(value)) {
+        return "한글 이름은 한글만 입력 가능합니다. (띄어쓰기, 숫자, 특수문자 불가)";
       }
     }
-    // 띄어쓰기만 있거나 빈 문자열도 허용 (trim() 체크 제거)
     
-    return { value, shouldShowToast: false };
+    // 영문 검증
+    if (hasEnglish) {
+      if (value.length < 2) {
+        return "영문 이름은 2자 이상 입력해 주세요.";
+      }
+      if (value.length > 50) {
+        return "영문 이름은 2~50자까지 입력 가능합니다.";
+      }
+      // 영문에 숫자나 허용되지 않는 특수문자가 포함된 경우
+      if (/[0-9]/.test(value)) {
+        return "영문 이름에는 숫자를 입력할 수 없습니다.";
+      }
+      // comma, dash 외 특수문자 체크
+      if (/[^a-zA-Z\s,\-]/.test(value)) {
+        return "영문 이름은 영문, 띄어쓰기, comma(,), dash(-)만 입력 가능합니다.";
+      }
+    }
+    
+    // 한글도 영문도 없는 경우
+    if (!hasKorean && !hasEnglish && value.length > 0) {
+      return "이름은 한글 또는 영문으로 입력해 주세요.";
+    }
+    
+    return null;
   };
 
   // 이름 입력 핸들러
@@ -138,20 +223,7 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     const previousValue = formData.name;
     const result = validateNameInput(value, previousValue);
     
-    // 알림 표시
-    if (result.shouldShowToast) {
-      // 글자 수 초과인지 확인
-      const hasKorean = /[가-힣]/.test(value);
-      const hasEnglish = /[a-zA-Z]/.test(value);
-      
-      if (hasKorean && value.length > 50) {
-        toast.error("한글 이름은 최대 50자까지 입력 가능합니다.");
-      } else if (hasEnglish && value.length > 100) {
-        toast.error("영문 이름은 최대 100자까지 입력 가능합니다.");
-      } else {
-        toast.error("이름은 한글 또는 영문으로 입력해 주세요.(혼용 불가) \n (띄어쓰기, 하이픈(-), 아포스트로피(') 사용 가능)");
-      }
-    }
+    // 실시간 에러 메시지는 입력창 하단에 표시되므로 토스트 팝업 제거
     
     setFormData({...formData, name: result.value});
   };
@@ -172,9 +244,15 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
   const handleRegistration = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 이름 검증 오류가 있으면 등록하지 않음 (입력창 하단 메시지와 버튼 비활성화로 충분)
+    const nameValidationError = getNameValidationMessage(formData.name.trim());
+    if (nameValidationError) {
+      return;
+    }
+    
     const newPatient: Patient = {
       id: Date.now().toString(),
-      name: formData.name,
+      name: formData.name.trim(),
       age: parseInt(formData.age),
       weight: parseFloat(formData.weight),
       height: parseFloat(formData.height),
@@ -196,9 +274,15 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
     
     if (!selectedPatient) return;
 
+    // 이름 검증 오류가 있으면 수정하지 않음 (입력창 하단 메시지와 버튼 비활성화로 충분)
+    const nameValidationError = getNameValidationMessage(formData.name.trim());
+    if (nameValidationError) {
+      return;
+    }
+
     const updatedPatient: Patient = {
       ...selectedPatient,
-      name: formData.name,
+      name: formData.name.trim(),
       age: parseInt(formData.age),
       weight: parseFloat(formData.weight),
       height: parseFloat(formData.height),
@@ -643,6 +727,11 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                       required
                       maxLength={100}
                     />
+                    {getNameValidationMessage(formData.name) && (
+                      <p className="text-xs text-red-500 mt-1">
+                        {getNameValidationMessage(formData.name)}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="gender">성별 *</Label>
@@ -721,7 +810,11 @@ const PatientInformation = forwardRef<PatientInformationRef, PatientInformationP
                        <Trash2 className="h-4 w-4" />
                      </Button>
                   )}
-                  <Button type="submit" className="flex-1">
+                  <Button 
+                    type="submit" 
+                    className="flex-1"
+                    disabled={!!getNameValidationMessage(formData.name.trim())}
+                  >
                     {isEditing ? "수정하기" : "등록하기"}
                   </Button>
                   <Button type="button" variant="outline" onClick={resetForm}>

@@ -18,16 +18,18 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
 import ProfileSettings, { UserProfile } from "@/components/ProfileSettings";
-import { hasTdmResult } from "@/lib/tdm";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import CustomerService from "@/components/CustomerService";
+import { hasTdmResult } from "@/lib/tdm";
 
 export interface Patient {
   id: string;
@@ -106,6 +108,8 @@ const Index = ({ onLogout }: IndexProps) => {
   const [activeTab, setActiveTab] = useState("workflow");
   const [showTdmResultAlert, setShowTdmResultAlert] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [showCustomerService, setShowCustomerService] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -293,6 +297,14 @@ const Index = ({ onLogout }: IndexProps) => {
                   <DropdownMenuItem onClick={() => setShowProfileSettings(true)}>
                     프로필 설정
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setShowCustomerService(true)}>
+                    고객센터
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowDeleteAlert(true)}>
+                    계정삭제
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onLogout}>
                     로그아웃
                   </DropdownMenuItem>
@@ -400,6 +412,38 @@ const Index = ({ onLogout }: IndexProps) => {
             }
           }
         }}
+      />
+
+      {/* 계정 삭제 확인 AlertDialog */}
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>계정 삭제 안내</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+              TDM friends는 계정 삭제 전 데이터 위임 및 이관 확인 절차를 거치고 있습니다. 번거로우시더라도 관리자에게 문의해 주시면 안전하게 처리를 도와드리겠습니다.
+              </p>
+              <p className="font-semibold text-destructive">
+                ⚠️ 주의: 계정 삭제 시 등록된 모든 환자 정보와 TDM 분석 데이터는 소속 기관 내 다른 관리자에게 위임되어야 합니다.
+              </p>
+              <div className="pt-2 border-t">
+                <p className="font-medium">시스템 관리자 연락처</p>
+                <p className="text-sm text-muted-foreground">
+                  이메일: admin@tdmfriends.com
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>확인</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 고객센터 모달 */}
+      <CustomerService
+        open={showCustomerService}
+        onOpenChange={setShowCustomerService}
       />
 
       {/* TDM 결과 이미 존재 알림 AlertDialog */}

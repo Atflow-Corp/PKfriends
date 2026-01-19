@@ -26,6 +26,7 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
     medicalRole: ''
   });
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
   
   // 한글 입력 조합 중인지 확인하는 상태
   const [isComposing, setIsComposing] = useState(false);
@@ -48,18 +49,9 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
 
   // 이름 입력 검증 함수
   const validateNameInput = (value: string, previousValue: string): { value: string; shouldShowToast: boolean } => {
-    // 허용 문자: 한글, 영문, 띄어쓰기, 하이픈(-), 아포스트로피(')
-    const allowedPattern = /^[가-힣a-zA-Z\s\-']*$/;
-    
-    // 허용 문자 외 입력 체크
-    if (!allowedPattern.test(value)) {
-      // 허용되지 않는 문자 제거
-      const cleaned = value.replace(/[^가-힣a-zA-Z\s\-']/g, '');
-      // 제거된 문자가 실제로 있었는지 확인 (이전 값과 다를 때만 알림)
-      const shouldShowToast = cleaned !== previousValue && value !== previousValue;
-      // 제거 후 다시 검증 (한글/영문 혼용 체크)
-      const result = validateNameInput(cleaned, previousValue);
-      return { value: result.value, shouldShowToast: shouldShowToast || result.shouldShowToast };
+    // 빈 문자열은 허용 (입력 중일 수 있음)
+    if (value === '') {
+      return { value: '', shouldShowToast: false };
     }
     
     // 한글과 영문 혼용 여부 확인
@@ -73,25 +65,119 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
       return { value: previousValue, shouldShowToast: true }; // 이전 값 반환
     }
     
-    // 글자 수 제한
+    let cleaned = value;
+    let shouldShowToast = false;
+    
     if (hasKorean) {
-      // 한글인 경우 최대 50자
-      if (value.length > 50) {
-        // 이전 값이 50자 이하이고 현재 값이 50자 초과인 경우에만 알림 표시
-        const shouldShowToast = previousValue.length <= 50 && value.length > 50;
-        return { value: value.slice(0, 50), shouldShowToast };
+      // 한글인 경우: 완성형 한글만 허용 (자음/모음만 있는 경우 제거)
+      // 완성형 한글: 가-힣 (U+AC00 ~ U+D7A3)
+      // 자음: ㄱ-ㅎ (U+3131 ~ U+314E)
+      // 모음: ㅏ-ㅣ (U+314F ~ U+3163)
+      
+      // 자음/모음만 있는지 확인
+      const hasOnlyJamo = /^[ㄱ-ㅎㅏ-ㅣ]+$/.test(value);
+      if (hasOnlyJamo) {
+        // 자음/모음만 있는 경우 이전 값 유지
+        return { value: previousValue, shouldShowToast: true };
+      }
+      
+      // 완성형 한글만 남기고 나머지 제거
+      cleaned = value.replace(/[^가-힣]/g, '');
+      // 자음/모음도 제거
+      cleaned = cleaned.replace(/[ㄱ-ㅎㅏ-ㅣ]/g, '');
+      
+      if (cleaned !== value) {
+        shouldShowToast = cleaned !== previousValue && value !== previousValue;
+      }
+      
+      // 한글 길이 제한: 2~10자
+      if (cleaned.length > 10) {
+        const shouldShowToastForLength = previousValue.length <= 10 && cleaned.length > 10;
+        cleaned = cleaned.slice(0, 10);
+        shouldShowToast = shouldShowToast || shouldShowToastForLength;
       }
     } else if (hasEnglish) {
-      // 영문인 경우 최대 100자
-      if (value.length > 100) {
-        // 이전 값이 100자 이하이고 현재 값이 100자 초과인 경우에만 알림 표시
-        const shouldShowToast = previousValue.length <= 100 && value.length > 100;
-        return { value: value.slice(0, 100), shouldShowToast };
+      // 영문인 경우: 영문, 띄어쓰기, comma(,), dash(-)만 허용 (숫자 불가)
+      const englishPattern = /^[a-zA-Z\s,\-]*$/;
+      if (!englishPattern.test(value)) {
+        // 허용되지 않는 문자 제거
+        cleaned = value.replace(/[^a-zA-Z\s,\-]/g, '');
+        shouldShowToast = cleaned !== previousValue && value !== previousValue;
+      }
+      
+      // 영문 길이 제한: 2~50자
+      if (cleaned.length > 50) {
+        const shouldShowToastForLength = previousValue.length <= 50 && cleaned.length > 50;
+        cleaned = cleaned.slice(0, 50);
+        shouldShowToast = shouldShowToast || shouldShowToastForLength;
+      }
+    } else {
+      // 한글도 영문도 없는 경우 (숫자나 특수문자만 입력된 경우)
+      cleaned = '';
+      shouldShowToast = value !== previousValue;
+    }
+    
+    return { value: cleaned, shouldShowToast };
+  };
+
+  // 이름 입력 검증 메시지 생성 함수
+  const getNameValidationMessage = (value: string): string | null => {
+    if (!value || value.trim() === '') {
+      return null;
+    }
+    
+    const hasKorean = /[가-힣]/.test(value);
+    const hasEnglish = /[a-zA-Z]/.test(value);
+    
+    // 자음/모음만 입력된 경우
+    const hasOnlyJamo = /^[ㄱ-ㅎㅏ-ㅣ]+$/.test(value);
+    if (hasOnlyJamo) {
+      return "완성된 한글만 입력 가능합니다. (자음/모음만 입력 불가)";
+    }
+    
+    // 국영문 혼용 체크
+    if (hasKorean && hasEnglish) {
+      return "이름은 한글 또는 영문으로만 입력해 주세요. (혼용 불가)";
+    }
+    
+    // 한글 검증
+    if (hasKorean) {
+      if (value.length < 2) {
+        return "한글 이름은 2자 이상 입력해 주세요.";
+      }
+      if (value.length > 10) {
+        return "한글 이름은 2~10자까지 입력 가능합니다.";
+      }
+      // 한글에 띄어쓰기, 숫자, 특수문자가 포함된 경우
+      if (/[\s0-9]/.test(value) || /[^가-힣]/.test(value)) {
+        return "한글 이름은 한글만 입력 가능합니다. (띄어쓰기, 숫자, 특수문자 불가)";
       }
     }
-    // 띄어쓰기만 있거나 빈 문자열도 허용 (trim() 체크 제거)
     
-    return { value, shouldShowToast: false };
+    // 영문 검증
+    if (hasEnglish) {
+      if (value.length < 2) {
+        return "영문 이름은 2자 이상 입력해 주세요.";
+      }
+      if (value.length > 50) {
+        return "영문 이름은 2~50자까지 입력 가능합니다.";
+      }
+      // 영문에 숫자나 허용되지 않는 특수문자가 포함된 경우
+      if (/[0-9]/.test(value)) {
+        return "영문 이름에는 숫자를 입력할 수 없습니다.";
+      }
+      // comma, dash 외 특수문자 체크
+      if (/[^a-zA-Z\s,\-]/.test(value)) {
+        return "영문 이름은 영문, 띄어쓰기, comma(,), dash(-)만 입력 가능합니다.";
+      }
+    }
+    
+    // 한글도 영문도 없는 경우
+    if (!hasKorean && !hasEnglish && value.length > 0) {
+      return "이름은 한글 또는 영문으로 입력해 주세요.";
+    }
+    
+    return null;
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -109,20 +195,7 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
       const previousValue = formData.name;
       const result = validateNameInput(value, previousValue);
       
-      // 알림 표시
-      if (result.shouldShowToast) {
-        // 글자 수 초과인지 확인
-        const hasKorean = /[가-힣]/.test(value);
-        const hasEnglish = /[a-zA-Z]/.test(value);
-        
-        if (hasKorean && value.length > 50) {
-          toast.error("한글 이름은 최대 50자까지 입력 가능합니다.");
-        } else if (hasEnglish && value.length > 100) {
-          toast.error("영문 이름은 최대 100자까지 입력 가능합니다.");
-        } else {
-          toast.error("이름은 한글 또는 영문으로 입력해 주세요. \n (띄어쓰기, 하이픈(-), 아포스트로피(') 사용 가능)");
-        }
-      }
+      // 실시간 에러 메시지는 입력창 하단에 표시되므로 토스트 팝업 제거
       
       setFormData(prev => ({
         ...prev,
@@ -150,15 +223,23 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
 
 
   const isFormValid = () => {
-    return formData.name.trim() !== '' && 
-           formData.phoneNumber.trim() !== '' && 
-           formData.organization !== '' && 
-           formData.medicalRole !== '';
+    // 기본 필수 항목 체크
+    const hasRequiredFields = formData.name.trim() !== '' && 
+                              formData.phoneNumber.trim() !== '' && 
+                              formData.organization !== '' && 
+                              formData.medicalRole !== '';
+    
+    // 이름 검증 오류가 있는지 체크
+    const nameValidationError = getNameValidationMessage(formData.name);
+    
+    // 필수 항목이 모두 입력되었고, 이름 검증 오류가 없을 때만 true 반환
+    return hasRequiredFields && !nameValidationError;
   };
 
   const handleComplete = () => {
+    // isFormValid()가 false면 버튼이 비활성화되어 있어서 여기 도달하지 않지만,
+    // 추가 검증을 위해 체크 (입력창 하단 메시지와 버튼 비활성화로 충분하므로 토스트 제거)
     if (!isFormValid()) {
-      toast.error("모든 필수 항목을 입력해주세요.");
       return;
     }
 
@@ -186,13 +267,14 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
       
       storage.setJSON(STORAGE_KEYS.userProfile, userProfile);
       console.log('회원가입 정보가 저장되었습니다:', userProfile);
+      
+      setShowWelcomeDialog(false);
+      onComplete();
     } catch (error) {
       console.error('회원가입 정보 저장 실패:', error);
-      toast.error('회원가입 정보 저장 중 오류가 발생했습니다.');
+      setShowWelcomeDialog(false);
+      setShowErrorDialog(true);
     }
-    
-    setShowWelcomeDialog(false);
-    onComplete();
   };
 
   return (
@@ -221,6 +303,11 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
                   onCompositionEnd={handleCompositionEnd}
                   maxLength={100}
                 />
+                {getNameValidationMessage(formData.name) && (
+                  <p className="text-xs text-red-500 mt-1">
+                    {getNameValidationMessage(formData.name)}
+                  </p>
+                )}
               </div>
 
               {/* 휴대폰 번호 */}
@@ -231,10 +318,15 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
                 <Input
                   id="phoneNumber"
                   type="tel"
-                  placeholder="휴대폰 번호를 입력해주세요 ('-' 제외)"
+                  placeholder={formData.phoneNumber ? "" : "로그인 시 입력한 번호가 자동으로 표시됩니다"}
                   value={formData.phoneNumber}
                   onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
+                  disabled
+                  className="bg-muted"
                 />
+                <p className="text-xs text-muted-foreground">
+                  휴대폰 번호 변경은 시스템관리자에게 문의해주세요.
+                </p>
               </div>
 
               {/* 소속기관 */}
@@ -315,6 +407,29 @@ const UserRegistration = ({ onBack, onComplete, initialPhoneNumber = '' }: UserR
           <AlertDialogFooter className="flex justify-center">
             <AlertDialogAction 
               onClick={handleWelcomeConfirm}
+              className="w-full max-w-xs"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 에러 메시지 얼럿 */}
+      <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-center text-xl font-bold text-red-600">
+              오류 발생
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center text-base py-4">
+              회원가입 정보 저장 중 오류가 발생했습니다.<br />
+              다시 시도해주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex justify-center">
+            <AlertDialogAction 
+              onClick={() => setShowErrorDialog(false)}
               className="w-full max-w-xs"
             >
               확인

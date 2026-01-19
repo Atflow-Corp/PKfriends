@@ -179,7 +179,7 @@ const DosageChart = ({
     return '';
   }, [tdmTarget]);
 
-  // 목표 범위 상태 판단 (초과/미달/도달)
+  // 목표 범위 상태 판단 (초과/미달/도달) 및 퍼센트 계산
   const targetRangeStatus = useMemo(() => {
     if (!tdmTargetValue || !targetHighlight.numericValue) return null;
     
@@ -190,8 +190,14 @@ const DosageChart = ({
     const maxValue = parseFloat(rangeMatch[2]);
     const currentValue = targetHighlight.numericValue;
     
-    if (currentValue > maxValue) return '초과';
-    if (currentValue < minValue) return '미달';
+    if (currentValue > maxValue) {
+      const percentOver = ((currentValue - maxValue) / maxValue) * 100;
+      return `${percentOver.toFixed(0)}% 초과`;
+    }
+    if (currentValue < minValue) {
+      const percentUnder = ((minValue - currentValue) / minValue) * 100;
+      return `${percentUnder.toFixed(0)}% 미달`;
+    }
     return '도달';
   }, [tdmTargetValue, targetHighlight.numericValue]);
 
